@@ -1,0 +1,36 @@
+{
+  "name": "@allingo/i18n",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Thông điệp next-intl vi/en (+ja/ko/th sau) và tiện ích đa ngôn ngữ JSONB",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@allingo/config": "workspace:*",
+    "@types/node": "^22.19.0",
+    "eslint": "^9.39.0",
+    "tsup": "^8.5.0",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.12"
+  }
+}

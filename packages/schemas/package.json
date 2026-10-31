@@ -1,0 +1,63 @@
+{
+  "name": "@allingo/schemas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zod schema dùng chung: 12 dạng câu hỏi + chấm tự động, DTO API, đầu ra AI (sinh từ allingo-prompts.yaml), hằng số sản phẩm",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./question": {
+      "types": "./dist/question/index.d.ts",
+      "import": "./dist/question/index.js",
+      "require": "./dist/question/index.cjs"
+    },
+    "./ai": {
+      "types": "./dist/ai/index.d.ts",
+      "import": "./dist/ai/index.js",
+      "require": "./dist/ai/index.cjs"
+    },
+    "./api": {
+      "types": "./dist/api/index.d.ts",
+      "import": "./dist/api/index.js",
+      "require": "./dist/api/index.cjs"
+    },
+    "./product": {
+      "types": "./dist/product/index.d.ts",
+      "import": "./dist/product/index.js",
+      "require": "./dist/product/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "gen-ai": "tsx scripts/gen-ai.ts"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@allingo/config": "workspace:*",
+    "@types/node": "^22.19.0",
+    "eslint": "^9.39.0",
+    "tsup": "^8.5.0",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.12",
+    "json-schema-to-zod": "^2.8.1",
+    "yaml": "^2.8.1",
+    "tsx": "^4.23.15",
+    "prettier": "^3.6.2"
+  }
+}

@@ -1,0 +1,15 @@
+packages:
+  - apps/*
+  - packages/*
+  - db
+
+# Tránh pnpm 10 chặn script build của các gói native cần thiết
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - argon2
+  - '@swc/core'
+  - protobufjs
+  - unrs-resolver
+  - '@tailwindcss/oxide'
+  - '@parcel/watcher'

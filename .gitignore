@@ -1,0 +1,45 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build
+dist/
+.next/
+out/
+coverage/
+.turbo/
+*.tsbuildinfo
+apps/api/openapi.generated.yaml
+packages/api-client/src/generated/
+eval/prompts/
+eval/results/
+eval/schemas/
+
+# env & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# logs
+*.log
+logs/
+
+# os / ide
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# playwright
+playwright-report/
+test-results/
+
+# payload
+apps/cms/media/
+
+# terraform
+infra/terraform/**/.terraform/
+infra/terraform/**/*.tfstate*

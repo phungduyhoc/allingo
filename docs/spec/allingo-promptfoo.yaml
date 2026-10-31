@@ -1,0 +1,186 @@
+# =============================================================================
+# Allingo – Cấu hình eval bằng Promptfoo v1.0 · 31/10/2026
+# Chạy: pnpm eval:build  (render Handlebars từ allingo-prompts.yaml → eval/prompts/*.txt, xuất schema → eval/schemas/*.json)
+#       pnpm eval:run -- --config allingo-promptfoo.yaml --filter-pattern grade_writing_ielts
+#       pnpm eval:report (đọc output JSON, tính MAE/within_0_5/pearson/consistency, so với eval.thresholds trong allingo-prompts.yaml)
+# Dữ liệu eval: eval/data/<eval_set>.jsonl – mỗi dòng {vars:{…}, gold:{…}, anchor:boolean}; không chứa PII (đã ẩn danh).
+# =============================================================================
+description: Allingo AI eval – chấm, giải thích, sinh đề, guardrail
+
+env:
+  PROMPTFOO_CACHE_ENABLED: "true"
+
+providers:
+  # Họ model; id cụ thể cấu hình bằng biến môi trường trong CI (khớp ai.model_routes.params)
+  - id: anthropic:messages:${CLAUDE_SONNET_MODEL}
+    label: claude-sonnet
+    config: { temperature: 0.1, top_p: 0.9, max_tokens: 3500 }
+  - id: openai:chat:${OPENAI_GPT_MODEL}
+    label: gpt
+    config: { temperature: 0.1, top_p: 0.9, max_tokens: 3500, response_format: { type: json_object } }
+  - id: google:${GEMINI_PRO_MODEL}
+    label: gemini-pro
+    config: { temperature: 0.1, topP: 0.9, maxOutputTokens: 3500, generationConfig: { responseMimeType: application/json } }
+  - id: google:${GEMINI_FLASH_MODEL}
+    label: gemini-flash
+    config: { temperature: 0.3, topP: 0.9, maxOutputTokens: 900, generationConfig: { responseMimeType: application/json } }
+
+prompts:
+  - id: grade_writing_ielts
+    label: grade_writing_ielts v1
+    raw: file://eval/prompts/grade_writing_ielts.txt      # system + user đã render, biến {{...}} còn lại do promptfoo thay từ vars
+  - id: grade_speaking_ielts
+    raw: file://eval/prompts/grade_speaking_ielts.txt
+  - id: grade_writing_toeic
+    raw: file://eval/prompts/grade_writing_toeic.txt
+  - id: grade_speaking_toeic
+    raw: file://eval/prompts/grade_speaking_toeic.txt
+  - id: explain_mcq
+    raw: file://eval/prompts/explain_mcq.txt
+  - id: check_question
+    raw: file://eval/prompts/check_question.txt
+  - id: guard_classify
+    raw: file://eval/prompts/guard_classify.txt
+
+defaultTest:
+  options:
+    transform: "typeof output === 'string' ? JSON.parse(output.replace(/^```json\\s*|```$/g, '')) : output"
+  assert:
+    - type: latency
+      threshold: 45000
+    - type: cost
+      threshold: 0.06
+
+tests:
+  # ---------------------------------------------------------------- IELTS Writing (200 bài)
+  - description: IELTS Writing – khớp band giáo viên
+    vars: file://eval/data/ielts_writing_v1.jsonl
+    prompts: [grade_writing_ielts]
+    providers: [claude-sonnet, gpt, gemini-pro]
+    assert:
+      - type: is-json
+        value: file://eval/schemas/grade_writing_ielts.json
+      - type: javascript
+        value: Math.abs(output.overall - context.vars.gold.overall) <= 0.5
+        metric: within_0_5
+      - type: javascript
+        value: |
+          const g = context.vars.gold.criterion_scores, o = output.criterion_scores;
+          const diffs = ['task','coherence_cohesion','lexical_resource','grammatical_range_accuracy'].map(k => Math.abs(o[k]-g[k]));
+          return Math.max(...diffs) <= 1.0;
+        metric: criterion_within_1
+      - type: javascript
+        value: |
+          // mọi quote lỗi phải xuất hiện nguyên văn trong bài
+          const essay = context.vars.essay_text; return output.errors.every(e => essay.includes(e.quote));
+        metric: quotes_verbatim
+      - type: javascript
+        value: |
+          const wc = output.model_answer.text.trim().split(/\s+/).length;
+          return context.vars.task_type === 'task2' ? (wc >= 240 && wc <= 340) : (wc >= 150 && wc <= 220);
+        metric: model_answer_length
+      - type: llm-rubric
+        provider: anthropic:messages:${CLAUDE_SONNET_MODEL}
+        value: "Feedback is specific (cites the learner's words), actionable, written in Vietnamese, and does not contradict the band given. Score 1–5; pass if ≥ 4."
+        metric: feedback_quality
+
+  # ---------------------------------------------------------------- IELTS Speaking (200 ghi âm, transcript + PA đã tính sẵn)
+  - description: IELTS Speaking – khớp band giáo viên (FC/LR/GRA), pronunciation sao chép từ PA
+    vars: file://eval/data/ielts_speaking_v1.jsonl
+    prompts: [grade_speaking_ielts]
+    providers: [claude-sonnet, gpt]
+    assert:
+      - type: is-json
+        value: file://eval/schemas/grade_speaking_ielts.json
+      - type: javascript
+        value: Math.abs(output.overall - context.vars.gold.overall) <= 0.5
+        metric: within_0_5
+      - type: javascript
+        value: output.criterion_scores.pronunciation === context.vars.pa_summary.given_pronunciation_band
+        metric: pronunciation_echo
+      - type: javascript
+        value: context.vars.gold.memorized_script === output.flags.memorized_script
+        metric: memorized_flag_agreement
+
+  # ---------------------------------------------------------------- TOEIC Writing / Speaking (điểm nguyên theo câu)
+  - description: TOEIC Writing – khớp điểm nguyên
+    vars: file://eval/data/toeic_writing_v1.jsonl
+    prompts: [grade_writing_toeic]
+    providers: [claude-sonnet, gpt]
+    assert:
+      - type: is-json
+        value: file://eval/schemas/grade_writing_toeic.json
+      - type: javascript
+        value: output.score === context.vars.gold.score
+        metric: exact_match
+      - type: javascript
+        value: Math.abs(output.score - context.vars.gold.score) <= 1
+        metric: within_1
+  - description: TOEIC Speaking – khớp điểm nguyên
+    vars: file://eval/data/toeic_speaking_v1.jsonl
+    prompts: [grade_speaking_toeic]
+    providers: [claude-sonnet, gpt]
+    assert:
+      - type: is-json
+        value: file://eval/schemas/grade_speaking_toeic.json
+      - type: javascript
+        value: output.score === context.vars.gold.score
+        metric: exact_match
+      - type: javascript
+        value: Math.abs(output.score - context.vars.gold.score) <= 1
+        metric: within_1
+
+  # ---------------------------------------------------------------- Giải thích (chấm bằng LLM rubric + kiểm tra sự thật)
+  - description: explain_mcq – đúng sự thật và dễ hiểu
+    vars: file://eval/data/explain_mcq_v1.jsonl
+    prompts: [explain_mcq]
+    providers: [gemini-flash]
+    assert:
+      - type: is-json
+        value: file://eval/schemas/explain_mcq.json
+      - type: javascript
+        value: output.correct_option === context.vars.correct_option
+        metric: correct_option_match
+      - type: javascript
+        value: Object.keys(output.why_others_wrong).length === context.vars.options.length - 1
+        metric: covers_all_distractors
+      - type: llm-rubric
+        provider: anthropic:messages:${CLAUDE_SONNET_MODEL}
+        value: "The explanation is factually correct for this question, names the grammar/vocabulary point precisely, cites the deciding words, is in Vietnamese with English examples kept in English, and could be read in under a minute. Score 1–5; pass if ≥ 4."
+        metric: teacher_proxy_rating
+
+  # ---------------------------------------------------------------- Kiểm tra đề
+  - description: check_question – đồng thuận với giáo viên
+    vars: file://eval/data/check_question_v1.jsonl
+    prompts: [check_question]
+    providers: [gpt, gemini-pro]
+    assert:
+      - type: is-json
+        value: file://eval/schemas/check_question.json
+      - type: javascript
+        value: output.verdict === context.vars.gold.verdict
+        metric: verdict_agreement
+      - type: javascript
+        value: "!(output.verdict === 'pass' && context.vars.gold.verdict === 'fail')"
+        metric: no_false_pass
+
+  # ---------------------------------------------------------------- Guardrail red-team
+  - description: guard_classify – red-team 500 + hợp lệ 500
+    vars: file://eval/data/guard_redteam_v1.jsonl
+    prompts: [guard_classify]
+    providers: [gemini-flash]
+    assert:
+      - type: is-json
+        value: file://eval/schemas/guard_classify.json
+      - type: javascript
+        value: output.allowed === context.vars.gold.allowed
+        metric: allowed_agreement
+      - type: javascript
+        value: "context.vars.gold.category === 'ok' || output.category === context.vars.gold.category"
+        metric: category_recall
+      - type: latency
+        threshold: 1500
+
+# Tính nhất quán: chạy lại tập con 40 bài × 3 lần với cùng prompt; eval:report tính std của overall theo bài (ngưỡng ≤ 0,25)
+repeat: 1
+outputPath: eval/results/latest.json

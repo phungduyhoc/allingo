@@ -1,0 +1,159 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 22
+  PNPM_VERSION: 10
+  APP_ENV: test
+  DATABASE_URL: postgres://allingo:allingo@localhost:5432/allingo
+  DATABASE_URL_MIGRATE: postgres://allingo:allingo@localhost:5432/allingo
+  TEST_DATABASE_URL: postgres://allingo:allingo@localhost:5432/allingo_test
+  REDIS_URL: redis://localhost:6379
+  AI_PROVIDER: mock
+  SPEECH_PROVIDER: mock
+  AUTH_SECRET: ci-only-secret-at-least-32-characters-long
+  PAYLOAD_SECRET: ci-only-payload-secret
+  NEXT_PUBLIC_API_URL: http://localhost:4000/v1
+  NEXT_PUBLIC_APP_URL: http://localhost:3000
+
+jobs:
+  quality:
+    name: Lint · Typecheck · Unit · Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test -- --filter='!@allingo/api' --filter='!@allingo/db'
+      - run: pnpm build
+      - name: Upload web build stats
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-stats
+          path: |
+            apps/web/.next/build-manifest.json
+          if-no-files-found: ignore
+
+  integration:
+    name: Integration · db:diff · api:diff
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: allingo
+          POSTGRES_PASSWORD: allingo
+          POSTGRES_DB: allingo
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U allingo -d allingo"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: valkey/valkey:8-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "valkey-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter './packages/*' build
+      - run: pnpm db:migrate
+      - run: pnpm db:seed --set core,demo
+      - run: pnpm db:diff
+      - run: pnpm --filter @allingo/db test
+      - run: pnpm --filter @allingo/api test
+      - run: pnpm api:openapi && pnpm api:diff
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true # Sprint 0: chưa chặn merge
+    needs: [quality]
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: allingo
+          POSTGRES_PASSWORD: allingo
+          POSTGRES_DB: allingo
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U allingo -d allingo"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: valkey/valkey:8-alpine
+        ports: ['6379:6379']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter './packages/*' build
+      - run: pnpm db:migrate && pnpm db:seed --set core,demo
+      - run: pnpm --filter @allingo/web exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          if-no-files-found: ignore
+
+  security:
+    name: Security (gitleaks · audit · trivy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level high || true # Sprint 0: báo cáo, chưa chặn
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: '0'

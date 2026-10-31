@@ -1,0 +1,55 @@
+{
+  "name": "@allingo/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lớp dữ liệu Allingo: Drizzle schema 6 schema PostgreSQL, migration, seed, kiểm tra lệch với docs/spec/allingo-schema.sql",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema": {
+      "types": "./dist/drizzle/schema/index.d.ts",
+      "default": "./dist/drizzle/schema/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "migrate": "tsx scripts/migrate.ts",
+    "seed": "tsx scripts/seed.ts",
+    "diff": "tsx scripts/diff.ts",
+    "pull": "drizzle-kit pull",
+    "studio": "drizzle-kit studio",
+    "partitions:ensure": "tsx scripts/ensure-partitions.ts",
+    "organize": "tsx scripts/organize-schema.ts",
+    "schema:refresh": "drizzle-kit pull --config drizzle.pull.config.ts && tsx scripts/organize-schema.ts && prettier --write drizzle/schema"
+  },
+  "dependencies": {
+    "@allingo/schemas": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "postgres": "^3.4.7",
+    "yaml": "^2.8.1",
+    "zod": "^4.6.7",
+    "argon2": "^0.45.1"
+  },
+  "devDependencies": {
+    "@allingo/config": "workspace:*",
+    "@types/node": "^22.19.0",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^9.39.0",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.12",
+    "prettier": "^3.6.2"
+  }
+}

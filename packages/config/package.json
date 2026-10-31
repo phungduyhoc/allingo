@@ -1,0 +1,35 @@
+{
+  "name": "@allingo/config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cấu hình dùng chung: ESLint, Prettier, TypeScript, Tailwind, hằng số sản phẩm",
+  "type": "module",
+  "exports": {
+    "./eslint/base": "./eslint/base.js",
+    "./eslint/api": "./eslint/api.js",
+    "./eslint/next": "./eslint/next.js",
+    "./prettier": "./prettier.config.js",
+    "./tsconfig/node": "./tsconfig/node.json",
+    "./tsconfig/library": "./tsconfig/library.json",
+    "./tsconfig/next": "./tsconfig/next.json",
+    "./tsconfig/base": "./tsconfig/base.json"
+  },
+  "files": [
+    "eslint",
+    "tsconfig",
+    "prettier.config.js"
+  ],
+  "dependencies": {
+    "@eslint/js": "^9.39.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-boundaries": "^7.4.0",
+    "eslint-plugin-import-x": "^4.17.1",
+    "globals": "^16.3.0",
+    "typescript-eslint": "^8.72.1"
+  },
+  "peerDependencies": {
+    "eslint": ">=9.39.0",
+    "prettier": ">=3.6.0",
+    "typescript": ">=5.9.0"
+  }
+}

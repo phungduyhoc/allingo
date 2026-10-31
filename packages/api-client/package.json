@@ -1,0 +1,42 @@
+{
+  "name": "@allingo/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Client TypeScript sinh từ docs/spec/allingo-openapi.yaml (openapi-typescript) + fetch wrapper + hooks TanStack Query",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "require": "./dist/index.cjs" },
+    "./react": { "types": "./dist/react.d.ts", "import": "./dist/react.js", "require": "./dist/react.cjs" }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "gen": "openapi-typescript ../../docs/spec/allingo-openapi.yaml -o src/generated/openapi.d.ts --alphabetize --root-types",
+    "prebuild": "pnpm gen",
+    "build": "tsup",
+    "typecheck": "pnpm gen && tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.17.0"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": ">=5",
+    "react": ">=19"
+  },
+  "devDependencies": {
+    "@allingo/config": "workspace:*",
+    "@tanstack/react-query": "^5.105.0",
+    "@types/node": "^22.19.0",
+    "@types/react": "^19.2.0",
+    "eslint": "^9.39.0",
+    "openapi-typescript": "^7.13.0",
+    "react": "^19.3.1",
+    "tsup": "^8.5.0",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.12"
+  }
+}

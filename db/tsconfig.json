@@ -1,0 +1,11 @@
+{
+  "extends": "@allingo/config/tsconfig/node",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "experimentalDecorators": false,
+    "emitDecoratorMetadata": false,
+    "types": ["node"]
+  },
+  "include": ["drizzle/**/*.ts", "seed/**/*.ts", "scripts/**/*.ts", "src/**/*.ts", "test/**/*.ts", "drizzle.config.ts", "vitest.config.ts"]
+}

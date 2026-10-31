@@ -1,0 +1,11 @@
+node_modules
+dist
+.next
+coverage
+.turbo
+pnpm-lock.yaml
+docs/spec/*.sql
+docs/spec/*.yaml
+*.generated.*
+payload-types.ts
+db/drizzle/migrations/*.sql

@@ -1,0 +1,5 @@
+{
+  "extends": "@allingo/config/tsconfig/next",
+  "compilerOptions": { "plugins": [] },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

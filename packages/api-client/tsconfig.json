@@ -1,0 +1,5 @@
+{
+  "extends": "@allingo/config/tsconfig/library",
+  "compilerOptions": { "rootDir": ".", "noEmit": true, "jsx": "react-jsx", "lib": ["dom", "ES2023"] },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "tsup.config.ts", "vitest.config.ts"]
+}

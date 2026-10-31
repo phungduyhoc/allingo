@@ -1,0 +1,1777 @@
+openapi: 3.1.0
+info:
+  title: Allingo API
+  version: 1.0.0-draft
+  summary: API nền tảng luyện thi AI Allingo (TOEIC · IELTS · JLPT · HSK)
+  description: |
+    Đặc tả REST API v1 cho web/PWA, mobile và Payload CMS.
+
+    **Quy ước chung**
+    - Base URL: `https://api.allingo.vn/v1`. Mọi response JSON, UTF-8.
+    - Xác thực: `Authorization: Bearer <access_jwt>` (mobile) hoặc cookie httpOnly `allingo_at` (web). Access token 15 phút, refresh xoay vòng.
+    - Ngôn ngữ: header `Accept-Language` (vi|en|ja|ko|th) quyết định nội dung i18n; ghi đè bằng `?locale=`.
+    - Lỗi: envelope `{ "error": { "code", "message", "details", "trace_id" } }` với HTTP 4xx/5xx (schema `Error`).
+    - Phân trang: cursor (`?cursor=&limit=` ≤ 100) → `{ "data": [], "next_cursor": "..." | null }`.
+    - Idempotency: POST tạo đơn hàng / submission / order dùng header `Idempotency-Key` (UUID), hiệu lực 24 giờ.
+    - Rate limit: header `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After`.
+    - Quota/credit: 402 `quota_exceeded` / `insufficient_credits` kèm `details.feature`, `details.reset_at`.
+    - Realtime: WebSocket `wss://api.allingo.vn/v1/ws` (Socket.IO), sự kiện `submission.graded`, `plan.updated`, `credits.changed`, `notification.new`.
+    - Streaming AI: `text/event-stream` cho chat và giải thích (`event: delta|done|error`).
+  contact:
+    name: Allingo Engineering
+servers:
+  - url: https://api.allingo.vn/v1
+    description: Production
+  - url: https://api.stg.allingo.vn/v1
+    description: Staging
+security:
+  - bearerAuth: []
+  - cookieAuth: []
+tags:
+  - name: Auth
+    description: "Đăng ký, đăng nhập, OAuth, OTP, phiên"
+  - name: Me
+    description: "Hồ sơ, mục tiêu, enrollment, đồng ý, xoá dữ liệu"
+  - name: Catalog
+    description: "Chương trình, đề, bài học, video, từ vựng, tra từ"
+  - name: Attempts
+    description: "Làm bài, lưu nháp, nộp, xem lại, luyện theo Part"
+  - name: AI
+    description: "Giải thích, gia sư chat/voice, realtime token, phản hồi"
+  - name: Grading
+    description: "Submission Writing/Speaking, kết quả, làm lại, Impromptu"
+  - name: Speech
+    description: "Shadowing, chấm phát âm, dịch video, tách câu"
+  - name: Learning
+    description: "Lộ trình, diagnostic, SRS, nhật ký lỗi, thống kê, dự báo"
+  - name: Billing
+    description: "Gói, đơn hàng, thanh toán, subscription, credit, hoá đơn"
+  - name: Growth
+    description: "Thông báo, referral, tích hợp lịch"
+  - name: B2B
+    description: "Tổ chức, lớp, giao bài, báo cáo"
+  - name: Admin
+    description: "CMS/vận hành: nội dung, prompt, eval, gói, quota, flag"
+  - name: Webhooks
+    description: "Callback từ cổng thanh toán"
+
+paths:
+  # ---------------------------------------------------------------- Auth
+  /auth/register:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Đăng ký bằng email/mật khẩu (ghép tài khoản khách nếu có guest_token)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, display_name]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                display_name: { type: string }
+                guest_token: { type: string, description: Token phiên khách để ghép tiến độ }
+                referral_code: { type: string }
+                ui_locale: { type: string, default: vi }
+      responses:
+        '201': { $ref: '#/components/responses/AuthTokens' }
+        '409': { $ref: '#/components/responses/Error' }
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Đăng nhập email/mật khẩu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/AuthTokens' }
+        '401': { $ref: '#/components/responses/Error' }
+  /auth/oauth/{provider}:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Đăng nhập/đăng ký qua Google, Apple, Facebook (id_token hoặc code)
+      parameters:
+        - { name: provider, in: path, required: true, schema: { type: string, enum: [google, apple, facebook] } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_token: { type: string }
+                code: { type: string }
+                redirect_uri: { type: string }
+                guest_token: { type: string }
+                referral_code: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/AuthTokens' }
+  /auth/otp/request:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Gửi OTP qua Zalo ZNS hoặc SMS
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone: { type: string, example: '+84901234567' }
+                channel: { type: string, enum: [zalo, sms], default: zalo }
+      responses:
+        '202': { description: 'Đã gửi; `retry_after` giây' }
+        '429': { $ref: '#/components/responses/Error' }
+  /auth/otp/verify:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Xác minh OTP → đăng nhập/đăng ký
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, otp]
+              properties:
+                phone: { type: string }
+                otp: { type: string, minLength: 6, maxLength: 6 }
+                guest_token: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/AuthTokens' }
+  /auth/guest:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Tạo phiên khách để luyện không cần đăng ký
+      responses:
+        '201':
+          description: Guest token
+          content:
+            application/json:
+              schema: { type: object, properties: { guest_token: { type: string }, expires_at: { type: string, format: date-time } } }
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Cấp lại access token bằng refresh token (cookie hoặc body)
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { refresh_token: { type: string } } }
+      responses:
+        '200': { $ref: '#/components/responses/AuthTokens' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Thu hồi phiên hiện tại
+      responses:
+        '204': { description: Đã đăng xuất }
+
+  # ---------------------------------------------------------------- Me
+  /me:
+    get:
+      tags: [Me]
+      summary: Hồ sơ người dùng hiện tại
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+    patch:
+      tags: [Me]
+      summary: Cập nhật hồ sơ (tên, ảnh, ngôn ngữ, múi giờ)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserUpdate' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+    delete:
+      tags: [Me]
+      summary: Yêu cầu xoá tài khoản & dữ liệu (hoàn tất ≤ 72 giờ, PDPL)
+      responses:
+        '202': { description: 'Đã tiếp nhận, trả `due_at`' }
+  /me/sessions:
+    get:
+      tags: [Me]
+      summary: Danh sách phiên đang hoạt động
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Session' } } } } }
+  /me/sessions/{sessionId}:
+    delete:
+      tags: [Me]
+      summary: Thu hồi một phiên (đăng xuất từ xa)
+      parameters: [ { $ref: '#/components/parameters/SessionId' } ]
+      responses: { '204': { description: Đã thu hồi } }
+  /me/consents:
+    get:
+      tags: [Me]
+      summary: Các đồng ý đã cấp (điều khoản, xử lý giọng nói, marketing)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Consent' } } } } }
+    post:
+      tags: [Me]
+      summary: Cấp/thu hồi đồng ý
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, granted]
+              properties:
+                type: { type: string, enum: [terms, privacy, voice_processing, marketing, minor_guardian] }
+                granted: { type: boolean }
+                version: { type: string }
+      responses: { '200': { description: OK } }
+  /me/enrollments:
+    get:
+      tags: [Me]
+      summary: Các chương trình đang học & mục tiêu
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Enrollment' } } } } }
+    post:
+      tags: [Me]
+      summary: Bắt đầu một chương trình (mục tiêu, ngày thi, phút/ngày)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EnrollmentInput' }
+      responses:
+        '201': { description: 'Đã tạo, kèm `diagnostic_attempt_id` để làm bài đầu vào', content: { application/json: { schema: { $ref: '#/components/schemas/Enrollment' } } } }
+  /me/enrollments/{program}:
+    patch:
+      tags: [Me]
+      summary: Đổi mục tiêu/ngày thi/phút học → lộ trình tính lại
+      parameters: [ { $ref: '#/components/parameters/ProgramPath' } ]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EnrollmentInput' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Enrollment' } } } }
+
+  # ---------------------------------------------------------------- Catalog
+  /programs:
+    get:
+      tags: [Catalog]
+      security: []
+      summary: Danh sách chương trình & thang điểm
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Program' } } } } }
+  /programs/{program}/sections:
+    get:
+      tags: [Catalog]
+      security: []
+      summary: Cấu trúc Part/section của chương trình (theo cấp nếu có)
+      parameters:
+        - { $ref: '#/components/parameters/ProgramPath' }
+        - { name: level, in: query, schema: { type: string } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Section' } } } } }
+  /programs/{program}/test-sets:
+    get:
+      tags: [Catalog]
+      summary: Danh sách đề (kèm cờ miễn phí, điểm lần gần nhất/cao nhất của người dùng)
+      parameters:
+        - { $ref: '#/components/parameters/ProgramPath' }
+        - { name: kind, in: query, schema: { type: string, enum: [full, mini, part_drill, diagnostic, topic_pack] } }
+        - { name: level, in: query, schema: { type: string } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TestSetPage' } } } }
+  /test-sets/{testSetId}:
+    get:
+      tags: [Catalog]
+      summary: Chi tiết đề (section, số câu, thời lượng); nội dung câu hỏi chỉ trả khi mở attempt
+      parameters: [ { $ref: '#/components/parameters/TestSetId' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TestSet' } } } }
+        '402': { $ref: '#/components/responses/Error' }
+  /lessons:
+    get:
+      tags: [Catalog]
+      summary: Bài học / ngữ pháp / phát âm theo chương trình & kỹ năng
+      parameters:
+        - { $ref: '#/components/parameters/ProgramQuery' }
+        - { name: kind, in: query, schema: { type: string, enum: [lesson, grammar, pronunciation, strategy] } }
+        - { name: skill, in: query, schema: { type: string } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/LessonSummary' } }, next_cursor: { type: [string, 'null'] } } } } } }
+  /lessons/{lessonId}:
+    get:
+      tags: [Catalog]
+      summary: Nội dung bài học theo bước + tiến độ người dùng
+      parameters: [ { $ref: '#/components/parameters/LessonId' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Lesson' } } } }
+  /lessons/{lessonId}/steps/{stepNo}/complete:
+    post:
+      tags: [Catalog]
+      summary: Hoàn thành một bước (kèm câu trả lời kiểm tra nếu có)
+      parameters:
+        - { $ref: '#/components/parameters/LessonId' }
+        - { name: stepNo, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { answer: {} } }
+      responses: { '200': { description: 'Tiến độ cập nhật, bước tiếp theo' } }
+  /videos:
+    get:
+      tags: [Catalog]
+      summary: Thư viện video shadowing
+      parameters:
+        - { $ref: '#/components/parameters/ProgramQuery' }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Video' } }, next_cursor: { type: [string, 'null'] } } } } } }
+    post:
+      tags: [Speech]
+      summary: Dán link YouTube (≤ 10 phút) → tách câu bất đồng bộ
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [program, youtube_url], properties: { program: { type: string }, youtube_url: { type: string, format: uri } } }
+      responses:
+        '202': { description: 'Đã nhận; trả `video_id`, `job_id`' }
+        '422': { $ref: '#/components/responses/Error' }
+  /videos/{videoId}:
+    get:
+      tags: [Catalog]
+      summary: Video + danh sách câu (timestamp, IPA, bản dịch nếu có) + tiến độ
+      parameters: [ { $ref: '#/components/parameters/VideoId' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/VideoDetail' } } } }
+  /videos/{videoId}/translate:
+    post:
+      tags: [Speech]
+      summary: Dịch toàn bộ câu sang ngôn ngữ người học (dùng chung, Free 3 video/ngày)
+      parameters: [ { $ref: '#/components/parameters/VideoId' } ]
+      responses:
+        '202': { description: 'Đang dịch, trả `job_id`' }
+        '402': { $ref: '#/components/responses/Error' }
+  /vocab/lists:
+    get:
+      tags: [Catalog]
+      summary: Danh sách bộ từ (hệ thống + của tôi) kèm tiến độ Mới/Đang học/Đến hạn
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/VocabList' } } } } }
+    post:
+      tags: [Catalog]
+      summary: Tạo bộ từ của tôi (có thể dán danh sách từ)
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [program, title], properties: { program: { type: string }, title: { type: string }, headwords: { type: array, items: { type: string } } } }
+      responses: { '201': { description: Đã tạo } }
+  /vocab/lists/{listId}/items:
+    get:
+      tags: [Catalog]
+      summary: Từ trong bộ (kèm trạng thái SRS)
+      parameters: [ { name: listId, in: path, required: true, schema: { type: string, format: uuid } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/VocabItem' } }, next_cursor: { type: [string, 'null'] } } } } } }
+  /dictionary/lookup:
+    get:
+      tags: [Catalog]
+      summary: Tra từ/cụm theo ngữ cảnh (chạm từ trong đề)
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string } }
+        - { $ref: '#/components/parameters/ProgramQuery' }
+        - { name: context, in: query, schema: { type: string, description: 'Câu chứa từ, ≤ 300 ký tự' } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/DictionaryEntry' } } } }
+
+  # ---------------------------------------------------------------- Attempts
+  /attempts:
+    post:
+      tags: [Attempts]
+      summary: Mở phiên làm bài (đề full / Part / diagnostic / drill)
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKey' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AttemptCreate' }
+      responses:
+        '201': { description: 'Phiên + nội dung câu hỏi (không có đáp án)', content: { application/json: { schema: { $ref: '#/components/schemas/Attempt' } } } }
+        '402': { $ref: '#/components/responses/Error' }
+  /attempts/{attemptId}:
+    get:
+      tags: [Attempts]
+      summary: Trạng thái phiên + nháp đã lưu
+      parameters: [ { $ref: '#/components/parameters/AttemptId' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Attempt' } } } }
+  /attempts/{attemptId}/answers:
+    put:
+      tags: [Attempts]
+      summary: Lưu nháp hàng loạt (upsert) – gọi mỗi 10 giây hoặc khi đổi câu
+      parameters: [ { $ref: '#/components/parameters/AttemptId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [answers], properties: { answers: { type: array, items: { $ref: '#/components/schemas/AttemptAnswerInput' } }, section_elapsed_sec: { type: object, additionalProperties: { type: integer } } } }
+      responses: { '204': { description: Đã lưu } }
+  /attempts/{attemptId}/events:
+    post:
+      tags: [Attempts]
+      summary: Sự kiện phiên (rời tab, hết giờ section, phát audio)
+      parameters: [ { $ref: '#/components/parameters/AttemptId' } ]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { type: { type: string, enum: [tab_leave, section_timeout, audio_played] }, at: { type: string, format: date-time }, meta: { type: object } } }
+      responses: { '202': { description: Đã ghi } }
+  /attempts/{attemptId}/submit:
+    post:
+      tags: [Attempts]
+      summary: Nộp bài → chấm tự động L&R, quy đổi điểm, phân tích Part
+      parameters: [ { $ref: '#/components/parameters/AttemptId' } ]
+      responses:
+        '200': { description: Kết quả, content: { application/json: { schema: { $ref: '#/components/schemas/AttemptResult' } } } }
+  /attempts/{attemptId}/review:
+    get:
+      tags: [Attempts]
+      summary: "Xem lại từng câu: đáp án, giải thích (cache), transcript/đoạn văn tô sáng, paraphrase"
+      parameters: [ { $ref: '#/components/parameters/AttemptId' }, { name: only_wrong, in: query, schema: { type: boolean } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AttemptReview' } } } }
+  /attempts/{attemptId}/diagnosis:
+    post:
+      tags: [AI]
+      summary: Ask AI trên kết quả R/L – dạng sai nhiều nhất, vì sao, 3 bước kỹ thuật (stream)
+      parameters: [ { $ref: '#/components/parameters/AttemptId' } ]
+      responses:
+        '200': { description: SSE, content: { text/event-stream: { schema: { type: string } } } }
+  /me/attempts:
+    get:
+      tags: [Attempts]
+      summary: Lịch sử bài làm
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' }, { name: mode, in: query, schema: { type: string } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/AttemptSummary' } }, next_cursor: { type: [string, 'null'] } } } } } }
+  /practice/questions:
+    get:
+      tags: [Attempts]
+      summary: Lấy lô câu luyện theo Part/dạng/chủ đề/kỹ năng con (ưu tiên độ khó phù hợp)
+      parameters:
+        - { $ref: '#/components/parameters/ProgramQuery' }
+        - { name: section, in: query, schema: { type: string } }
+        - { name: question_type, in: query, schema: { type: string } }
+        - { name: topic, in: query, schema: { type: string } }
+        - { name: subskill, in: query, schema: { type: string } }
+        - { name: count, in: query, schema: { type: integer, default: 10, maximum: 50 } }
+        - { name: timed, in: query, schema: { type: boolean } }
+      responses:
+        '201': { description: Tạo attempt mode=drill và trả câu hỏi, content: { application/json: { schema: { $ref: '#/components/schemas/Attempt' } } } }
+  /notes:
+    put:
+      tags: [Attempts]
+      summary: Bảng ghi chú theo đề/câu (Pro)
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [body], properties: { test_set_id: { type: string, format: uuid }, question_id: { type: string, format: uuid }, body: { type: string } } }
+      responses: { '200': { description: Đã lưu } }
+
+  # ---------------------------------------------------------------- AI
+  /ai/explain:
+    post:
+      tags: [AI]
+      summary: Giải thích câu hỏi (cache theo phiên bản câu, đáp án chọn, ngôn ngữ); stream nếu chưa cache
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [question_version_id], properties: { question_version_id: { type: string, format: uuid }, chosen_option: { type: string }, attempt_id: { type: string, format: uuid } } }
+      responses:
+        '200':
+          description: Giải thích (JSON khi cache hit, SSE khi sinh mới)
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Explanation' } }
+            text/event-stream: { schema: { type: string } }
+        '402': { $ref: '#/components/responses/Error' }
+  /ai/threads:
+    get:
+      tags: [AI]
+      summary: Danh sách hội thoại gia sư
+      parameters: [ { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Thread' } }, next_cursor: { type: [string, 'null'] } } } } } }
+    post:
+      tags: [AI]
+      summary: Tạo hội thoại với ngữ cảnh (attempt/submission/lesson)
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { program: { type: string }, context: { $ref: '#/components/schemas/ThreadContext' } } }
+      responses:
+        '201': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Thread' } } } }
+  /ai/threads/{threadId}/messages:
+    get:
+      tags: [AI]
+      summary: Lịch sử tin nhắn
+      parameters: [ { $ref: '#/components/parameters/ThreadId' }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Message' } }, next_cursor: { type: [string, 'null'] } } } } } }
+    post:
+      tags: [AI]
+      summary: Gửi tin nhắn (text hoặc audio đã upload) → trả lời stream, có thể kèm action mở trang
+      parameters: [ { $ref: '#/components/parameters/ThreadId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { text: { type: string }, recording_id: { type: string, format: uuid }, want_audio: { type: boolean, default: false } } }
+      responses:
+        '200': { description: SSE delta/done, content: { text/event-stream: { schema: { type: string } } } }
+        '402': { $ref: '#/components/responses/Error' }
+  /ai/realtime/token:
+    post:
+      tags: [AI]
+      summary: Cấp token phiên voice realtime (LiveKit) kèm kịch bản & hạn mức phút
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { program: { type: string }, scenario: { type: string, enum: [free_talk, ielts_part1, ielts_part2, ielts_part3, toeic_q11, mock_examiner] } } }
+      responses:
+        '201': { description: OK, content: { application/json: { schema: { type: object, properties: { room: { type: string }, token: { type: string }, max_seconds: { type: integer }, expires_at: { type: string, format: date-time } } } } } }
+        '402': { $ref: '#/components/responses/Error' }
+  /ai/feedback:
+    post:
+      tags: [AI]
+      summary: Phản hồi chất lượng một kết quả AI (hữu ích / không / chấm sai)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [ai_task_id, rating], properties: { ai_task_id: { type: string, format: uuid }, rating: { type: string, enum: [helpful, not_helpful, wrong] }, comment: { type: string } } }
+      responses: { '201': { description: Đã ghi } }
+
+  # ---------------------------------------------------------------- Grading
+  /uploads/presign:
+    post:
+      tags: [Grading]
+      summary: Lấy URL tải lên trực tiếp S3 cho ghi âm/ảnh (PUT có hạn)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [kind, mime_type, size_bytes], properties: { kind: { type: string, enum: [recording, image] }, mime_type: { type: string }, size_bytes: { type: integer, maximum: 20971520 }, duration_ms: { type: integer } } }
+      responses:
+        '201': { description: OK, content: { application/json: { schema: { type: object, properties: { upload_url: { type: string }, resource_id: { type: string, format: uuid }, expires_at: { type: string, format: date-time } } } } } }
+  /submissions:
+    post:
+      tags: [Grading]
+      summary: Nộp bài Writing/Speaking/Impromptu/câu ngữ pháp → hàng đợi chấm (trừ credit khi hoàn tất)
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKey' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubmissionCreate' }
+      responses:
+        '202': { description: 'Đã xếp hàng; theo dõi qua GET hoặc WS `submission.graded`', content: { application/json: { schema: { $ref: '#/components/schemas/Submission' } } } }
+        '402': { $ref: '#/components/responses/Error' }
+  /submissions/{submissionId}:
+    get:
+      tags: [Grading]
+      summary: Trạng thái submission + kết quả (nếu đã chấm)
+      parameters: [ { $ref: '#/components/parameters/SubmissionId' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Submission' } } } }
+  /submissions/{submissionId}/redo:
+    post:
+      tags: [Grading]
+      summary: Làm lại cùng đề (liên kết parent để so band)
+      parameters: [ { $ref: '#/components/parameters/SubmissionId' } ]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubmissionCreate' }
+      responses:
+        '202': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Submission' } } } }
+  /grading-results/{resultId}/phrasing-fixes:
+    post:
+      tags: [Grading]
+      summary: Upgrade your phrasing – gửi câu tự sửa cho một lỗi, AI chấm Fixed/Partly/Not yet
+      parameters: [ { name: resultId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [error_index, user_rewrite], properties: { error_index: { type: integer }, user_rewrite: { type: string } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { verdict: { type: string, enum: [fixed, partly, not_yet] }, note: { type: string }, remaining_today: { type: integer } } } } } }
+  /impromptu/draw:
+    post:
+      tags: [Grading]
+      summary: Quay đề Speaking bất ngờ theo Part/nhóm chủ đề + khung gợi ý
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { program: { type: string, default: ielts }, part: { type: string, enum: [part1, part2, part3, toeic_q11] }, topic_group: { type: string } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ImpromptuPrompt' } } } }
+  /me/submissions:
+    get:
+      tags: [Grading]
+      summary: Lịch sử bài Writing/Speaking kèm band theo lần
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' }, { name: kind, in: query, schema: { type: string } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Submission' } }, next_cursor: { type: [string, 'null'] } } } } } }
+
+  # ---------------------------------------------------------------- Speech
+  /shadowing/score:
+    post:
+      tags: [Speech]
+      summary: Chấm một câu shadowing (ghi âm đã upload) – độ chính xác, nhịp, ngữ điệu, từ đúng/sai
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [video_sentence_id, recording_id], properties: { video_sentence_id: { type: string, format: uuid }, recording_id: { type: string, format: uuid } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PronunciationScore' } } } }
+        '402': { $ref: '#/components/responses/Error' }
+  /pronunciation/score:
+    post:
+      tags: [Speech]
+      summary: Chấm phát âm từ/câu mẫu trong khoá phát âm (âm vị, thanh điệu, pitch contour)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reference_text, language, recording_id], properties: { reference_text: { type: string }, language: { type: string, enum: [en-US, en-GB, en-AU, ja-JP, zh-CN] }, recording_id: { type: string, format: uuid }, exercise_id: { type: string, format: uuid } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PronunciationScore' } } } }
+  /tts:
+    get:
+      tags: [Speech]
+      summary: Audio TTS cho chuỗi (cache), trả URL
+      parameters:
+        - { name: text, in: query, required: true, schema: { type: string, maxLength: 500 } }
+        - { name: voice, in: query, schema: { type: string, default: en-US-neural-f } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { url: { type: string }, duration_ms: { type: integer } } } } } }
+
+  # ---------------------------------------------------------------- Learning
+  /me/plan:
+    get:
+      tags: [Learning]
+      summary: "Lộ trình hiện tại (Free: tuần này; Pro: toàn bộ) + tiến độ"
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/StudyPlan' } } } }
+  /me/plan/today:
+    get:
+      tags: [Learning]
+      summary: Việc hôm nay (2–4 việc, kèm khởi động từ vựng nếu đủ điều kiện)
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { date: { type: string, format: date }, focus: { type: string }, tasks: { type: array, items: { $ref: '#/components/schemas/PlanTask' } }, warmup: { type: object, nullable: true } } } } } }
+  /me/plan/regenerate:
+    post:
+      tags: [Learning]
+      summary: Sinh lại lộ trình (sau đổi mục tiêu/ngày thi)
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [program], properties: { program: { type: string } } }
+      responses: { '202': { description: Đang sinh; WS `plan.updated` } }
+  /me/plan/checkin:
+    post:
+      tags: [Learning]
+      summary: Điểm danh tuần → điều chỉnh tuần sau kèm bằng chứng
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [program], properties: { program: { type: string }, availability_next_week: { type: object } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PlanWeek' } } } }
+  /me/plan/adjust:
+    post:
+      tags: [Learning]
+      summary: Chỉnh lịch bằng ngôn ngữ tự nhiên → đề xuất trước/sau (chưa áp dụng)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [program, instruction], properties: { program: { type: string }, instruction: { type: string, example: 'Đổi buổi thứ Ba với thứ Năm giúp mình' } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PlanAdjustProposal' } } } }
+  /me/plan/adjust/{proposalId}/apply:
+    post:
+      tags: [Learning]
+      summary: Áp dụng đề xuất (có thể Hoàn tác trong 24 giờ)
+      parameters: [ { name: proposalId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses: { '200': { description: OK } }
+  /plan-tasks/{taskId}:
+    patch:
+      tags: [Learning]
+      summary: Đánh dấu việc (done/skipped) hoặc gắn kết quả
+      parameters: [ { name: taskId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { status: { type: string, enum: [pending, done, skipped] }, result_ref: { type: object } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PlanTask' } } } } }
+  /me/diagnostic/{attemptId}/next:
+    post:
+      tags: [Learning]
+      summary: "Diagnostic thích ứng (CAT): gửi câu trả lời, nhận câu kế tiếp hoặc kết luận"
+      parameters: [ { $ref: '#/components/parameters/AttemptId' } ]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AttemptAnswerInput' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { done: { type: boolean }, next_question: { $ref: '#/components/schemas/QuestionPublic' }, estimate: { type: object, properties: { score: { type: number }, se: { type: number } } } } } } } }
+  /me/srs/due:
+    get:
+      tags: [Learning]
+      summary: Thẻ đến hạn (từ vựng, lỗi, ngữ pháp, âm) theo chương trình, giới hạn số thẻ/phiên
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' }, { name: card_type, in: query, schema: { type: string } }, { name: list_id, in: query, schema: { type: string, format: uuid } }, { $ref: '#/components/parameters/Limit' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SrsCard' } } } } }
+  /me/srs/review:
+    post:
+      tags: [Learning]
+      summary: Ghi kết quả ôn (FSRS rating 1–4) hàng loạt → lịch ôn mới
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reviews], properties: { reviews: { type: array, items: { type: object, required: [card_id, rating], properties: { card_id: { type: string, format: uuid }, rating: { type: integer, minimum: 1, maximum: 4 }, review_mode: { type: string } } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SrsCard' } } } } }
+  /me/srs/cards:
+    post:
+      tags: [Learning]
+      summary: Thêm thẻ (lưu từ từ bài đọc/feedback, thêm từ tự do, lưu bản đồ paraphrase)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [program, card_type], properties: { program: { type: string }, card_type: { type: string, enum: [vocab, error, grammar, phoneme, sentence] }, ref_id: { type: string, format: uuid }, headword: { type: string }, source_type: { type: string }, source_id: { type: string, format: uuid } } }
+      responses: { '201': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SrsCard' } } } } }
+  /me/errors:
+    get:
+      tags: [Learning]
+      summary: Nhật ký lỗi 7/30 ngày kèm lý do, phân bố "điểm rơi", bản đồ paraphrase
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' }, { name: days, in: query, schema: { type: integer, default: 30 } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorLogPage' } } } }
+  /me/errors/{entryId}:
+    patch:
+      tags: [Learning]
+      summary: Đổi lý do sai / đánh dấu đã khắc phục
+      parameters: [ { name: entryId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { reason_override: { type: string }, resolved: { type: boolean } } }
+      responses: { '200': { description: OK } }
+  /me/stats:
+    get:
+      tags: [Learning]
+      summary: "Dashboard: điểm ước tính vs mục tiêu, xu hướng 30 ngày, theo Part/dạng, streak, XP"
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Stats' } } } }
+  /me/forecast:
+    get:
+      tags: [Learning]
+      summary: Dự báo điểm có khoảng tin cậy & ngày sẵn sàng thi (GĐ4)
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Forecast' } } } }
+
+  # ---------------------------------------------------------------- Billing
+  /plans:
+    get:
+      tags: [Billing]
+      security: []
+      summary: Gói & giá hiện hành theo chương trình/khu vực
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' }, { name: region, in: query, schema: { type: string, default: VN } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Plan' } } } } }
+  /promotions/validate:
+    post:
+      tags: [Billing]
+      summary: Kiểm tra mã giảm giá cho gói
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [code, plan_id], properties: { code: { type: string }, plan_id: { type: string, format: uuid } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { valid: { type: boolean }, discount: { type: number }, total: { type: number }, currency: { type: string } } } } } }
+  /orders:
+    post:
+      tags: [Billing]
+      summary: Tạo đơn hàng (giá chốt, mã giảm) – chưa thanh toán
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKey' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [plan_id], properties: { plan_id: { type: string, format: uuid }, promotion_code: { type: string }, quantity: { type: integer, default: 1 }, buyer_info: { $ref: '#/components/schemas/BuyerInfo' } } }
+      responses:
+        '201': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Order' } } } }
+  /orders/{orderId}:
+    get:
+      tags: [Billing]
+      summary: Trạng thái đơn hàng, thanh toán, hoá đơn
+      parameters: [ { $ref: '#/components/parameters/OrderId' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Order' } } } }
+  /orders/{orderId}/pay:
+    post:
+      tags: [Billing]
+      summary: Khởi tạo thanh toán với cổng → URL/deeplink chuyển hướng
+      parameters: [ { $ref: '#/components/parameters/OrderId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [provider], properties: { provider: { type: string, enum: [vnpay, momo, zalopay, payos, stripe] }, return_url: { type: string, format: uri } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { payment_id: { type: string, format: uuid }, redirect_url: { type: string }, qr_code: { type: string }, expires_at: { type: string, format: date-time } } } } } }
+  /webhooks/payments/{provider}:
+    post:
+      tags: [Webhooks]
+      security: []
+      summary: Callback IPN từ cổng (xác minh chữ ký, idempotent theo provider_txn_id)
+      parameters: [ { name: provider, in: path, required: true, schema: { type: string } } ]
+      requestBody: { content: { application/json: { schema: { type: object } }, application/x-www-form-urlencoded: { schema: { type: object } } } }
+      responses:
+        '200': { description: Theo định dạng từng cổng yêu cầu }
+  /me/subscriptions:
+    get:
+      tags: [Billing]
+      summary: Gói đang có theo chương trình, chu kỳ, trạng thái gia hạn
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Subscription' } } } } }
+  /me/subscriptions/{subscriptionId}/cancel:
+    post:
+      tags: [Billing]
+      summary: Huỷ gia hạn (dùng đến hết chu kỳ)
+      parameters: [ { name: subscriptionId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Subscription' } } } } }
+  /me/credits:
+    get:
+      tags: [Billing]
+      summary: Số dư credit, sắp hết hạn, bảng giá credit theo tác vụ
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CreditBalance' } } } }
+  /me/credits/ledger:
+    get:
+      tags: [Billing]
+      summary: Lịch sử credit (nạp/tiêu)
+      parameters: [ { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/LedgerEntry' } }, next_cursor: { type: [string, 'null'] } } } } } }
+  /me/entitlements:
+    get:
+      tags: [Billing]
+      summary: Quyền tính năng & hạn mức còn lại hôm nay/tháng này (client dùng để gating UI)
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Entitlements' } } } }
+
+  # ---------------------------------------------------------------- Growth
+  /me/notification-preferences:
+    get:
+      tags: [Growth]
+      summary: Kênh & khung giờ thông báo
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPreferences' } } } } }
+    patch:
+      tags: [Growth]
+      summary: Cập nhật kênh/khung giờ
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPreferences' } } } }
+      responses: { '200': { description: OK } }
+  /me/notifications:
+    get:
+      tags: [Growth]
+      summary: Thông báo in-app
+      parameters: [ { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
+      responses: { '200': { description: OK } }
+  /me/referral:
+    get:
+      tags: [Growth]
+      summary: Mã/link giới thiệu, thống kê, credit đã nhận
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ReferralSummary' } } } } }
+  /integrations/google-calendar:
+    post:
+      tags: [Growth]
+      summary: Kết nối Google Calendar (OAuth code) → đồng bộ lộ trình 3 tuần
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [code], properties: { code: { type: string }, redirect_uri: { type: string } } } } } }
+      responses: { '200': { description: Đã kết nối } }
+    delete:
+      tags: [Growth]
+      summary: Ngắt kết nối và xoá lịch Allingo
+      responses: { '204': { description: OK } }
+
+  # ---------------------------------------------------------------- B2B
+  /orgs:
+    post:
+      tags: [B2B]
+      summary: Tạo tổ chức (trường/trung tâm/doanh nghiệp)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationInput' } } } }
+      responses: { '201': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Organization' } } } } }
+  /orgs/{orgId}/classes:
+    get:
+      tags: [B2B]
+      summary: Lớp trong tổ chức
+      parameters: [ { $ref: '#/components/parameters/OrgId' } ]
+      responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Class' } } } } } }
+    post:
+      tags: [B2B]
+      summary: Tạo lớp
+      parameters: [ { $ref: '#/components/parameters/OrgId' } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string }, program: { type: string }, teacher_user_id: { type: string, format: uuid } } } } } }
+      responses: { '201': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Class' } } } } }
+  /classes/{classId}/members:
+    post:
+      tags: [B2B]
+      summary: Thêm học viên (email/mời), cấp seat
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [emails], properties: { emails: { type: array, items: { type: string, format: email } } } } } } }
+      responses: { '201': { description: Đã mời } }
+  /classes/{classId}/assignments:
+    post:
+      tags: [B2B]
+      summary: Giao bài (đề/bài học/Writing/Speaking) kèm hạn
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AssignmentInput' } } } }
+      responses: { '201': { description: OK } }
+  /classes/{classId}/report:
+    get:
+      tags: [B2B]
+      summary: "Báo cáo lớp: tiến độ, điểm ước tính, hoàn thành bài giao"
+      parameters: [ { $ref: '#/components/parameters/ClassId' }, { name: from, in: query, schema: { type: string, format: date } }, { name: to, in: query, schema: { type: string, format: date } } ]
+      responses: { '200': { description: OK } }
+
+  # ---------------------------------------------------------------- Admin
+  /admin/questions:
+    get:
+      tags: [Admin]
+      summary: Tìm câu hỏi theo trạng thái/Part/dạng/nguồn
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' }, { name: status, in: query, schema: { type: string } }, { name: section, in: query, schema: { type: string } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
+      responses: { '200': { description: OK } }
+    post:
+      tags: [Admin]
+      summary: Tạo câu hỏi (phiên bản 1, trạng thái draft)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminQuestionInput' } } } }
+      responses: { '201': { description: OK } }
+  /admin/questions/{questionId}/versions:
+    post:
+      tags: [Admin]
+      summary: Tạo phiên bản mới cho câu hỏi
+      parameters: [ { name: questionId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [content], properties: { content: { type: object }, metadata: { type: object }, change_note: { type: string } } } } } }
+      responses: { '201': { description: OK } }
+  /admin/content/{entityType}/{entityId}/review:
+    post:
+      tags: [Admin]
+      summary: Ghi quyết định duyệt (AI check / GV1 / GV2) → chuyển trạng thái
+      parameters:
+        - { name: entityType, in: path, required: true, schema: { type: string, enum: [question, passage, lesson, exercise, video, vocab_item] } }
+        - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [stage, decision], properties: { stage: { type: string, enum: [ai_check, review1, review2] }, decision: { type: string, enum: [approve, reject, needs_change] }, notes: { type: string } } } } } }
+      responses: { '200': { description: OK } }
+  /admin/generate/questions:
+    post:
+      tags: [Admin]
+      summary: Sinh lô câu hỏi bằng AI theo schema → Nháp + AI check tự động (job)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [program, section, question_type, count], properties: { program: { type: string }, section: { type: string }, question_type: { type: string }, topic: { type: string }, difficulty: { type: string }, count: { type: integer, maximum: 50 }, passage_id: { type: string, format: uuid } } } } } }
+      responses: { '202': { description: job_id } }
+  /admin/prompts:
+    get:
+      tags: [Admin]
+      summary: Prompt templates & phiên bản
+      responses: { '200': { description: OK } }
+  /admin/prompts/{templateId}/versions:
+    post:
+      tags: [Admin]
+      summary: Tạo phiên bản prompt (draft) kèm rubric/output schema/model policy
+      parameters: [ { name: templateId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PromptVersionInput' } } } }
+      responses: { '201': { description: OK } }
+  /admin/prompts/versions/{versionId}/status:
+    patch:
+      tags: [Admin]
+      summary: draft → canary(x%) → active → retired; chặn active nếu eval chưa đạt
+      parameters: [ { name: versionId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [status], properties: { status: { type: string, enum: [draft, canary, active, retired] }, canary_percent: { type: integer } } } } } }
+      responses: { '200': { description: OK } }
+  /admin/eval-runs:
+    post:
+      tags: [Admin]
+      summary: Chạy eval set với phiên bản prompt/model (job)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [eval_set_id, prompt_version_id], properties: { eval_set_id: { type: string, format: uuid }, prompt_version_id: { type: string, format: uuid }, model: { type: string } } } } } }
+      responses: { '202': { description: run_id } }
+  /admin/plans:
+    put:
+      tags: [Admin]
+      summary: Cập nhật gói/giá/quota/bảng credit (không cần deploy)
+      requestBody: { content: { application/json: { schema: { type: object } } } }
+      responses: { '200': { description: OK } }
+  /admin/flags/{key}:
+    put:
+      tags: [Admin]
+      summary: Bật/tắt feature flag theo quy tắc
+      parameters: [ { name: key, in: path, required: true, schema: { type: string } } ]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean }, rules: { type: object } } } } } }
+      responses: { '200': { description: OK } }
+  /admin/users/{userId}/credits:
+    post:
+      tags: [Admin]
+      summary: Cấp/điều chỉnh credit thủ công (ghi audit)
+      parameters: [ { name: userId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [delta, note], properties: { delta: { type: integer }, note: { type: string } } } } } }
+      responses: { '200': { description: OK } }
+  /admin/reports/ai-costs:
+    get:
+      tags: [Admin]
+      summary: Chi phí AI theo ngày/tác vụ/model, credit tiêu, cache hit, chất lượng eval
+      parameters: [ { name: from, in: query, schema: { type: string, format: date } }, { name: to, in: query, schema: { type: string, format: date } } ]
+      responses: { '200': { description: OK } }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    cookieAuth: { type: apiKey, in: cookie, name: allingo_at }
+  parameters:
+    Cursor: { name: cursor, in: query, schema: { type: string } }
+    Limit: { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, format: uuid } }
+    ProgramPath: { name: program, in: path, required: true, schema: { type: string, enum: [toeic, ielts, jlpt, hsk] } }
+    ProgramQuery: { name: program, in: query, required: true, schema: { type: string, enum: [toeic, ielts, jlpt, hsk] } }
+    SessionId: { name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }
+    TestSetId: { name: testSetId, in: path, required: true, schema: { type: string, format: uuid } }
+    LessonId: { name: lessonId, in: path, required: true, schema: { type: string, format: uuid } }
+    VideoId: { name: videoId, in: path, required: true, schema: { type: string, format: uuid } }
+    AttemptId: { name: attemptId, in: path, required: true, schema: { type: string, format: uuid } }
+    ThreadId: { name: threadId, in: path, required: true, schema: { type: string, format: uuid } }
+    SubmissionId: { name: submissionId, in: path, required: true, schema: { type: string, format: uuid } }
+    OrderId: { name: orderId, in: path, required: true, schema: { type: string, format: uuid } }
+    OrgId: { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    ClassId: { name: classId, in: path, required: true, schema: { type: string, format: uuid } }
+  responses:
+    Error:
+      description: Lỗi theo envelope chuẩn
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    AuthTokens:
+      description: Token & người dùng
+      headers:
+        Set-Cookie: { description: 'allingo_at / allingo_rt (web)', schema: { type: string } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              access_token: { type: string }
+              refresh_token: { type: string, description: Chỉ trả cho mobile }
+              expires_in: { type: integer, example: 900 }
+              user: { $ref: '#/components/schemas/User' }
+  schemas:
+    I18nText:
+      type: object
+      additionalProperties: { type: string }
+      example: { vi: 'Nghe hiểu', en: 'Listening' }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: quota_exceeded, description: 'validation_failed | unauthorized | forbidden | not_found | conflict | quota_exceeded | insufficient_credits | payment_failed | rate_limited | internal' }
+            message: { type: string }
+            details: { type: object }
+            trace_id: { type: string }
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email, nullable: true }
+        phone: { type: string, nullable: true }
+        display_name: { type: string }
+        avatar_url: { type: string, nullable: true }
+        ui_locale: { type: string }
+        explain_locale: { type: string }
+        timezone: { type: string }
+        is_guest: { type: boolean }
+        roles: { type: array, items: { type: string } }
+        active_program: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+    UserUpdate:
+      type: object
+      properties:
+        display_name: { type: string }
+        avatar_url: { type: string }
+        ui_locale: { type: string, enum: [vi, en, ja, ko, th] }
+        explain_locale: { type: string, enum: [vi, en, ja, ko, th] }
+        timezone: { type: string }
+        active_program: { type: string }
+    Session:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        device: { type: object }
+        created_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        current: { type: boolean }
+    Consent:
+      type: object
+      properties:
+        type: { type: string }
+        version: { type: string }
+        granted_at: { type: string, format: date-time }
+        revoked_at: { type: string, format: date-time, nullable: true }
+    Program:
+      type: object
+      properties:
+        code: { type: string }
+        name: { $ref: '#/components/schemas/I18nText' }
+        score_scale: { type: object }
+        languages: { type: array, items: { type: string } }
+    Section:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        skill: { type: string }
+        name: { $ref: '#/components/schemas/I18nText' }
+        level: { type: string, nullable: true }
+        duration_sec: { type: integer }
+        question_count: { type: integer }
+        rules: { type: object }
+    EnrollmentInput:
+      type: object
+      required: [program]
+      properties:
+        program: { type: string, enum: [toeic, ielts, jlpt, hsk] }
+        target_score: { type: number }
+        target_level: { type: string }
+        exam_date: { type: string, format: date }
+        daily_minutes: { type: integer, minimum: 10, maximum: 240 }
+        self_assessed_level: { type: string }
+    Enrollment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        program: { type: string }
+        target_score: { type: number, nullable: true }
+        target_level: { type: string, nullable: true }
+        exam_date: { type: string, format: date, nullable: true }
+        daily_minutes: { type: integer }
+        current_level: { type: object }
+        days_to_exam: { type: integer, nullable: true }
+        diagnostic_attempt_id: { type: string, format: uuid, nullable: true }
+        started_at: { type: string, format: date-time }
+    TestSetSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        title: { $ref: '#/components/schemas/I18nText' }
+        kind: { type: string }
+        level: { type: string, nullable: true }
+        is_free: { type: boolean }
+        locked: { type: boolean, description: true nếu cần Pro }
+        duration_sec: { type: integer }
+        question_count: { type: integer }
+        last_score: { type: number, nullable: true }
+        best_score: { type: number, nullable: true }
+        attempts_count: { type: integer }
+    TestSetPage:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/TestSetSummary' } }
+        next_cursor: { type: [string, 'null'] }
+    TestSet:
+      allOf:
+        - { $ref: '#/components/schemas/TestSetSummary' }
+        - type: object
+          properties:
+            sections: { type: array, items: { $ref: '#/components/schemas/Section' } }
+            in_progress_attempt_id: { type: string, format: uuid, nullable: true }
+    QuestionPublic:
+      type: object
+      description: Nội dung câu hỏi không chứa đáp án; `content` theo discriminated union của question_type (Zod ở packages/schemas)
+      properties:
+        question_id: { type: string, format: uuid }
+        question_version_id: { type: string, format: uuid }
+        question_type: { type: string }
+        section_code: { type: string }
+        group_key: { type: string, nullable: true }
+        order_no: { type: integer }
+        content: { type: object }
+        media: { type: array, items: { type: object, properties: { id: { type: string, format: uuid }, kind: { type: string }, url: { type: string }, duration_ms: { type: integer } } } }
+        passage: { type: object, nullable: true, properties: { id: { type: string, format: uuid }, kind: { type: string }, title: { type: string }, body: { type: string }, media_url: { type: string } } }
+    AttemptCreate:
+      type: object
+      required: [program, mode]
+      properties:
+        program: { type: string }
+        mode: { type: string, enum: [exam, practice, diagnostic, drill, timed_drill] }
+        test_set_id: { type: string, format: uuid }
+        section_id: { type: string, format: uuid }
+        plan_task_id: { type: string, format: uuid }
+        device: { type: object }
+    Attempt:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        program: { type: string }
+        mode: { type: string }
+        status: { type: string, enum: [in_progress, submitted, graded, abandoned] }
+        test_set: { $ref: '#/components/schemas/TestSetSummary' }
+        sections: { type: array, items: { type: object, properties: { section_code: { type: string }, duration_sec: { type: integer }, elapsed_sec: { type: integer }, locked: { type: boolean } } } }
+        questions: { type: array, items: { $ref: '#/components/schemas/QuestionPublic' } }
+        draft_answers: { type: array, items: { $ref: '#/components/schemas/AttemptAnswerInput' } }
+        started_at: { type: string, format: date-time }
+        server_time: { type: string, format: date-time }
+    AttemptAnswerInput:
+      type: object
+      required: [question_id, answer]
+      properties:
+        question_id: { type: string, format: uuid }
+        answer: { description: 'Theo question_type (chuỗi, mảng, map, text)' }
+        time_spent_ms: { type: integer }
+        flagged: { type: boolean }
+    AttemptResult:
+      type: object
+      properties:
+        attempt_id: { type: string, format: uuid }
+        raw_score: { type: number }
+        scaled_score: { type: number }
+        scale: { type: object }
+        by_section: { type: object, additionalProperties: { type: object, properties: { correct: { type: integer }, total: { type: integer }, avg_time_ms: { type: integer } } } }
+        by_question_type: { type: object }
+        by_subskill: { type: object }
+        compared_to_previous: { type: object, nullable: true }
+        diagnosis: { type: object, nullable: true, description: Thẻ chẩn đoán & việc cần làm tiếp }
+        xp_earned: { type: integer }
+    ReviewItem:
+      type: object
+      properties:
+        question: { $ref: '#/components/schemas/QuestionPublic' }
+        your_answer: {}
+        correct_answer: {}
+        is_correct: { type: boolean }
+        explanation: { $ref: '#/components/schemas/Explanation' }
+        transcript_highlight: { type: object, nullable: true, properties: { answer_span: { type: array, items: { type: integer } }, paraphrase_pairs: { type: array, items: { type: object } } } }
+        error_entry_id: { type: string, format: uuid, nullable: true }
+    AttemptReview:
+      type: object
+      properties:
+        attempt_id: { type: string, format: uuid }
+        items: { type: array, items: { $ref: '#/components/schemas/ReviewItem' } }
+    AttemptSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        program: { type: string }
+        mode: { type: string }
+        test_set_title: { $ref: '#/components/schemas/I18nText' }
+        scaled_score: { type: number, nullable: true }
+        submitted_at: { type: string, format: date-time, nullable: true }
+    Explanation:
+      type: object
+      properties:
+        correct_option: { type: string }
+        why_correct: { type: string }
+        why_others_wrong: { type: object, additionalProperties: { type: string } }
+        how_to_spot: { type: string }
+        related_points: { type: array, items: { type: object, properties: { type: { type: string }, ref_id: { type: string, format: uuid }, label: { type: string } } } }
+        locale: { type: string }
+        cached: { type: boolean }
+        ai_task_id: { type: string, format: uuid, nullable: true }
+    ThreadContext:
+      type: object
+      properties:
+        attempt_id: { type: string, format: uuid }
+        submission_id: { type: string, format: uuid }
+        lesson_id: { type: string, format: uuid }
+        question_version_id: { type: string, format: uuid }
+        mode: { type: string, enum: [text, voice] }
+    Thread:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        program: { type: string, nullable: true }
+        title: { type: string, nullable: true }
+        context: { $ref: '#/components/schemas/ThreadContext' }
+        updated_at: { type: string, format: date-time }
+    Message:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        role: { type: string, enum: [user, assistant, system] }
+        text: { type: string }
+        audio_url: { type: string, nullable: true }
+        actions: { type: array, items: { type: object, properties: { type: { type: string, example: open_page }, target: { type: string }, label: { type: string } } } }
+        ai_task_id: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+    SubmissionCreate:
+      type: object
+      required: [program, kind, prompt_ref_type]
+      properties:
+        program: { type: string }
+        kind: { type: string, enum: [writing, speaking, impromptu, shadowing_sentence, pronunciation, grammar_sentence, handwriting] }
+        prompt_ref_type: { type: string, enum: [question, video_sentence, exercise, impromptu_prompt, lesson_step] }
+        prompt_ref_id: { type: string, format: uuid }
+        attempt_id: { type: string, format: uuid }
+        text_body: { type: string }
+        recording_id: { type: string, format: uuid }
+        attachment_id: { type: string, format: uuid, description: Ảnh biểu đồ Task 1 / bài viết tay }
+        outline: { type: object, description: Dàn ý của tôi (tuỳ chọn) }
+    Submission:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        program: { type: string }
+        kind: { type: string }
+        status: { type: string, enum: [queued, processing, graded, failed, cancelled] }
+        prompt: { type: object }
+        text_body: { type: string, nullable: true }
+        recording_url: { type: string, nullable: true }
+        word_count: { type: integer, nullable: true }
+        duration_ms: { type: integer, nullable: true }
+        parent_submission_id: { type: string, format: uuid, nullable: true }
+        result: { $ref: '#/components/schemas/GradingResult' }
+        credits_charged: { type: integer, nullable: true }
+        created_at: { type: string, format: date-time }
+        graded_at: { type: string, format: date-time, nullable: true }
+    GradingResult:
+      type: object
+      nullable: true
+      properties:
+        id: { type: string, format: uuid }
+        rubric_code: { type: string }
+        overall_score: { type: number }
+        criterion_scores: { type: object, additionalProperties: { type: number } }
+        weakest_criterion: { type: string }
+        feedback: { type: object, description: 'i18n: {summary, by_criterion:{...}, fix_first}' }
+        errors: { type: array, items: { $ref: '#/components/schemas/ErrorSpan' } }
+        model_answer: { type: string, nullable: true }
+        model_answer_meta: { type: object, nullable: true }
+        pronunciation: { $ref: '#/components/schemas/PronunciationScore' }
+        confidence: { type: string, enum: [low, normal, high] }
+        is_estimate: { type: boolean, default: true }
+        previous_overall: { type: number, nullable: true }
+    ErrorSpan:
+      type: object
+      properties:
+        index: { type: integer }
+        span: { type: array, items: { type: integer }, minItems: 2, maxItems: 2 }
+        type: { type: string, example: subject_verb_agreement }
+        explanation: { type: string }
+        suggestion_hidden: { type: boolean, default: true }
+        grammar_topic_id: { type: string, format: uuid, nullable: true }
+        lesson_id: { type: string, format: uuid, nullable: true }
+    PronunciationScore:
+      type: object
+      nullable: true
+      properties:
+        accuracy: { type: number }
+        fluency: { type: number }
+        prosody: { type: number }
+        completeness: { type: number }
+        overall: { type: number }
+        words: { type: array, items: { type: object, properties: { word: { type: string }, score: { type: number }, error_type: { type: string, nullable: true }, phonemes: { type: array, items: { type: object, properties: { p: { type: string }, score: { type: number } } } } } } }
+        tones: { type: array, nullable: true, items: { type: object, properties: { syllable: { type: string }, expected: { type: integer }, detected: { type: integer }, score: { type: number } } } }
+        pitch_contour: { type: object, nullable: true, properties: { user: { type: array, items: { type: array, items: { type: number } } }, reference: { type: array, items: { type: array, items: { type: number } } } } }
+        transcript: { type: string }
+    ImpromptuPrompt:
+      type: object
+      properties:
+        prompt_id: { type: string, format: uuid }
+        part: { type: string }
+        topic_group: { type: string }
+        text: { type: string }
+        cue_card: { type: array, items: { type: string } }
+        prep_seconds: { type: integer }
+        answer_seconds: { type: integer }
+        framework: { type: object, properties: { name: { type: string, example: PPF }, hints: { type: array, items: { type: string } } } }
+        useful_phrases: { type: array, items: { type: string } }
+        connectors: { type: array, items: { type: string } }
+    Video:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        youtube_id: { type: string }
+        title: { type: string }
+        channel: { type: string }
+        duration_sec: { type: integer }
+        category: { type: string }
+        level: { type: string, nullable: true }
+        sentence_count: { type: integer }
+        has_translation: { type: boolean }
+        progress: { type: object, nullable: true }
+    VideoSentence:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        order_no: { type: integer }
+        start_ms: { type: integer }
+        end_ms: { type: integer }
+        text: { type: string }
+        ipa: { type: string, nullable: true }
+        reading: { type: string, nullable: true }
+        translation: { type: string, nullable: true }
+        best_score: { type: number, nullable: true }
+    LessonSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [lesson, grammar, pronunciation, strategy] }
+        title: { $ref: '#/components/schemas/I18nText' }
+        summary: { $ref: '#/components/schemas/I18nText' }
+        skill: { type: string, nullable: true }
+        level: { type: string, nullable: true }
+        est_minutes: { type: integer, nullable: true }
+        is_free: { type: boolean }
+        locked: { type: boolean }
+        progress: { type: object, nullable: true, properties: { status: { type: string }, current_step: { type: integer }, completed_at: { type: string, format: date-time, nullable: true } } }
+    Lesson:
+      allOf:
+        - { $ref: '#/components/schemas/LessonSummary' }
+        - type: object
+          properties:
+            steps:
+              type: array
+              items:
+                type: object
+                properties:
+                  step_no: { type: integer }
+                  step_type: { type: string, enum: [teach, check, drill, practice, ai_grade] }
+                  content: { type: object }
+                  done: { type: boolean }
+            thread_id: { type: string, format: uuid, nullable: true, description: Hội thoại gia sư gắn với bài học }
+            related: { type: object, properties: { grammar_topic_id: { type: string, format: uuid, nullable: true }, practice_refs: { type: array, items: { type: object } } } }
+    VideoDetail:
+      allOf:
+        - { $ref: '#/components/schemas/Video' }
+        - type: object
+          properties:
+            sentences: { type: array, items: { $ref: '#/components/schemas/VideoSentence' } }
+    VocabList:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string }
+        title: { $ref: '#/components/schemas/I18nText' }
+        is_free: { type: boolean }
+        counts: { type: object, properties: { total: { type: integer }, new: { type: integer }, learning: { type: integer }, due: { type: integer }, mastered: { type: integer } } }
+        next_action: { type: string, example: 'Ôn 20' }
+    VocabItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string }
+        headword: { type: string }
+        reading: { type: string, nullable: true }
+        sino_vietnamese: { type: string, nullable: true }
+        pos: { type: string, nullable: true }
+        ipa_uk: { type: string, nullable: true }
+        ipa_us: { type: string, nullable: true }
+        audio_uk_url: { type: string, nullable: true }
+        audio_us_url: { type: string, nullable: true }
+        meanings: { type: object }
+        examples: { type: array, items: { type: object } }
+        collocations: { type: array, items: { type: string } }
+        level: { type: string, nullable: true }
+        srs: { $ref: '#/components/schemas/SrsCard' }
+    DictionaryEntry:
+      type: object
+      properties:
+        query: { type: string }
+        headword: { type: string }
+        pos: { type: string }
+        ipa: { type: string }
+        audio_url: { type: string }
+        meaning_en: { type: string }
+        meaning_local: { type: string }
+        example: { type: string }
+        vocab_item_id: { type: string, format: uuid, nullable: true }
+        saved: { type: boolean }
+    SrsCard:
+      type: object
+      nullable: true
+      properties:
+        id: { type: string, format: uuid }
+        card_type: { type: string }
+        ref_id: { type: string, format: uuid }
+        state: { type: string, enum: [new, learning, review, relearning] }
+        due_at: { type: string, format: date-time }
+        stability: { type: number, nullable: true }
+        difficulty: { type: number, nullable: true }
+        reps: { type: integer }
+        lapses: { type: integer }
+        payload: { type: object, description: Nội dung thẻ để hiển thị (từ/lỗi/ngữ pháp) }
+    StudyPlan:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        program: { type: string }
+        version_no: { type: integer }
+        target: { type: object }
+        predicted_now: { type: number, nullable: true }
+        weeks_total: { type: integer }
+        week_current: { type: integer }
+        progress_pct: { type: number }
+        minutes_per_skill: { type: object }
+        mastery_path: { type: object, nullable: true }
+        weeks: { type: array, items: { $ref: '#/components/schemas/PlanWeek' } }
+        locked_weeks_from: { type: integer, nullable: true, description: Free chỉ thấy tuần hiện tại }
+    PlanWeek:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        week_no: { type: integer }
+        start_date: { type: string, format: date }
+        focus: { type: string }
+        load_minutes: { type: integer }
+        checkin_done: { type: boolean }
+        adjustment: { type: object, nullable: true }
+        days: { type: array, items: { type: object, properties: { date: { type: string, format: date }, status: { type: string, enum: [done, partial, pending, rest] }, tasks: { type: array, items: { $ref: '#/components/schemas/PlanTask' } } } } }
+    PlanTask:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        due_date: { type: string, format: date }
+        task_type: { type: string }
+        title: { $ref: '#/components/schemas/I18nText' }
+        ref: { type: object, properties: { type: { type: string }, id: { type: string, format: uuid } } }
+        est_minutes: { type: integer }
+        status: { type: string, enum: [pending, done, skipped, expired] }
+        evidence: { type: string, nullable: true }
+        result_ref: { type: object, nullable: true }
+    PlanAdjustProposal:
+      type: object
+      properties:
+        proposal_id: { type: string, format: uuid }
+        summary: { type: string }
+        before: { type: array, items: { $ref: '#/components/schemas/PlanTask' } }
+        after: { type: array, items: { $ref: '#/components/schemas/PlanTask' } }
+        expires_at: { type: string, format: date-time }
+    ErrorLogPage:
+      type: object
+      properties:
+        distribution: { type: object, additionalProperties: { type: integer } }
+        paraphrase_map: { type: array, items: { type: object, properties: { question_said: { type: string }, passage_said: { type: string }, count: { type: integer } } } }
+        recurring_writing_speaking: { type: array, items: { type: object } }
+        data: { type: array, items: { $ref: '#/components/schemas/ErrorLogEntry' } }
+        next_cursor: { type: [string, 'null'] }
+    ErrorLogEntry:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string }
+        reason_auto: { type: object }
+        reason_override: { type: string, nullable: true }
+        question: { $ref: '#/components/schemas/QuestionPublic' }
+        your_answer: {}
+        correct_answer: {}
+        subskill: { type: string, nullable: true }
+        resolved: { type: boolean }
+        created_at: { type: string, format: date-time }
+    Stats:
+      type: object
+      properties:
+        program: { type: string }
+        current_estimate: { type: number, nullable: true }
+        target: { type: number, nullable: true }
+        trend_30d: { type: array, items: { type: object, properties: { date: { type: string, format: date }, score: { type: number } } } }
+        by_skill: { type: object }
+        by_section: { type: object }
+        by_question_type: { type: object }
+        weakest: { type: array, items: { type: string } }
+        streak: { type: object, properties: { current: { type: integer }, longest: { type: integer }, freeze_available: { type: boolean } } }
+        xp: { type: object, properties: { total: { type: integer }, this_week: { type: integer } } }
+        minutes_this_week: { type: integer }
+    Forecast:
+      type: object
+      properties:
+        predicted_score: { type: number }
+        ci_low: { type: number }
+        ci_high: { type: number }
+        ready_date: { type: string, format: date, nullable: true }
+        on_track: { type: boolean }
+        recommendation: { type: string }
+        computed_at: { type: string, format: date-time }
+    Plan:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        kind: { type: string, enum: [free, monthly, yearly, lifetime, combo, credit_pack, b2b_seat] }
+        programs: { type: array, items: { type: string } }
+        name: { $ref: '#/components/schemas/I18nText' }
+        description: { $ref: '#/components/schemas/I18nText' }
+        price: { type: object, properties: { amount: { type: number }, compare_at: { type: number, nullable: true }, currency: { type: string } } }
+        credits_included: { type: integer }
+        credits_period: { type: string, nullable: true }
+        duration_days: { type: integer, nullable: true }
+        features: { type: object }
+    BuyerInfo:
+      type: object
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        tax_code: { type: string }
+        company: { type: string }
+        address: { type: string }
+    Order:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        plan: { $ref: '#/components/schemas/Plan' }
+        quantity: { type: integer }
+        currency: { type: string }
+        subtotal: { type: number }
+        discount: { type: number }
+        total: { type: number }
+        status: { type: string, enum: [pending, paid, failed, cancelled, refunded, expired] }
+        payments: { type: array, items: { type: object, properties: { provider: { type: string }, status: { type: string }, confirmed_at: { type: string, format: date-time, nullable: true } } } }
+        invoice: { type: object, nullable: true, properties: { invoice_no: { type: string }, pdf_url: { type: string }, issued_at: { type: string, format: date-time } } }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+    Subscription:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        plan: { $ref: '#/components/schemas/Plan' }
+        program: { type: string, nullable: true }
+        status: { type: string, enum: [trialing, active, past_due, cancelled, expired, lifetime] }
+        current_period_start: { type: string, format: date-time }
+        current_period_end: { type: string, format: date-time, nullable: true }
+        cancel_at_period_end: { type: boolean }
+    CreditBalance:
+      type: object
+      properties:
+        balance: { type: integer }
+        expiring_soon: { type: array, items: { type: object, properties: { amount: { type: integer }, expires_at: { type: string, format: date-time } } } }
+        costs: { type: object, additionalProperties: { type: integer }, description: 'Credit theo tác vụ (explain, chat, grade_writing, ...)' }
+    LedgerEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        delta: { type: integer }
+        balance_after: { type: integer }
+        reason: { type: string }
+        ref: { type: object, nullable: true }
+        created_at: { type: string, format: date-time }
+    Entitlements:
+      type: object
+      properties:
+        program: { type: string }
+        is_pro: { type: boolean }
+        features: { type: array, items: { type: string } }
+        quotas: { type: array, items: { type: object, properties: { feature: { type: string }, period: { type: string }, limit: { type: integer, nullable: true }, used: { type: integer }, reset_at: { type: string, format: date-time } } } }
+        credits: { type: integer }
+    NotificationPreferences:
+      type: object
+      properties:
+        channels: { type: object, additionalProperties: { type: boolean } }
+        quiet_hours: { type: object, properties: { start: { type: string, example: '22:00' }, end: { type: string, example: '07:00' } } }
+        reminder_times: { type: array, items: { type: string } }
+    ReferralSummary:
+      type: object
+      properties:
+        code: { type: string }
+        link: { type: string, format: uri }
+        joined: { type: integer }
+        upgraded: { type: integer }
+        credits_earned: { type: integer }
+    OrganizationInput:
+      type: object
+      required: [name, type]
+      properties:
+        name: { type: string }
+        type: { type: string, enum: [school, center, company, other] }
+        tax_code: { type: string }
+        domain: { type: string }
+    Organization:
+      allOf:
+        - { $ref: '#/components/schemas/OrganizationInput' }
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            seats: { type: integer }
+            seats_used: { type: integer }
+            created_at: { type: string, format: date-time }
+    Class:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        program: { type: string, nullable: true }
+        teacher: { type: object, nullable: true }
+        member_count: { type: integer }
+    AssignmentInput:
+      type: object
+      required: [title, task_type]
+      properties:
+        title: { type: string }
+        task_type: { type: string }
+        ref_type: { type: string }
+        ref_id: { type: string, format: uuid }
+        due_at: { type: string, format: date-time }
+    AdminQuestionInput:
+      type: object
+      required: [program, section_code, question_type, content]
+      properties:
+        program: { type: string }
+        section_code: { type: string }
+        question_type: { type: string }
+        passage_id: { type: string, format: uuid }
+        topic_code: { type: string }
+        subskill_codes: { type: array, items: { type: string } }
+        difficulty_target: { type: string }
+        source: { type: string, enum: [human, ai, licensed] }
+        content: { type: object }
+        metadata: { type: object }
+    PromptVersionInput:
+      type: object
+      required: [system_prompt, user_template, output_schema, model_policy]
+      properties:
+        system_prompt: { type: string }
+        user_template: { type: string }
+        few_shots: { type: array, items: { type: object } }
+        rubric: { type: object }
+        output_schema: { type: object }
+        model_policy: { type: object, properties: { primary: { type: string }, fallbacks: { type: array, items: { type: string } }, temperature: { type: number }, max_tokens: { type: integer } } }

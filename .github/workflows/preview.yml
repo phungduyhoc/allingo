@@ -1,0 +1,13 @@
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  preview:
+    name: Preview deploy (TODO Sprint 11)
+    runs-on: ubuntu-latest
+    if: false # TODO(Sprint 11): build image apps/web + api ephemeral, deploy preview theo phương án hạ tầng GATE-1
+    steps:
+      - run: echo "preview placeholder"
