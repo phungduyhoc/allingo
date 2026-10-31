@@ -4,20 +4,24 @@
   "private": true,
   "description": "Lớp dữ liệu Allingo: Drizzle schema 6 schema PostgreSQL, migration, seed, kiểm tra lệch với docs/spec/allingo-schema.sql",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
     },
     "./schema": {
       "types": "./dist/drizzle/schema/index.d.ts",
       "default": "./dist/drizzle/schema/index.js"
     },
     "./client": {
-      "types": "./dist/client.d.ts",
-      "default": "./dist/client.js"
+      "types": "./dist/src/client.d.ts",
+      "default": "./dist/src/client.js"
+    },
+    "./seed": {
+      "types": "./dist/seed/index.d.ts",
+      "default": "./dist/seed/index.js"
     }
   },
   "scripts": {
@@ -51,5 +55,8 @@
     "typescript": "~5.9.3",
     "vitest": "^4.1.12",
     "prettier": "^3.6.2"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

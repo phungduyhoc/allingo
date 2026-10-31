@@ -1,6 +1,6 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "rootDir": ".", "outDir": "dist" },
-  "include": ["drizzle/schema/**/*.ts", "src/**/*.ts"],
+  "include": ["drizzle/schema/**/*.ts", "src/**/*.ts", "seed/**/*.ts"],
   "exclude": ["**/*.test.ts"]
 }

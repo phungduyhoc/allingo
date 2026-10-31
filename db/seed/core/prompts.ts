@@ -39,10 +39,20 @@ interface Spec {
   scoring_rules: Record<string, unknown>;
 }
 
+/** Tìm docs/spec/allingo-prompts.yaml bằng cách đi ngược từ thư mục hiện tại (chạy được từ src lẫn dist) */
+export function resolveSpecPath(file = 'allingo-prompts.yaml'): string {
+  if (process.env.ALLINGO_SPEC_DIR) return path.join(process.env.ALLINGO_SPEC_DIR, file);
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 8; i++) {
+    const candidate = path.join(dir, 'docs', 'spec', file);
+    if (fs.existsSync(candidate)) return candidate;
+    dir = path.dirname(dir);
+  }
+  throw new Error(`Không tìm thấy docs/spec/${file}; đặt ALLINGO_SPEC_DIR`);
+}
+
 export function loadPromptSpec(): Spec {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  const specPath = path.resolve(here, '../../../docs/spec/allingo-prompts.yaml');
-  return parse(fs.readFileSync(specPath, 'utf8')) as Spec;
+  return parse(fs.readFileSync(resolveSpecPath(), 'utf8')) as Spec;
 }
 
 const DEFAULT_TIMEOUT: Record<string, number> = {
