@@ -239,8 +239,44 @@ export const explanationSchema = z.object({
   locale: z.string(),
   cached: z.boolean(),
   ai_task_id: uuidSchema.nullable(),
+  /** Phiên bản prompt đã sinh giải thích (v1.1 – Sprint 5; khoá cache = question_version × chosen_option × locale × prompt_version) */
+  prompt_version_id: uuidSchema.nullable().optional(),
 });
 export type Explanation = z.infer<typeof explanationSchema>;
+
+/**
+ * Chẩn đoán AI sau bài R/L (`diagnose_rl`, v1.1 – Sprint 5): kết quả lưu trong `learn.attempts.score_breakdown.ai_diagnosis`
+ * để màn kết quả đọc lại bằng GET /attempts/{id}/diagnosis.
+ */
+export const attemptAiDiagnosisSchema = z.object({
+  attempt_id: uuidSchema,
+  top_error_type: z.string(),
+  evidence: z.array(z.string()),
+  why: z.string(),
+  steps: z.array(z.string()),
+  check_question: z.object({ stem: z.string(), options: z.array(z.string()), answer: z.string(), explanation: z.string() }),
+  encouragement: z.string(),
+  locale: z.string(),
+  ai_task_id: uuidSchema.nullable(),
+  prompt_version_id: uuidSchema.nullable(),
+  created_at: z.string(),
+  cached: z.boolean(),
+});
+export type AttemptAiDiagnosis = z.infer<typeof attemptAiDiagnosisSchema>;
+
+/** Phản hồi chi tiết khi vượt hạn mức (error.details.quota – 429 quota_exceeded, v1.1 – Sprint 5) */
+export const quotaExceededDetailsSchema = z.object({
+  feature: z.string(),
+  period: z.enum(['day', 'month', 'lifetime']),
+  limit: z.number().int(),
+  used: z.number().int(),
+  remaining: z.number().int(),
+  /** Thời điểm reset (00:00 giờ Asia/Ho_Chi_Minh của kỳ sau), ISO UTC */
+  resets_at: z.string(),
+  /** Bí danh cũ của `resets_at` (giữ tương thích Sprint 0–4) */
+  reset_at: z.string(),
+});
+export type QuotaExceededDetails = z.infer<typeof quotaExceededDetailsSchema>;
 
 export const threadContextSchema = z.object({
   attempt_id: uuidSchema.optional(),
@@ -288,6 +324,8 @@ export const entitlementsSchema = z.object({
       period: z.string(),
       limit: z.number().int().nullable(),
       used: z.number().int(),
+      /** Còn lại trong kỳ (limit − used, không âm; null = không giới hạn) – v1.1 Sprint 5 */
+      remaining: z.number().int().nullable().optional(),
       reset_at: z.string(),
     }),
   ),

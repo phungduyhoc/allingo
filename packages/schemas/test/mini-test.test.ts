@@ -9,6 +9,9 @@ import {
   mulberry32,
   redactSpokenText,
   timedDrillSeconds,
+  timedDrillBudgetSeconds,
+  attemptAnswersPutSchema,
+  attemptDraftStateSchema,
   toPublicContent,
   validateTestSetStructure,
   type MiniBankItem,
@@ -165,5 +168,29 @@ describe('timed drill & ẩn transcript (Sprint 4)', () => {
     expect(attemptEventSchema.safeParse({ type: 'focus_lost', meta: { question_id: 'q1' } }).success).toBe(true);
     expect(attemptEventSchema.safeParse({ type: 'part_switch', meta: { blob: 'x'.repeat(3000) } }).success).toBe(false);
     expect(attemptMediaListSchema.safeParse({ data: [{ id: '00000000-0000-4000-8000-000000000001', kind: 'audio', url: 'https://x', expires_at: null }] }).success).toBe(true);
+  });
+});
+
+describe('timed_drill Listening + ui_state.listening (v1.1 – S5)', () => {
+  it('cộng audio câu + pause_ms; audio nhóm Part 3/4 tính một lần mỗi group_key; per_question_sec chỉ là thời gian trả lời', () => {
+    const p1 = Array.from({ length: 6 }, () => ({ section_code: 'part1', has_audio: true, audio_ms: 4_500, pause_ms: 5_000 }));
+    expect(timedDrillBudgetSeconds(p1)).toBe(6 * 20 + Math.ceil((6 * 9_500) / 1000));
+    expect(timedDrillBudgetSeconds(p1, 10)).toBe(60 + 57);
+    const p3 = [1, 2, 3].map(() => ({ section_code: 'part3', group_key: 'g1', has_audio: true, audio_ms: 3_000, has_group_audio: true, group_audio_ms: 30_000, pause_ms: 8_000 }));
+    expect(timedDrillBudgetSeconds(p3)).toBe(3 * 35 + 3 * 11 + 30);
+    // Không audio (Reading) → như timedDrillSeconds; audio chưa rõ thời lượng → ước tính bảo thủ
+    expect(timedDrillBudgetSeconds([{ section_code: 'part5' }, { section_code: 'part7' }])).toBe(timedDrillSeconds(['part5', 'part7']));
+    expect(timedDrillBudgetSeconds([{ section_code: 'part2', has_audio: true, audio_ms: null, pause_ms: 5_000 }])).toBe(20 + 6 + 5);
+    expect(timedDrillBudgetSeconds([{ section_code: 'part4', group_key: 'g', has_group_audio: true, group_audio_ms: null }])).toBe(35 + 45);
+  });
+
+  it('ui_state.listening { step ≥ 0, offset_ms ≥ 0 } trong PUT answers và draft_state', () => {
+    const ok = attemptAnswersPutSchema.parse({ answers: [], ui_state: { current_section_code: 'part3', listening: { step: 4, offset_ms: 12_345 } } });
+    expect(ok.ui_state?.listening).toEqual({ step: 4, offset_ms: 12_345 });
+    expect(attemptAnswersPutSchema.safeParse({ answers: [], ui_state: { listening: { step: -1, offset_ms: 0 } } }).success).toBe(false);
+    expect(attemptAnswersPutSchema.safeParse({ answers: [], ui_state: { listening: { step: 1.5, offset_ms: 0 } } }).success).toBe(false);
+    expect(attemptAnswersPutSchema.safeParse({ answers: [], ui_state: { listening: { step: 1 } } }).success).toBe(false);
+    const draft = attemptDraftStateSchema.parse({ question_order: [], time_limit_sec: null, expires_at: null, ui_state: { listening: { step: 0, offset_ms: 0 } } });
+    expect(draft.ui_state.listening).toEqual({ step: 0, offset_ms: 0 });
   });
 });

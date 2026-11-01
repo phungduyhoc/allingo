@@ -84,6 +84,10 @@ export const aiAiTasks = ai.table(
     error: text(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
     finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'date' }),
+    // v1.1 – Sprint 5 (migration 0003): đo lường AI Gateway
+    cacheHit: boolean('cache_hit').default(false).notNull(),
+    fallbackUsed: boolean('fallback_used').default(false).notNull(),
+    errorCode: text('error_code'),
   },
   (table) => [
     primaryKey({ columns: [table.id, table.createdAt], name: 'ai_tasks_pkey' }),

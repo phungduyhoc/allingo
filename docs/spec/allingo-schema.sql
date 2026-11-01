@@ -754,9 +754,14 @@ CREATE TABLE learn.notes (
   test_set_id uuid REFERENCES catalog.test_sets(id) ON DELETE CASCADE,
   question_id uuid REFERENCES catalog.questions(id) ON DELETE CASCADE,
   body        text NOT NULL,
-  updated_at  timestamptz NOT NULL DEFAULT now()
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  kind        text NOT NULL DEFAULT 'user',            -- v1.1 – Sprint 5: user | system_summary (summarize_attempt)
+  data        jsonb,                                   -- v1.1 – Sprint 5: thẻ tóm tắt {attempt_id, attempt_ids, summary, ai_task_id, prompt_version_id}
+  CONSTRAINT notes_kind_check CHECK (kind IN ('user','system_summary'))
 );
 CREATE INDEX ix_notes_user_test ON learn.notes(user_id, test_set_id);
+CREATE INDEX ix_notes_user_kind ON learn.notes(user_id, kind, updated_at DESC);
+CREATE UNIQUE INDEX ux_notes_system_summary ON learn.notes(user_id, (data->>'attempt_id')) WHERE kind = 'system_summary';
 
 CREATE TABLE learn.lesson_progress (
   user_id         uuid NOT NULL REFERENCES iam.users(id) ON DELETE CASCADE,
@@ -934,6 +939,9 @@ CREATE TABLE ai.ai_tasks (
   error             text,
   created_at        timestamptz NOT NULL DEFAULT now(),
   finished_at       timestamptz,
+  cache_hit         boolean NOT NULL DEFAULT false,     -- v1.1 – Sprint 5: trúng cache (không gọi model)
+  fallback_used     boolean NOT NULL DEFAULT false,     -- v1.1 – Sprint 5: model trả lời khác primary của route
+  error_code        text,                               -- v1.1 – Sprint 5: provider_error | invalid_output | timeout | not_configured | refused
   PRIMARY KEY (id, created_at)
 ) PARTITION BY RANGE (created_at);
 CREATE INDEX ix_ai_tasks_user_created ON ai.ai_tasks(user_id, created_at DESC);
@@ -952,6 +960,7 @@ CREATE TABLE ai.explanation_cache (
   created_at          timestamptz NOT NULL DEFAULT now(),
   UNIQUE (question_version_id, chosen_option, locale)
 );
+CREATE INDEX ix_explanation_cache_prompt ON ai.explanation_cache(prompt_version_id);   -- v1.1 – Sprint 5: invalidation theo phiên bản prompt
 
 CREATE TABLE ai.translation_cache (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -999,6 +1008,7 @@ CREATE TABLE ai.eval_runs (
   run_at            timestamptz NOT NULL DEFAULT now(),
   triggered_by      text                                -- ci | manual | schedule
 );
+CREATE INDEX ix_eval_runs_version ON ai.eval_runs(prompt_version_id, run_at DESC);  -- v1.1 – Sprint 5: cổng kích hoạt prompt
 CREATE TABLE ai.eval_run_items (
   run_id       uuid NOT NULL REFERENCES ai.eval_runs(id) ON DELETE CASCADE,
   eval_item_id uuid NOT NULL REFERENCES ai.eval_items(id),

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { eq, sql } from 'drizzle-orm';
 import { parse } from 'yaml';
 import type { Db } from '../../src/client.js';
+import { pricingForAliases } from '@allingo/schemas';
 import { aiModelRoutes, aiPromptTemplates, aiPromptVersions } from '../../drizzle/schema/index.js';
 
 /**
@@ -142,6 +143,8 @@ export async function seedPrompts(
           temperature: p.model_policy.temperature ?? 0.3,
           top_p: p.model_policy.top_p ?? 0.9,
           max_tokens: p.model_policy.max_tokens ?? 1024,
+          // Sprint 5: bảng giá USD/1M token theo alias (nguồn: DEFAULT_MODEL_PRICING) – admin chỉnh trong DB không cần deploy
+          pricing: pricingForAliases([p.model_policy.primary, ...(p.model_policy.fallbacks ?? [])]),
         },
         timeoutMs: p.model_policy.timeout_ms ?? DEFAULT_TIMEOUT[p.code] ?? 60_000,
         maxCostUsd: null,

@@ -27,12 +27,27 @@ export const attemptAnswerInputSchema = z.object({
 });
 export type AttemptAnswerInput = z.infer<typeof attemptAnswerInputSchema>;
 
+/** Vị trí chuỗi phát Listening (bước trong hàng đợi audio + offset trong bước) – khôi phục khi đổi thiết bị/mất localStorage (v1.1 – S5) */
+export const listeningUiStateSchema = z.object({
+  step: z.number().int().min(0).max(10_000),
+  offset_ms: z.number().int().min(0).max(36_000_000),
+});
+export type ListeningUiState = z.infer<typeof listeningUiStateSchema>;
+
+/** Trạng thái UI để khôi phục: câu hiện tại, phần hiện tại, vị trí phát Listening */
+export const attemptUiStateSchema = z.object({
+  current_question_id: uuidSchema.optional(),
+  current_section_code: z.string().optional(),
+  listening: listeningUiStateSchema.optional(),
+});
+export type AttemptUiState = z.infer<typeof attemptUiStateSchema>;
+
 export const attemptAnswersPutSchema = z.object({
   answers: z.array(attemptAnswerInputSchema).max(100),
   /** Thời gian đã dùng theo section (giây) để khôi phục đồng hồ */
   section_elapsed_sec: z.record(z.string(), z.number().int().min(0)).optional(),
-  /** Trạng thái UI để khôi phục: câu hiện tại, phần hiện tại */
-  ui_state: z.object({ current_question_id: uuidSchema.optional(), current_section_code: z.string().optional() }).optional(),
+  /** Trạng thái UI để khôi phục: câu hiện tại, phần hiện tại, vị trí phát Listening (`listening`, v1.1 – S5) */
+  ui_state: attemptUiStateSchema.optional(),
 });
 export type AttemptAnswersPut = z.infer<typeof attemptAnswersPutSchema>;
 
@@ -75,7 +90,7 @@ export const attemptDraftStateSchema = z.object({
   time_limit_sec: z.number().int().nullable(),
   expires_at: z.string().nullable(),
   section_elapsed_sec: z.record(z.string(), z.number().int()).default({}),
-  ui_state: z.object({ current_question_id: uuidSchema.optional(), current_section_code: z.string().optional() }).default({}),
+  ui_state: attemptUiStateSchema.default({}),
   events: z.array(z.object({ type: z.enum(ATTEMPT_EVENT_TYPES), at: z.string(), meta: z.record(z.string(), z.unknown()).optional() })).max(500).default([]),
   /** Số lần bắt đầu phát audio theo câu (sự kiện audio_started) – cho Review/analytics, server không chặn (v1.1 – Sprint 4) */
   audio_plays: z.record(z.string(), z.number().int().min(0)).default({}),
@@ -304,7 +319,50 @@ export const TIMED_DRILL_SEC_PER_QUESTION: Readonly<Record<string, number>> = { 
 /** Section không có trong bảng (IELTS/JLPT/HSK…) */
 export const TIMED_DRILL_FALLBACK_SEC = 45;
 
-/** Tổng thời gian timed_drill: Σ giây theo Part từng câu (hoặc per_question_sec × số câu nếu ghi đè) */
+/** Audio Listening chưa biết thời lượng (asset chưa xử lý xong): ước tính bảo thủ (v1.1 – S5) */
+export const TIMED_DRILL_UNKNOWN_QUESTION_AUDIO_MS = 6_000;
+export const TIMED_DRILL_UNKNOWN_GROUP_AUDIO_MS = 45_000;
+
+export interface TimedDrillItem {
+  section_code: string;
+  /** Nhóm Part 3/4/6/7 (passage) – audio nhóm chỉ tính một lần */
+  group_key?: string | null;
+  /** Câu có audio riêng (content.media.audio_asset_id) */
+  has_audio?: boolean;
+  /** Thời lượng audio của câu (media_assets.duration_ms); null = chưa biết */
+  audio_ms?: number | null;
+  /** Nhóm có audio chung (passage.media_asset_id) */
+  has_group_audio?: boolean;
+  /** Thời lượng audio nhóm; null = chưa biết */
+  group_audio_ms?: number | null;
+  /** content.media.pause_ms – khoảng dừng sau audio */
+  pause_ms?: number | null;
+}
+
+/**
+ * Ngân sách timed_drill (v1.1 – S5): Σ thời gian TRẢ LỜI (per_question_sec, hoặc theo Part) + với câu Listening:
+ * audio của câu + pause_ms + audio nhóm (passage, Part 3/4) tính MỘT lần mỗi group_key. Audio chưa rõ thời lượng → ước tính
+ * TIMED_DRILL_UNKNOWN_*. Làm tròn lên giây.
+ */
+export function timedDrillBudgetSeconds(items: readonly TimedDrillItem[], perQuestionSec?: number): number {
+  let ms = 0;
+  const groups = new Set<string>();
+  for (const it of items) {
+    ms += (perQuestionSec ?? TIMED_DRILL_SEC_PER_QUESTION[it.section_code] ?? TIMED_DRILL_FALLBACK_SEC) * 1000;
+    if (it.has_audio) ms += it.audio_ms ?? TIMED_DRILL_UNKNOWN_QUESTION_AUDIO_MS;
+    if (it.has_audio || it.has_group_audio) ms += it.pause_ms ?? 0;
+    if (it.has_group_audio) {
+      const g = it.group_key ?? `__single_${groups.size}`;
+      if (!groups.has(g)) {
+        groups.add(g);
+        ms += it.group_audio_ms ?? TIMED_DRILL_UNKNOWN_GROUP_AUDIO_MS;
+      }
+    }
+  }
+  return Math.ceil(ms / 1000);
+}
+
+/** Tổng thời gian TRẢ LỜI timed_drill: Σ giây theo Part từng câu (hoặc per_question_sec × số câu nếu ghi đè) – không gồm audio */
 export function timedDrillSeconds(sectionCodes: readonly string[], perQuestionSec?: number): number {
   if (perQuestionSec) return perQuestionSec * sectionCodes.length;
   return sectionCodes.reduce((sum, code) => sum + (TIMED_DRILL_SEC_PER_QUESTION[code] ?? TIMED_DRILL_FALLBACK_SEC), 0);

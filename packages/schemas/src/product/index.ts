@@ -119,3 +119,21 @@ export type DomainEvent = (typeof DOMAIN_EVENTS)[keyof typeof DOMAIN_EVENTS];
 /** Hàng đợi BullMQ */
 export const QUEUES = ['grading', 'content', 'media', 'notify', 'analytics', 'maintenance'] as const;
 export type QueueName = (typeof QUEUES)[number];
+
+/** Tên job BullMQ (`aggregate.action`) – Sprint 5 */
+export const JOB_NAMES = {
+  /** Sinh lô câu hỏi AI cho CMS (generate_questions → draft source=ai → check_question → dedup embedding) */
+  CONTENT_GENERATE: 'content.generate',
+  /** Tóm tắt tiến bộ sau mỗi 3 bài đã chấm (summarize_attempt → learn.notes kind=system_summary) */
+  SUMMARY_ATTEMPT: 'summary.attempt',
+  /** Chạy eval set cho một phiên bản prompt (POST /admin/eval-runs) */
+  EVAL_RUN: 'eval.run',
+} as const;
+export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
+
+/** Ngưỡng cosine embedding coi là trùng câu đã phát hành (S5 – generate_questions dedup) */
+export const EMBEDDING_DUPLICATE_THRESHOLD = 0.92;
+/** Số chiều embedding (ai.embeddings.embedding vector(1536)) */
+export const EMBEDDING_DIMENSIONS = 1536;
+/** Tóm tắt tiến bộ sau mỗi N bài đã chấm */
+export const SUMMARY_EVERY_N_ATTEMPTS = 3;

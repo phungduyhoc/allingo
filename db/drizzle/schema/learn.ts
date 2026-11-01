@@ -566,12 +566,21 @@ export const learnNotes = learn.table(
     questionId: uuid('question_id'),
     body: text().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    // v1.1 – Sprint 5 (migration 0003): user | system_summary (summarize_attempt)
+    kind: text().default('user').notNull(),
+    data: jsonb(),
   },
   (table) => [
     index('ix_notes_user_test').using(
       'btree',
       table.userId.asc().nullsLast().op('uuid_ops'),
       table.testSetId.asc().nullsLast().op('uuid_ops'),
+    ),
+    index('ix_notes_user_kind').using(
+      'btree',
+      table.userId.asc().nullsLast().op('uuid_ops'),
+      table.kind.asc().nullsLast().op('text_ops'),
+      table.updatedAt.desc().nullsFirst().op('timestamptz_ops'),
     ),
     foreignKey({
       columns: [table.userId],

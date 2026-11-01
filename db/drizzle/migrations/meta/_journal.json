@@ -15,6 +15,13 @@
       "when": 1793534400000,
       "tag": "0002_media_status",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793620800000,
+      "tag": "0003_ai_s5",
+      "breakpoints": true
     }
   ]
 }
