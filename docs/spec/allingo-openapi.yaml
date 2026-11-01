@@ -474,7 +474,7 @@ paths:
       requestBody:
         content:
           application/json:
-            schema: { type: object, required: [type], properties: { type: { type: string, enum: [tab_leave, tab_hidden, section_timeout, audio_played, focus_lost, resume, part_switch, audio_started, audio_ended, audio_stalled], description: 'v1.1: thêm tab_hidden, focus_lost, resume, part_switch, audio_started/ended/stalled' }, at: { type: string, format: date-time }, meta: { type: object } } }
+            schema: { type: object, required: [type], properties: { type: { type: string, enum: [tab_leave, tab_hidden, section_timeout, audio_played, focus_lost, resume, part_switch, audio_started, audio_ended, audio_stalled], description: 'v1.1: thêm tab_hidden, focus_lost, resume, part_switch, audio_started/ended/stalled' }, at: { type: string, format: date-time }, meta: { type: object, description: 'JSON ≤ 2000 ký tự. Sự kiện audio_* (v1.1 – Sprint 4): `question_id`, `asset_id` (UUID), `position_ms`; audio_started với question_id thuộc attempt tăng Attempt.audio_plays[question_id] (thống kê, không chặn phát)', properties: { question_id: { type: string, format: uuid }, asset_id: { type: string, format: uuid }, position_ms: { type: integer, minimum: 0 } } } } }
       responses: { '202': { description: Đã ghi } }
   /attempts/{attemptId}/submit:
     post:
@@ -491,6 +491,18 @@ paths:
       responses:
         '200': { description: Kết quả, content: { application/json: { schema: { $ref: '#/components/schemas/AttemptResult' } } } }
         '409': { $ref: '#/components/responses/Error' }
+  /attempts/{attemptId}/media:
+    get:
+      tags: [Attempts]
+      summary: "URL ký mới cho mọi media của attempt (audio/ảnh của câu, lựa chọn, passage) – gia hạn trong lúc làm bài (v1.1 – Sprint 4)"
+      description: |
+        URL media trong `Attempt.questions[].media[].url` / `passage.media_url` là URL ký hết hạn sau 10 phút (`expires_at`);
+        đề L&R 120 phút cần gia hạn: client gọi endpoint này trước khi hết hạn (khuyến nghị khi còn ≤ 2 phút) và thay URL theo `id`
+        (`media[].id`, `passage.media_asset_id`). Chỉ chủ attempt; attempt của người khác → 404. Mọi trạng thái (Review cần nghe lại).
+      parameters: [ { $ref: '#/components/parameters/AttemptId' } ]
+      responses:
+        '200': { description: OK, headers: { Cache-Control: { schema: { type: string, example: no-store } } }, content: { application/json: { schema: { $ref: '#/components/schemas/AttemptMediaList' } } } }
+        '404': { $ref: '#/components/responses/Error' }
   /attempts/{attemptId}/review:
     get:
       tags: [Attempts]
@@ -523,10 +535,15 @@ paths:
         - { name: topic, in: query, schema: { type: string } }
         - { name: subskill, in: query, schema: { type: string } }
         - { name: count, in: query, schema: { type: integer, default: 10, maximum: 50 } }
-        - { name: timed, in: query, schema: { type: boolean } }
+        - { name: timed, in: query, schema: { type: boolean }, description: 'true → mode=timed_drill: `expires_at` = Σ giây theo Part (P1–P2 20 s, P3–P4 35 s, P5 25 s, P6–P7 60 s) hoặc per_question_sec × số câu; không có feedback trước khi nộp. false → mode=drill, không giới hạn giờ, đáp án hiện ngay (v1.1 – Sprint 4)' }
+        - { name: per_question_sec, in: query, schema: { type: integer, minimum: 5, maximum: 600 }, description: 'Ghi đè giây mỗi câu cho timed_drill (v1.1 – Sprint 4)' }
         - { name: q, in: query, schema: { type: string }, description: 'Từ khoá (tìm qua Meilisearch/PG; chỉ câu đã phát hành) – v1.1' }
+      description: |
+        Nguồn câu (v1.1 – Sprint 4): ưu tiên câu người học CHƯA làm → câu làm SAI trong 30 ngày → ngẫu nhiên. Câu cùng passage
+        (Part 3/4/6/7) luôn lấy trọn nhóm, liền nhau, `group_key` = passage id; số câu ≤ `count` (nhóm không vừa thì bỏ qua, trừ khi
+        nhóm đầu tiên đã lớn hơn `count`).
       responses:
-        '201': { description: Tạo attempt mode=drill và trả câu hỏi, content: { application/json: { schema: { $ref: '#/components/schemas/Attempt' } } } }
+        '201': { description: Tạo attempt mode=drill (hoặc timed_drill khi timed=true) và trả câu hỏi, content: { application/json: { schema: { $ref: '#/components/schemas/Attempt' } } } }
   /notes:
     put:
       tags: [Attempts]
@@ -1061,6 +1078,19 @@ paths:
       summary: Sinh lô câu hỏi bằng AI theo schema → Nháp + AI check tự động (job)
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [program, section, question_type, count], properties: { program: { type: string }, section: { type: string }, question_type: { type: string }, topic: { type: string }, difficulty: { type: string }, count: { type: integer, maximum: 50 }, passage_id: { type: string, format: uuid } } } } } }
       responses: { '202': { description: job_id } }
+  /admin/test-sets/generate:
+    post:
+      tags: [Admin]
+      summary: "Sinh đề mini ngẫu nhiên lặp lại được (seed, PRNG mulberry32) từ ngân hàng câu đã phát hành → catalog.test_sets kind=mini (v1.1 – Sprint 4)"
+      description: |
+        Quyền editor/admin. Blueprint mặc định TOEIC 60 câu: P1 6 · P2 10 · P3 9 (3 hội thoại) · P4 9 (3 bài nói) · P5 10 · P6 4 (1 đoạn) ·
+        P7 12 (đoạn đơn + ≥ 1 bộ nhiều văn bản). Nhóm passage luôn lấy trọn; kết quả qua kiểm tra cấu trúc `mini`. Cùng `seed` + cùng
+        ngân hàng (`bank_fingerprint`) → cùng câu; cùng `code` → cập nhật đề cũ. Ngân hàng thiếu → `shortfall` (vẫn tạo nếu ≥ 1 câu).
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/GenerateTestSetInput' } } } }
+      responses:
+        '201': { description: Đã tạo/cập nhật, content: { application/json: { schema: { $ref: '#/components/schemas/GenerateTestSetResult' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /admin/prompts:
     get:
       tags: [Admin]
@@ -1287,8 +1317,8 @@ components:
         group_key: { type: string, nullable: true }
         order_no: { type: integer }
         content: { type: object }
-        media: { type: array, items: { type: object, properties: { id: { type: string, format: uuid }, kind: { type: string }, url: { type: string }, duration_ms: { type: integer } } } }
-        passage: { type: object, nullable: true, properties: { id: { type: string, format: uuid }, kind: { type: string }, title: { type: string }, body: { type: string }, media_url: { type: string } } }
+        media: { type: array, description: 'Audio/ảnh của câu và của lựa chọn (v1.1: kể cả options[].image_asset_id/audio_asset_id)', items: { type: object, properties: { id: { type: string, format: uuid }, kind: { type: string }, url: { type: string }, duration_ms: { type: integer }, expires_at: { type: [string, 'null'], format: date-time, description: 'Hạn URL ký (v1.1 – Sprint 4); null = URL không hết hạn. Gia hạn qua GET /attempts/{attemptId}/media' } } } }
+        passage: { type: object, nullable: true, description: 'Passage audio_script (Part 3/4): body = null khi làm bài (transcript chỉ có trong Review – v1.1 Sprint 4). TOEIC Part 1/2: stem và options[].text bị xoá trong Attempt (được đọc trong audio)', properties: { id: { type: string, format: uuid }, kind: { type: string }, title: { type: string }, body: { type: [string, 'null'] }, media_url: { type: [string, 'null'] }, media_asset_id: { type: [string, 'null'], format: uuid, description: v1.1 }, media_expires_at: { type: [string, 'null'], format: date-time, description: v1.1 } } }
     AttemptCreate:
       type: object
       required: [program, mode]
@@ -1312,7 +1342,10 @@ components:
         draft_answers: { type: array, items: { $ref: '#/components/schemas/AttemptAnswerInput' } }
         started_at: { type: string, format: date-time }
         server_time: { type: string, format: date-time }
-        feedback: { type: object, additionalProperties: { type: object, properties: { is_correct: { type: [boolean, 'null'] }, correct_answer: {}, explanation: { type: [object, 'null'] } } }, description: 'Chỉ mode practice/drill – đáp án của câu đã trả lời (v1.1)' }
+        expires_at: { type: [string, 'null'], format: date-time, description: 'Hạn nộp (server) – exam/timed_drill' }
+        ui_state: { type: object }
+        feedback: { type: object, additionalProperties: { type: object, properties: { is_correct: { type: [boolean, 'null'] }, correct_answer: {}, explanation: { type: [object, 'null'] }, transcript: { oneOf: [ { $ref: '#/components/schemas/TranscriptHighlight' }, { type: 'null' } ], description: 'v1.1 – Sprint 4: transcript audio của câu; nhóm Part 3/4 chỉ khi mọi câu trong nhóm đã trả lời' } } }, description: 'Chỉ mode practice/drill – đáp án của câu đã trả lời (v1.1). Không có ở exam/timed_drill/diagnostic' }
+        audio_plays: { type: object, additionalProperties: { type: integer }, description: 'Số lần bắt đầu phát audio theo question_id (sự kiện audio_started) – giữ quy tắc "nghe một lần" khi tải lại (v1.1 – Sprint 4)' }
     AttemptAnswerInput:
       type: object
       required: [question_id, answer]
@@ -1334,6 +1367,103 @@ components:
         compared_to_previous: { type: object, nullable: true }
         diagnosis: { type: object, nullable: true, description: Thẻ chẩn đoán & việc cần làm tiếp }
         xp_earned: { type: integer }
+        scaled: { oneOf: [ { $ref: '#/components/schemas/ToeicScaled' }, { type: 'null' } ], description: 'TOEIC L&R (v1.1 – Sprint 4): điểm Listening/Reading/Tổng + khoảng ước tính ±25; null với chương trình khác' }
+        by_topic: { type: object, additionalProperties: { type: object, properties: { correct: { type: integer }, total: { type: integer } } }, description: v1.1 }
+        by_skill: { type: object, additionalProperties: { $ref: '#/components/schemas/SkillBreakdown' }, description: 'Theo kỹ năng (listening/reading): subskill/topic riêng, điểm quy đổi, thời gian TB so cộng đồng (v1.1 – Sprint 4)' }
+    ScoreRange:
+      type: object
+      required: [low, high]
+      properties:
+        low: { type: number }
+        high: { type: number }
+    ToeicScaled:
+      type: object
+      description: 'ƯỚC TÍNH Allingo (không phải bảng chính thức ETS): Listening/Reading 5–495, tổng 10–990 (null khi thiếu một kỹ năng); range = khoảng của tổng hoặc của kỹ năng duy nhất có mặt (v1.1 – Sprint 4)'
+      required: [listening, reading, total, range, estimated]
+      properties:
+        listening: { type: [number, 'null'] }
+        reading: { type: [number, 'null'] }
+        total: { type: [number, 'null'] }
+        range: { oneOf: [ { $ref: '#/components/schemas/ScoreRange' }, { type: 'null' } ] }
+        ranges: { type: object, properties: { listening: { oneOf: [ { $ref: '#/components/schemas/ScoreRange' }, { type: 'null' } ] }, reading: { oneOf: [ { $ref: '#/components/schemas/ScoreRange' }, { type: 'null' } ] } } }
+        estimated: { type: boolean, const: true }
+    SkillBreakdown:
+      type: object
+      properties:
+        correct: { type: integer }
+        total: { type: integer }
+        scaled: { type: [number, 'null'] }
+        range: { oneOf: [ { $ref: '#/components/schemas/ScoreRange' }, { type: 'null' } ] }
+        avg_time_ms: { type: [integer, 'null'] }
+        community_avg_time_ms: { type: [integer, 'null'], description: 'Trung bình catalog.questions.avg_time_ms của các câu (so cộng đồng)' }
+        by_subskill: { type: object, additionalProperties: { type: object, properties: { correct: { type: integer }, total: { type: integer } } } }
+        by_topic: { type: object, additionalProperties: { type: object, properties: { correct: { type: integer }, total: { type: integer } } } }
+    TranscriptHighlight:
+      type: object
+      description: 'Transcript audio (v1.1 – Sprint 4): passage audio_script (Part 3/4) hoặc media_assets.transcript của audio câu (Part 1/2); segments có mốc thời gian để tô sáng khi phát lại'
+      required: [text, evidence, source]
+      properties:
+        text: { type: string }
+        segments: { type: array, items: { type: object, properties: { start_ms: { type: [integer, 'null'] }, end_ms: { type: [integer, 'null'] }, text: { type: string }, speaker: { type: [string, 'null'] } } } }
+        evidence: { type: [string, 'null'], description: Trích đoạn quyết định đáp án (tác giả) }
+        source: { type: string, enum: [passage, media, evidence] }
+        asset_id: { type: [string, 'null'], format: uuid }
+        answer_span: { type: array, items: { type: integer }, description: 'S5 (AI)' }
+        paraphrase_pairs: { type: array, items: { type: object }, description: 'S5 (AI)' }
+    AttemptMediaList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            required: [id, kind, url, expires_at]
+            properties:
+              id: { type: string, format: uuid }
+              kind: { type: string, enum: [audio, image, video_ref, document] }
+              url: { type: string }
+              expires_at: { type: [string, 'null'], format: date-time, description: 'null = URL không hết hạn' }
+    MiniBlueprint:
+      type: object
+      required: [code, sections]
+      properties:
+        code: { type: string }
+        sections:
+          type: array
+          items:
+            type: object
+            required: [section_code, count]
+            properties:
+              section_code: { type: string }
+              count: { type: integer, minimum: 1, description: '≤ question_count chuẩn của section' }
+              group_sizes: { type: array, items: { type: integer }, description: 'Kích thước nhóm passage cho phép (vd. Part 3/4: [3])' }
+              require_groups: { type: array, items: { type: object, required: [sizes, min], properties: { sizes: { type: array, items: { type: integer } }, min: { type: integer } } }, description: 'Vd. Part 7: [{sizes:[5], min:1}] = ít nhất 1 bộ nhiều văn bản' }
+    GenerateTestSetInput:
+      type: object
+      properties:
+        program: { type: string, default: toeic }
+        seed: { type: integer, minimum: 0, maximum: 2147483647, description: 'Bỏ trống → ngẫu nhiên (trả trong phản hồi)' }
+        blueprint: { $ref: '#/components/schemas/MiniBlueprint' }
+        code: { type: string, pattern: '^[a-z0-9][a-z0-9_-]{2,63}$', description: 'Mặc định <program>-mini-gen-<seed>' }
+        title: { $ref: '#/components/schemas/I18nText' }
+        is_free: { type: boolean, default: true }
+        publish: { type: boolean, default: true, description: 'false → status draft' }
+        duration_sec: { type: integer, minimum: 60, maximum: 14400 }
+    GenerateTestSetResult:
+      type: object
+      properties:
+        test_set_id: { type: string, format: uuid }
+        code: { type: string }
+        status: { type: string, enum: [draft, published] }
+        seed: { type: integer }
+        blueprint: { $ref: '#/components/schemas/MiniBlueprint' }
+        bank_fingerprint: { type: string, description: 'Dấu vân tay ngân hàng câu đã dùng – cùng vân tay + seed → cùng đề' }
+        question_count: { type: integer }
+        duration_sec: { type: integer }
+        by_section: { type: object, additionalProperties: { type: integer } }
+        shortfall: { type: array, items: { type: object, properties: { section_code: { type: string }, requested: { type: integer }, selected: { type: integer }, reason: { type: string, enum: [bank_too_small, no_exact_combination, requirement_unmet] } } } }
+        structure: { type: object, description: 'Kết quả validateTestSetStructure(mini)' }
     ReviewItem:
       type: object
       properties:
@@ -1342,8 +1472,15 @@ components:
         correct_answer: {}
         is_correct: { type: boolean }
         explanation: { $ref: '#/components/schemas/Explanation' }
-        transcript_highlight: { type: object, nullable: true, properties: { answer_span: { type: array, items: { type: integer } }, paraphrase_pairs: { type: array, items: { type: object } } } }
+        transcript_highlight: { oneOf: [ { $ref: '#/components/schemas/TranscriptHighlight' }, { type: 'null' } ], description: 'v1.1 – Sprint 4: transcript audio (Listening); null với câu không có audio' }
         error_entry_id: { type: string, format: uuid, nullable: true }
+        score: { type: [number, 'null'] }
+        time_spent_ms: { type: [integer, 'null'] }
+        flagged: { type: boolean }
+        details: { type: [object, 'null'] }
+        community_correct_rate: { type: [number, 'null'], description: '% người làm đúng' }
+        community_avg_time_ms: { type: [integer, 'null'], description: 'Thời gian trung bình cộng đồng (catalog.questions.avg_time_ms) – v1.1 Sprint 4' }
+        audio_plays: { type: integer, description: 'Số lần người học bắt đầu phát audio của câu (v1.1 – Sprint 4)' }
     AttemptReview:
       type: object
       properties:
