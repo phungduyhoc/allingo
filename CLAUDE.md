@@ -11,7 +11,7 @@ Allingo ("Ngoại ngữ cho tất cả") là nền tảng luyện thi bằng AI 
 | Tệp | Vai trò | Quy tắc |
 | --- | --- | --- |
 | `docs/spec/allingo-schema.sql` | DDL PostgreSQL tham chiếu: 6 schema (`iam`, `catalog`, `learn`, `ai`, `billing`, `ops`), 97 bảng, partition, RLS, seed tối thiểu | Drizzle schema trong `db/drizzle/schema/` phải tương đương; CI so khớp bằng `pnpm db:diff`. Không đổi tên bảng/cột trong DDL mà không cập nhật tài liệu |
-| `docs/spec/allingo-openapi.yaml` | Hợp đồng API v1 (99 đường dẫn) | NestJS xuất OpenAPI từ code; CI `pnpm api:diff` không được lệch. Thêm endpoint = sửa YAML trước, code sau |
+| `docs/spec/allingo-openapi.yaml` | Hợp đồng API v1 (100 đường dẫn) | NestJS xuất OpenAPI từ code; CI `pnpm api:diff` không được lệch. Thêm endpoint = sửa YAML trước, code sau |
 | `docs/spec/allingo-prompts.yaml` | 14 prompt version v1 cho AI Gateway, JSON Schema đầu ra, model policy, ngưỡng eval | Seed vào `ai.prompt_templates/prompt_versions/model_routes`; Zod ở `packages/schemas/src/ai/` sinh từ các JSON Schema này |
 | `docs/spec/allingo-promptfoo.yaml` | Cấu hình eval AI | `pnpm eval:*` |
 | `docs/spec/technical-design.md`, `docs/spec/prd.md` | Thiết kế kỹ thuật & PRD (xuất từ Claude Docs) | Tham chiếu khi cần ngữ cảnh; ADR trong `docs/adr/` |

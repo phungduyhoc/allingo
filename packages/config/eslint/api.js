@@ -1,24 +1,25 @@
-// ESLint cho apps/api: thực thi ranh giới module (CLAUDE.md §5.1, §5.2)
+// ESLint cho apps/api: thực thi ranh giới module (CLAUDE.md §5.1, §5.2) bằng eslint-plugin-boundaries v7 (policies)
 import boundaries from 'eslint-plugin-boundaries';
 import { baseConfig } from './base.js';
 
 // Thứ tự phụ thuộc: tầng thấp không được import tầng cao
-const LAYER_0 = ['shared'];
 const LAYER_1 = ['iam', 'catalog', 'billing', 'ai-gateway', 'speech'];
 const LAYER_2 = ['test-engine', 'grading'];
 const LAYER_3 = ['learning'];
 const LAYER_4 = ['growth', 'b2b', 'analytics', 'admin'];
-
 const allModules = [...LAYER_1, ...LAYER_2, ...LAYER_3, ...LAYER_4];
 
 const elements = [
-  { type: 'shared', pattern: 'src/shared/*', mode: 'folder', capture: ['area'] },
-  ...allModules.map((m) => ({ type: m, pattern: `src/modules/${m}`, mode: 'folder' })),
-  { type: 'config', pattern: 'src/config', mode: 'folder' },
-  { type: 'root', pattern: 'src/*.ts', mode: 'file' },
+  { type: 'shared', pattern: 'src/shared/*', capture: ['area'] },
+  ...allModules.map((m) => ({ type: m, pattern: `src/modules/${m}` })),
+  { type: 'config', pattern: 'src/config' },
+  { type: 'worker', pattern: 'src/worker' },
 ];
 
-const allow = (from, to) => ({ from, allow: to });
+const allowTo = (fromTypes, toTypes) => ({
+  from: { element: { types: { anyOf: fromTypes } } },
+  allow: { to: { element: { types: { anyOf: toTypes } } } },
+});
 
 /** @type {import('eslint').Linter.Config[]} */
 export const apiConfig = [
@@ -28,33 +29,31 @@ export const apiConfig = [
     plugins: { boundaries },
     settings: {
       'boundaries/elements': elements,
+      'boundaries/files': [{ category: 'root', pattern: 'src/*.ts' }],
       'boundaries/ignore': ['**/*.spec.ts', '**/*.test.ts'],
+      // ESM NodeNext import '.js' → tệp '.ts': cần resolver TypeScript, nếu không plugin coi đích là "unknown" và bỏ qua
+      'import/resolver': { typescript: { project: ['./tsconfig.json'], alwaysTryTypes: true }, node: { extensions: ['.ts', '.js'] } },
     },
     rules: {
-      'boundaries/element-types': [
+      'boundaries/dependencies': [
         'error',
         {
           default: 'disallow',
-          rules: [
-            allow(['config'], ['config']),
-            allow(['shared'], ['shared', 'config']),
-            allow(LAYER_1, ['shared', 'config', ...LAYER_1]),
-            allow(LAYER_2, ['shared', 'config', ...LAYER_1, ...LAYER_2]),
-            allow(LAYER_3, ['shared', 'config', ...LAYER_1, ...LAYER_2, ...LAYER_3]),
-            allow(LAYER_4, ['shared', 'config', ...allModules]),
-            allow(['root'], ['shared', 'config', ...allModules]),
-          ],
-        },
-      ],
-      // Chỉ được import index.ts công khai của module khác
-      'boundaries/entry-point': [
-        'error',
-        {
-          default: 'disallow',
-          rules: [
-            { target: allModules, allow: 'index.ts' },
-            { target: ['shared'], allow: ['index.ts', '**/*.ts'] },
-            { target: ['config'], allow: '**/*.ts' },
+          policies: [
+            allowTo(['config'], ['config']),
+            allowTo(['shared'], ['shared', 'config']),
+            allowTo(LAYER_1, ['shared', 'config', ...LAYER_1]),
+            allowTo(LAYER_2, ['shared', 'config', ...LAYER_1, ...LAYER_2]),
+            allowTo(LAYER_3, ['shared', 'config', ...LAYER_1, ...LAYER_2, ...LAYER_3]),
+            allowTo(LAYER_4, ['shared', 'config', ...allModules]),
+            allowTo(['worker'], ['shared', 'config', 'worker', ...allModules]),
+            { from: { file: { categories: 'root' } }, allow: { to: { element: { types: { anyOf: ['shared', 'config', 'worker', ...allModules] } } } } },
+            { from: { file: { categories: 'root' } }, allow: { to: { file: { categories: 'root' } } } },
+            // Chỉ được import index.ts công khai của module khác (ngoại lệ: ai-gateway/core dùng chung nội bộ tầng 1 qua đường dẫn core)
+            {
+              from: { element: { types: { anyOf: allModules } } },
+              disallow: { to: { element: { types: { anyOf: allModules }, fileInternalPath: '!(index.ts|core/ai-gateway.module.ts|core/ai-gateway.service.ts)' } } },
+            },
           ],
         },
       ],

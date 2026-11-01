@@ -454,6 +454,14 @@ paths:
       parameters: [ { $ref: '#/components/parameters/AttemptId' } ]
       responses:
         '200': { description: Kết quả, content: { application/json: { schema: { $ref: '#/components/schemas/AttemptResult' } } } }
+  /attempts/{attemptId}/result:
+    get:
+      tags: [Attempts]
+      summary: Kết quả đã chấm của attempt (idempotent, dùng khi tải lại trang kết quả)
+      parameters: [ { $ref: '#/components/parameters/AttemptId' } ]
+      responses:
+        '200': { description: Kết quả, content: { application/json: { schema: { $ref: '#/components/schemas/AttemptResult' } } } }
+        '409': { $ref: '#/components/responses/Error' }
   /attempts/{attemptId}/review:
     get:
       tags: [Attempts]

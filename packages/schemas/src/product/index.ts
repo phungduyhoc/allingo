@@ -69,6 +69,8 @@ export type XpKind = keyof typeof XP_RULES;
 export const ATTEMPT_GRACE_SECONDS = 30;
 /** Lưu nháp: kích thước lô tối đa */
 export const ATTEMPT_ANSWER_BATCH_MAX = 100;
+/** Credit chào mừng cho tài khoản khách (đủ vài lượt giải thích); tài khoản đăng ký nhận credits_included của gói Free */
+export const GUEST_WELCOME_CREDITS = 30;
 /** Phiên khách hết hạn sau (ngày) */
 export const GUEST_SESSION_DAYS = 30;
 
