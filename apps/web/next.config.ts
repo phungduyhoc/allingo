@@ -1,0 +1,35 @@
+import type { NextConfig } from 'next';
+import createNextIntlPlugin from 'next-intl/plugin';
+
+const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
+
+/**
+ * Ghi chú PWA: `@serwist/next` (chế độ withSerwist) chỉ hoạt động với webpack, trong khi Next 16 build bằng Turbopack
+ * mặc định và dừng build khi thấy cấu hình webpack. Service worker vì vậy được đóng gói riêng bằng esbuild
+ * (`pnpm sw:build`, chạy tự động ở `prebuild`) từ `src/app/sw.ts` dùng thư viện runtime `serwist`.
+ */
+const nextConfig: NextConfig = {
+  reactStrictMode: true,
+  // Không sinh AGENTS.md tự động trong apps/web (quy tắc repo nằm ở CLAUDE.md gốc)
+  agentRules: false,
+  transpilePackages: ['@allingo/ui', '@allingo/i18n'],
+  images: {
+    formats: ['image/avif', 'image/webp'],
+    remotePatterns: [],
+  },
+  experimental: {
+    optimizePackageImports: ['lucide-react', 'recharts'],
+  },
+  turbopack: {},
+  headers: async () => [
+    {
+      source: '/sw.js',
+      headers: [
+        { key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' },
+        { key: 'Service-Worker-Allowed', value: '/' },
+      ],
+    },
+  ],
+};
+
+export default withNextIntl(nextConfig);

@@ -1,0 +1,6 @@
+# Service worker được sinh bởi `pnpm sw:build` (prebuild)
+/public/sw.js
+/public/sw.js.map
+# Playwright
+/playwright-report
+/test-results

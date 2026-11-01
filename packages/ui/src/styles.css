@@ -1,0 +1,67 @@
+/*
+ * Biến CSS theme Allingo dùng chung cho web & cms.
+ * Thương hiệu: navy (#0B1F4B / #0B3BA7) + gold (#E6B325), nền sáng lạnh.
+ * Ứng dụng ánh xạ các biến này vào Tailwind v4 bằng `@theme inline` trong globals.css.
+ */
+:root {
+  --background: #f6f7fb;
+  --foreground: #15203b;
+  --card: #ffffff;
+  --card-foreground: #15203b;
+  --popover: #ffffff;
+  --popover-foreground: #15203b;
+  --primary: #0b3ba7;
+  --primary-foreground: #ffffff;
+  --navy: #0b1f4b;
+  --navy-foreground: #ffffff;
+  --secondary: #e8ecf6;
+  --secondary-foreground: #0b1f4b;
+  --muted: #edf0f6;
+  --muted-foreground: #5a6480;
+  --accent: #e6b325;
+  --accent-foreground: #1b1500;
+  --destructive: #c3122d;
+  --destructive-foreground: #ffffff;
+  --success: #177a4e;
+  --success-foreground: #ffffff;
+  --border: #d8dde9;
+  --input: #c5cde0;
+  --ring: #0b3ba7;
+  --radius: 0.625rem;
+  --chart-1: #0b3ba7;
+  --chart-2: #e6b325;
+  --chart-3: #177a4e;
+  --chart-4: #7b8cc4;
+  --chart-5: #c3122d;
+}
+
+.dark {
+  --background: #0a1026;
+  --foreground: #e6eaf5;
+  --card: #111a36;
+  --card-foreground: #e6eaf5;
+  --popover: #111a36;
+  --popover-foreground: #e6eaf5;
+  --primary: #5b86ea;
+  --primary-foreground: #06102c;
+  --navy: #0b1f4b;
+  --navy-foreground: #ffffff;
+  --secondary: #1a2546;
+  --secondary-foreground: #e6eaf5;
+  --muted: #182243;
+  --muted-foreground: #9aa6c7;
+  --accent: #f1c23a;
+  --accent-foreground: #1b1500;
+  --destructive: #ff6b7a;
+  --destructive-foreground: #230008;
+  --success: #3fc98b;
+  --success-foreground: #04150c;
+  --border: #243159;
+  --input: #2c3a66;
+  --ring: #8aa8f5;
+  --chart-1: #5b86ea;
+  --chart-2: #f1c23a;
+  --chart-3: #3fc98b;
+  --chart-4: #9aa6c7;
+  --chart-5: #ff6b7a;
+}

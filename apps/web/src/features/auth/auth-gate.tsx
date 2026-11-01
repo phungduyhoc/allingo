@@ -1,0 +1,47 @@
+'use client';
+
+import * as React from 'react';
+import { useTranslations } from 'next-intl';
+import { Spinner } from '@allingo/ui';
+import { useRouter } from '@/i18n/navigation';
+import { useMe } from '@/lib/queries';
+import { UNAUTHORIZED_EVENT } from '@/lib/api';
+import { isApiError } from '@/lib/errors';
+import { ErrorState } from '@/components/states';
+
+/**
+ * Bảo vệ các route (app): GET /me 401 → về landing. Làm ở client vì cookie httpOnly do API (origin khác) đặt,
+ * Next proxy không đọc được. Cũng lắng nghe sự kiện refresh thất bại từ API client.
+ */
+export function AuthGate({ children }: { children: React.ReactNode }) {
+  const t = useTranslations('common');
+  const router = useRouter();
+  const me = useMe();
+
+  React.useEffect(() => {
+    const onUnauthorized = () => router.replace('/');
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+  }, [router]);
+
+  React.useEffect(() => {
+    if (me.isError && isApiError(me.error) && me.error.status === 401) router.replace('/');
+  }, [me.isError, me.error, router]);
+
+  if (me.isPending) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center" aria-busy>
+        <Spinner label={t('loading')} className="text-navy dark:text-accent" />
+      </div>
+    );
+  }
+  if (me.isError) {
+    if (isApiError(me.error) && me.error.status === 401) return null;
+    return (
+      <div className="mx-auto max-w-lg px-4 py-16">
+        <ErrorState error={me.error} onRetry={() => void me.refetch()} />
+      </div>
+    );
+  }
+  return <>{children}</>;
+}

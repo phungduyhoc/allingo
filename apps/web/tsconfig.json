@@ -1,0 +1,11 @@
+{
+  "extends": "@allingo/config/tsconfig/next",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "lib": ["dom", "dom.iterable", "ES2023", "webworker"],
+    "paths": { "@/*": ["./src/*"] },
+    "types": ["node"]
+  },
+  "include": ["next-env.d.ts", "src/**/*.ts", "src/**/*.tsx", "e2e/**/*.ts", "*.ts", "*.mts", ".next/types/**/*.ts"],
+  "exclude": ["node_modules", ".next", "public"]
+}
