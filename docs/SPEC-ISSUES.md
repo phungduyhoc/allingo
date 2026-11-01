@@ -9,3 +9,6 @@
 | S5 | `allingo-openapi.yaml` | Thiếu endpoint cấp vai trò (admin) và endpoint `GET /admin/questions` chưa dùng ở Sprint 0 | Chưa làm | Sprint 1–2 |
 | S6 | `allingo-prompts.yaml` | `model_policy.primary` dùng alias (`google:gemini-flash`) chưa có bảng ánh xạ alias → model id | Ánh xạ trong `apps/api/src/modules/ai-gateway/model-router.ts` qua env `GEMINI_FLASH_MODEL`... | Ghi bảng alias vào spec (mục `shared.model_aliases`) |
 | S7 | `allingo-schema.sql` | Seed `catalog.question_types.content_schema` trỏ `schemas/question/<code>.json` nhưng Zod là nguồn sự thật | Seed core ghi thêm `package`/`export` để tra cứu | Cập nhật ghi chú trong spec |
+| S8 | `allingo-openapi.yaml` | Thiếu `GET /attempts/{attemptId}/result` (tải lại trang kết quả không cần nộp lại) | Đã thêm vào spec (100 đường dẫn) và triển khai | Cập nhật tệp spec trong Project |
+| S9 | `allingo-openapi.yaml` | `GET /admin/reports/ai-costs` chưa có trường đếm cache hit của giải thích (cache hit không tạo `ai_tasks`) | API trả thêm `explanation_cache_hits` (mở rộng tương thích) | Bổ sung vào schema `AiCostReport` |
+| S10 | `allingo-prompts.yaml` (`check_question`) | `difficulty_target` được mô tả là `{level, irt_b}` nhưng ví dụ gọi từ CMS chỉ có chuỗi CEFR | API nội bộ `/internal/content/questions/check` bọc thành `{ level, irt_b: 0 }` | Thống nhất kiểu trong spec; CMS gửi thêm `irt_b` khi có |

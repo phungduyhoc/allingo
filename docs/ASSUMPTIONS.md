@@ -12,3 +12,8 @@
 | A8 | Ghim TypeScript 5.9 / ESLint 9 / Vitest 4 thay vì TS 7 / ESLint 10 / Vitest 5 | Tương thích toolchain | ADR-0021; rà lại mỗi quý |
 | A9 | Quota/giá/credit trong seed là giá trị tạm theo PRD mục 4; đổi trong admin trước khi bán | Chưa chốt giá | Sprint 7 |
 | A10 | `attempts.expires_at`, `question_order` không có cột riêng trong DDL → lưu trong `attempts.draft_state` (JSONB) | Giữ DDL | Nếu cần index theo hạn nộp, đề xuất cột mới ở `docs/SPEC-ISSUES.md` |
+| A11 | CMS dùng `externalRef` = UUID do CMS sinh làm khoá idempotent khi phát hành sang catalog (`question_versions.metadata.external_ref`) | Payload không có id ổn định trước khi lưu lần đầu | Khi đổi sang ID nghiệp vụ (vd. `cms:q:<n>`) cần migrate metadata |
+| A12 | CMS import nhận JSON/CSV qua body text (không multipart) để không cần cấu hình upload trong Payload custom endpoint | Đơn giản cho Sprint 0 | Sprint 2 chuyển sang upload tệp + job `content.import` |
+| A13 | `reviews.decision` trong CMS có thêm giá trị `send_back`, `request_changes` ngoài approve/reject để phản ánh luồng duyệt 2 lớp | PRD chỉ nêu duyệt/từ chối | Không ảnh hưởng catalog (chỉ trạng thái nội bộ CMS) |
+| A14 | PWA: `@serwist/next` chỉ hỗ trợ webpack, Next 16 build bằng Turbopack → service worker đóng gói riêng bằng esbuild (`apps/web/scripts/build-sw.mjs`), precache shell tĩnh | Giữ Turbopack (build nhanh hơn ~5 lần) | Rà lại khi Serwist hỗ trợ Turbopack |
+| A15 | Cache giải thích AI dùng chung giữa mọi người học theo (question_version_id, chosen_option, locale); Exam Mode được kiểm tra trước cache | Tiết kiệm credit theo thiết kế kỹ thuật | UX hiển thị nhãn "đã có sẵn"; cân nhắc cá nhân hoá theo `learner_level` ở Sprint 5 |

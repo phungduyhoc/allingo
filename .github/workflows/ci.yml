@@ -26,7 +26,7 @@ env:
 
 jobs:
   quality:
-    name: Lint · Typecheck · Unit · Build
+    name: Lint · Typecheck · Unit
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -41,19 +41,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
-      - run: pnpm test -- --filter='!@allingo/api' --filter='!@allingo/db'
-      - run: pnpm build
-      - name: Upload web build stats
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-stats
-          path: |
-            apps/web/.next/build-manifest.json
-          if-no-files-found: ignore
+      # Unit test không cần DB (api/db chạy ở job integration vì cần Postgres/Redis)
+      - run: pnpm turbo run test --filter='!@allingo/api' --filter='!@allingo/db'
 
   integration:
-    name: Integration · db:diff · api:diff
+    name: Integration · db:diff · api:diff · Build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -89,27 +81,22 @@ jobs:
       - run: pnpm --filter @allingo/db test
       - run: pnpm --filter @allingo/api test
       - run: pnpm api:openapi && pnpm api:diff
+      # Build web/cms/api (CMS build cần DATABASE_URL vì Payload đọc schema cms)
+      - run: pnpm build
+      - name: Upload web build stats
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-stats
+          path: apps/web/.next/build-manifest.json
+          if-no-files-found: ignore
 
   e2e:
-    name: E2E (Playwright)
+    name: E2E (Playwright, API giả lập)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    continue-on-error: true # Sprint 0: chưa chặn merge
+    timeout-minutes: 20
+    continue-on-error: true # Sprint 0: chưa chặn merge; E2E với API thật chạy thủ công (E2E_REAL_API=1)
     needs: [quality]
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: allingo
-          POSTGRES_PASSWORD: allingo
-          POSTGRES_DB: allingo
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U allingo -d allingo"
-          --health-interval 5s --health-timeout 3s --health-retries 20
-      redis:
-        image: valkey/valkey:8-alpine
-        ports: ['6379:6379']
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -121,7 +108,6 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter './packages/*' build
-      - run: pnpm db:migrate && pnpm db:seed --set core,demo
       - run: pnpm --filter @allingo/web exec playwright install --with-deps chromium
       - run: pnpm test:e2e
       - uses: actions/upload-artifact@v4
