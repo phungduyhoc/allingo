@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ieltsLrBand, ieltsOverall, ieltsRoundOverall, paToIeltsBand, toeicLr, toeicScaled, toeicSwScaled } from '../src/index.js';
+import { ieltsLrBand, ieltsOverall, ieltsRoundOverall, paToIeltsBand, toeicLr, toeicLrEstimate, toeicRange, toeicScaled, toeicSwScaled } from '../src/index.js';
 
 describe('TOEIC L&R', () => {
   it('biên', () => {
@@ -53,5 +53,52 @@ describe('IELTS', () => {
     expect(ieltsLrBand(40)).toBe(9);
     expect(ieltsLrBand(30)).toBe(7);
     expect(ieltsLrBand(0)).toBe(0);
+  });
+});
+
+describe('TOEIC L&R – bảng mẫu & khoảng ước tính (Sprint 4)', () => {
+  // [số câu đúng /100, Listening, Reading] – ước tính Allingo, không phải bảng chính thức ETS
+  const TABLE: ReadonlyArray<readonly [number, number, number]> = [
+    [0, 5, 5],
+    [1, 10, 10],
+    [50, 275, 235],
+    [75, 395, 375],
+    [100, 495, 495],
+  ];
+  it.each(TABLE)('%i câu đúng → L %i / R %i', (correct, l, r) => {
+    expect(toeicScaled('listening', correct)).toBe(l);
+    expect(toeicScaled('reading', correct)).toBe(r);
+  });
+  it('tổng 10–990 = L + R', () => {
+    for (const [c, l, r] of TABLE) {
+      const est = toeicLrEstimate({ listening: { correct: c, total: 100 }, reading: { correct: c, total: 100 } });
+      expect(est.total).toBe(l + r);
+      expect(est.total).toBeGreaterThanOrEqual(10);
+      expect(est.total).toBeLessThanOrEqual(990);
+      expect(est.estimated).toBe(true);
+    }
+    expect(toeicLrEstimate({ listening: { correct: 0, total: 100 }, reading: { correct: 0, total: 100 } }).total).toBe(10);
+    expect(toeicLrEstimate({ listening: { correct: 100, total: 100 }, reading: { correct: 100, total: 100 } }).total).toBe(990);
+  });
+  it('khoảng ±25 cắt trong 5–495 / 10–990', () => {
+    expect(toeicRange(495, 'listening')).toEqual({ low: 470, high: 495 });
+    expect(toeicRange(5, 'reading')).toEqual({ low: 5, high: 30 });
+    expect(toeicRange(300, 'reading')).toEqual({ low: 275, high: 325 });
+    expect(toeicRange(990, 'total')).toEqual({ low: 965, high: 990 });
+    expect(toeicRange(10, 'total')).toEqual({ low: 10, high: 35 });
+    const full = toeicLrEstimate({ listening: { correct: 100, total: 100 }, reading: { correct: 0, total: 100 } });
+    expect(full).toMatchObject({ listening: 495, reading: 5, total: 500, range: { low: 475, high: 525 }, ranges: { listening: { low: 470, high: 495 }, reading: { low: 5, high: 30 } }, half_width: 25 });
+  });
+  it('thiếu một kỹ năng: total null, range theo kỹ năng có mặt; không có gì → null', () => {
+    const r = toeicLrEstimate({ reading: { correct: 30, total: 30 } });
+    expect(r.total).toBeNull();
+    expect(r.reading).toBe(495);
+    expect(r.range).toEqual({ low: 470, high: 495 });
+    expect(r.ranges.listening).toBeNull();
+    expect(toeicLrEstimate({}).range).toBeNull();
+  });
+  it('đề mini (33 L / 27 R) quy về /100 theo tỷ lệ', () => {
+    const r = toeicLrEstimate({ listening: { correct: 33, total: 33 }, reading: { correct: 0, total: 27 } });
+    expect(r).toMatchObject({ listening: 495, reading: 5, total: 500 });
   });
 });

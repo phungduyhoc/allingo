@@ -7,7 +7,10 @@ export type ToeicSkill = 'listening' | 'reading';
 
 /**
  * Bảng quy đổi TOEIC Listening/Reading: raw (0–100) → scaled (5–495), tuyến tính từng đoạn.
- * Các mốc được chọn để phản ánh đường cong quen thuộc (điểm thấp quy đổi "hào phóng", điểm cao sát trần).
+ *
+ * ƯỚC TÍNH, KHÔNG PHẢI BẢNG CHÍNH THỨC ETS (ETS không công bố bảng quy đổi cố định – mỗi đề được equating riêng).
+ * Các mốc do Allingo tự xây dựng để phản ánh đường cong quen thuộc: Listening quy đổi "hào phóng" hơn Reading ở cùng số câu
+ * đúng, điểm cao sát trần 495. Hiệu chỉnh bằng dữ liệu thật ở GĐ1 (ASSUMPTIONS A6). Mỗi mốc là [số câu đúng /100, điểm].
  */
 const TOEIC_ANCHORS: Record<ToeicSkill, ReadonlyArray<readonly [raw: number, scaled: number]>> = {
   listening: [
@@ -55,11 +58,34 @@ const interpolate = (anchors: ReadonlyArray<readonly [number, number]>, x: numbe
 
 const roundTo = (v: number, step: number) => Math.round(v / step) * step;
 
-/** Quy đổi điểm thô TOEIC một kỹ năng (correct/total, mặc định total 100) → thang 5–495 (bước 5). */
+/**
+ * Quy đổi điểm thô TOEIC một kỹ năng (correct/total, mặc định total 100) → thang 5–495 (bước 5).
+ * Ước tính, không phải bảng chính thức ETS. Đề ngắn (mini/drill) được quy về /100 theo tỷ lệ – sai số lớn hơn đề full.
+ */
 export function toeicScaled(skill: ToeicSkill, correct: number, total = 100): number {
   if (total <= 0) return 5;
   const raw100 = Math.max(0, Math.min(100, (correct / total) * 100));
   return Math.max(5, Math.min(495, roundTo(interpolate(TOEIC_ANCHORS[skill], raw100), 5)));
+}
+
+/** Nửa độ rộng khoảng ước tính (điểm) mỗi kỹ năng và tổng – ước tính nội bộ, không phải SEM chính thức của ETS */
+export const TOEIC_ESTIMATE_HALF_WIDTH = 25;
+/** Biên thang TOEIC L&R */
+export const TOEIC_SKILL_RANGE = { min: 5, max: 495 } as const;
+export const TOEIC_TOTAL_RANGE = { min: 10, max: 990 } as const;
+
+export interface ScoreRange {
+  low: number;
+  high: number;
+}
+
+/**
+ * Khoảng ước tính quanh điểm quy đổi: ±TOEIC_ESTIMATE_HALF_WIDTH, cắt trong 5–495 (một kỹ năng) hoặc 10–990 (tổng).
+ * Ví dụ: Listening 490 → {465, 495}; tổng 20 → {10, 45}.
+ */
+export function toeicRange(score: number, scope: ToeicSkill | 'total', halfWidth = TOEIC_ESTIMATE_HALF_WIDTH): ScoreRange {
+  const b = scope === 'total' ? TOEIC_TOTAL_RANGE : TOEIC_SKILL_RANGE;
+  return { low: Math.max(b.min, score - halfWidth), high: Math.min(b.max, score + halfWidth) };
 }
 
 export interface ToeicLrResult {
@@ -75,7 +101,29 @@ export function toeicLr(parts: { listening?: { correct: number; total: number };
   const listening = parts.listening && parts.listening.total > 0 ? toeicScaled('listening', parts.listening.correct, parts.listening.total) : null;
   const reading = parts.reading && parts.reading.total > 0 ? toeicScaled('reading', parts.reading.correct, parts.reading.total) : null;
   const total = listening !== null && reading !== null ? listening + reading : null;
-  return { listening, reading, total, ci: 25 };
+  return { listening, reading, total, ci: TOEIC_ESTIMATE_HALF_WIDTH };
+}
+
+/**
+ * Điểm quy đổi L&R kèm khoảng ước tính (AttemptResult.scaled – v1.1, Sprint 4). Ước tính, không phải bảng chính thức ETS.
+ * - `range`: khoảng của tổng (10–990) khi đủ hai kỹ năng; thiếu một kỹ năng → khoảng của kỹ năng có mặt; không có → null.
+ * - `ranges`: khoảng từng kỹ năng (5–495).
+ */
+export interface ToeicLrEstimate {
+  listening: number | null;
+  reading: number | null;
+  total: number | null;
+  range: ScoreRange | null;
+  ranges: { listening: ScoreRange | null; reading: ScoreRange | null };
+  half_width: number;
+  estimated: true;
+}
+
+export function toeicLrEstimate(parts: Parameters<typeof toeicLr>[0]): ToeicLrEstimate {
+  const r = toeicLr(parts);
+  const ranges = { listening: r.listening !== null ? toeicRange(r.listening, 'listening') : null, reading: r.reading !== null ? toeicRange(r.reading, 'reading') : null };
+  const range = r.total !== null ? toeicRange(r.total, 'total') : (ranges.listening ?? ranges.reading);
+  return { listening: r.listening, reading: r.reading, total: r.total, range, ranges, half_width: TOEIC_ESTIMATE_HALF_WIDTH, estimated: true };
 }
 
 /** TOEIC Part → kỹ năng */
