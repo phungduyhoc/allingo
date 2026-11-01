@@ -31,6 +31,7 @@ export default buildConfig({
       afterNavLinks: ['/components/import-nav-link#ImportNavLink'],
       views: {
         importQuestions: { Component: '/components/import-view#ImportView', path: '/import-questions', exact: true },
+        aiGenerate: { Component: '/components/ai-generate-view#AiGenerateView', path: '/ai-generate', exact: true },
       },
     },
     dateFormat: 'dd/MM/yyyy HH:mm',

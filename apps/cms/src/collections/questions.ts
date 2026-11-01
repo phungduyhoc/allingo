@@ -2,6 +2,7 @@ import type { CollectionBeforeChangeHook, CollectionBeforeValidateHook, Collecti
 import { ValidationError } from 'payload';
 import type { QuestionContent } from '@allingo/schemas';
 import { aiCheckEndpoint } from '../endpoints/ai-check';
+import { aiGenerateStartEndpoint, aiGenerateStatusEndpoint } from '../endpoints/ai-generate';
 import type { Question } from '../payload-types';
 import { importQuestionsEndpoint } from '../endpoints/import-questions';
 import { referenceEndpoint } from '../endpoints/reference';
@@ -209,7 +210,7 @@ export const Questions: CollectionConfig = {
     },
   },
   access: { read: isLoggedIn, create: isLoggedIn, update: isLoggedIn, delete: isAdmin },
-  endpoints: [aiCheckEndpoint, importQuestionsEndpoint, referenceEndpoint],
+  endpoints: [aiCheckEndpoint, importQuestionsEndpoint, referenceEndpoint, aiGenerateStartEndpoint, aiGenerateStatusEndpoint],
   hooks: {
     beforeValidate: [normalizeBeforeValidate],
     beforeChange: [workflowBeforeChange],

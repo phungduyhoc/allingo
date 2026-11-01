@@ -185,6 +185,52 @@ export function fetchReference(): Promise<RawReferenceData> {
   return request<RawReferenceData>({ method: 'GET', path: '/internal/content/reference', timeoutMs: 5_000 });
 }
 
+/** Yêu cầu sinh câu hỏi bằng AI (S5) – `requested_by_email` = apiUserEmail của biên tập viên (vai trò nội dung bên API) */
+export interface GenerateQuestionsRequest {
+  program: string;
+  section: string;
+  question_type: string;
+  topic?: string;
+  difficulty?: string;
+  count: number;
+  passage_id?: string;
+  requested_by_email: string;
+}
+export interface GeneratedItem {
+  index: number;
+  status: 'created' | 'invalid';
+  question_id: string | null;
+  question_version_id: string | null;
+  external_ref: string | null;
+  workflow_status: string | null;
+  verdict: 'pass' | 'needs_change' | 'fail' | null;
+  issues: Array<{ field?: string; severity: string; message: string }>;
+  ai_check_task_id: string | null;
+  duplicate: { flagged: boolean; method: 'embedding' | 'trigram' | 'in_batch' | null; of_question_id: string | null; of_index: number | null; similarity: number | null; embedding_similarity: number | null; trigram_similarity: number | null };
+  content: QuestionContent | null;
+  errors?: string[];
+}
+export interface GenerationJobResponse {
+  job_id: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  input: Record<string, unknown> | null;
+  progress: Record<string, unknown> | null;
+  result: { items: GeneratedItem[]; summary: Record<string, unknown> } | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** POST /internal/content/questions/generate → 202 { job_id } (job content.generate: draft source=ai + AI check + cờ trùng) */
+export function generateQuestions(body: GenerateQuestionsRequest): Promise<{ job_id: string; status: string; mode: string }> {
+  return request<{ job_id: string; status: string; mode: string }>({ method: 'POST', path: '/internal/content/questions/generate', body, timeoutMs: 15_000 });
+}
+
+/** GET /internal/content/questions/generate/{jobId} – trạng thái/kết quả */
+export function generationStatus(jobId: string): Promise<GenerationJobResponse> {
+  return request<GenerationJobResponse>({ method: 'GET', path: `/internal/content/questions/generate/${encodeURIComponent(jobId)}`, timeoutMs: 10_000 });
+}
+
 /** Chuỗi lỗi an toàn để hiển thị trong admin */
 export function describeError(err: unknown): string {
   if (err instanceof InternalApiError) return err.message;
