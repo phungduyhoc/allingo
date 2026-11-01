@@ -6,7 +6,7 @@ import type { Question } from '../payload-types';
 import { importQuestionsEndpoint } from '../endpoints/import-questions';
 import { referenceEndpoint } from '../endpoints/reference';
 import { isAdmin, isLoggedIn, roleOf } from '../lib/access';
-import { describeError, publishQuestion } from '../lib/internal-api';
+import { describeError, syncQuestion, type SyncQuestionRequest } from '../lib/internal-api';
 import { DIFFICULTY_CODES, PROGRAM_OPTIONS, QUESTION_TYPE_OPTIONS } from '../lib/reference';
 import { validateMcqAnswerKeys, validateQuestionContent } from '../lib/validate';
 import {
@@ -21,8 +21,9 @@ import {
 } from '../lib/workflow';
 
 /**
- * Câu hỏi soạn thảo trong CMS (schema `cms`). Khi `published`, nội dung được đẩy sang catalog qua
- * API nội bộ `POST /internal/content/questions/publish` (ADR-0019); `publishedRef` lưu id/version bên catalog.
+ * Câu hỏi soạn thảo trong CMS (schema `cms`). Mọi lần đổi trạng thái/nội dung được đồng bộ sang catalog qua
+ * `POST /internal/content/questions/sync` (ADR-0024 – catalog là nguồn sự thật vòng đời + content_reviews);
+ * `publishedRef` lưu id/version bên catalog khi phát hành.
  */
 
 /** Dữ liệu hook: `data` là Partial<Question>, `originalDoc` là Question (payload-types.ts sinh bởi `payload generate:types`) */
@@ -113,42 +114,58 @@ const workflowBeforeChange: CollectionBeforeChangeHook<Question> = async ({ data
 
   const note = data.reviewNote ?? null;
   const aiReport = (data.aiReport ?? original?.aiReport ?? null) as AiReport | null;
-  const result = evaluateTransition({ from, to, role, aiReport, note, viaAiCheck: ctx.aiCheck === true });
+  const prevReviews: ReviewEntry[] = [...(original?.reviews ?? [])];
+  const review1Approver = [...prevReviews].reverse().find((r) => r.stage === 'review1' && r.decision === 'approve')?.reviewer ?? null;
+  const result = evaluateTransition({ from, to, role, aiReport, note, viaAiCheck: ctx.aiCheck === true, actorId: userEmail(req), review1ApproverId: review1Approver });
   if (!result.ok) fail('status', result.message, req);
 
-  const reviews: ReviewEntry[] = [...(original?.reviews ?? [])];
+  const reviews: ReviewEntry[] = prevReviews;
   const now = new Date().toISOString();
+  // Quyết định ghi sang catalog.content_reviews: AI kiểm tra ghi đúng verdict (pass→approve, needs_change, fail→reject)
+  let catalogReview: SyncQuestionRequest['review'] = null;
+  if (ctx.aiCheck === true && aiReport?.verdict) {
+    const decision = aiReport.verdict === 'pass' ? 'approve' : aiReport.verdict === 'fail' ? 'reject' : 'needs_change';
+    catalogReview = { stage: 'ai_check', decision, notes: (aiReport.issues ?? []).map((i) => i.message).join('\n') || null, reviewer_email: null, ai_report: aiReport };
+    if (from === to) reviews.push({ stage: 'ai_check', decision, reviewer: 'ai', note: null, at: now });
+  }
   if (result.effect.review) {
     const autoNote = contentChanged && from === 'ai_checked' && to === 'draft' ? 'Nội dung thay đổi sau khi AI kiểm tra – cần kiểm tra lại.' : null;
     reviews.push({ stage: result.effect.review.stage, decision: result.effect.review.decision, reviewer: userEmail(req), note: note || autoNote, at: now });
+    if (!catalogReview) catalogReview = { stage: result.effect.review.stage, decision: result.effect.review.decision, notes: note || autoNote, reviewer_email: userEmail(req) };
   }
 
-  // Phát hành: chuyển review2 → published, hoặc sửa nội dung của câu đã published (tạo version mới)
-  const needPublish = result.effect.publish || (from === 'published' && to === 'published' && contentChanged);
-  if (needPublish) {
+  // Đồng bộ sang catalog khi trạng thái hoặc nội dung đổi (cả sửa nhanh câu đã phát hành của teacher/admin → phiên bản mới)
+  const statusChanged = from !== to;
+  if (statusChanged || contentChanged || catalogReview) {
     const merged: QuestionData = { ...original, ...data };
     const content = validateQuestionContent(merged.questionType, merged.content);
-    if (!content.ok) fail('content', content.message, req);
-    const externalRef = merged.externalRef ?? (original?.id ? String(original.id) : null);
-    if (!externalRef) fail('status', 'Thiếu externalRef – lưu câu hỏi trước khi phát hành.', req);
-    try {
-      const res = await publishQuestion({
-        external_ref: externalRef,
-        program: merged.program ?? 'toeic',
-        section_code: merged.sectionCode ?? '',
-        question_type: merged.questionType ?? content.value.type,
-        content: content.value,
-        difficulty: merged.difficulty ?? undefined,
-        topic_code: merged.topicCode ?? undefined,
-        subskill_codes: (merged.subskillCodes ?? []).map((s) => s.code).filter(Boolean),
-        source: merged.source === 'ai' ? 'ai' : 'human',
-        change_note: note ?? undefined,
-        created_by_email: userEmail(req),
-      });
-      data.publishedRef = { questionId: res.question_id, questionVersionId: res.question_version_id, versionNo: res.version_no, publishedAt: now };
-    } catch (err) {
-      // Giữ nguyên trạng thái review2 (không lưu) và báo lỗi thân thiện
-      fail('status', `Phát hành thất bại, giữ nguyên trạng thái "${STATUS_LABELS[from].vi}". ${describeError(err)}`, req);
+    if (!content.ok) {
+      if (to === 'published' || statusChanged) fail('content', content.message, req);
+    } else {
+      const externalRef = merged.externalRef ?? (original?.id ? String(original.id) : null);
+      if (!externalRef) fail('status', 'Thiếu externalRef – lưu câu hỏi trước khi đổi trạng thái.', req);
+      try {
+        const res = await syncQuestion({
+          external_ref: externalRef,
+          program: merged.program ?? 'toeic',
+          section_code: merged.sectionCode ?? '',
+          question_type: merged.questionType ?? content.value.type,
+          content: content.value,
+          status: to,
+          difficulty: merged.difficulty ?? undefined,
+          topic_code: merged.topicCode ?? undefined,
+          subskill_codes: (merged.subskillCodes ?? []).map((s) => s.code).filter(Boolean),
+          source: merged.source === 'ai' ? 'ai' : 'human',
+          change_note: note ?? undefined,
+          created_by_email: userEmail(req),
+          review: catalogReview,
+        });
+        if (to === 'published') data.publishedRef = { questionId: res.question_id, questionVersionId: res.question_version_id, versionNo: res.version_no, publishedAt: now };
+      } catch (err) {
+        // Đổi trạng thái phải được ghi nhận ở catalog (nguồn sự thật); chỉ sửa nháp mới cho lưu tạm khi API chưa chạy
+        if (statusChanged || to === 'published' || catalogReview) fail('status', `Đồng bộ catalog thất bại, giữ nguyên trạng thái "${STATUS_LABELS[from].vi}". ${describeError(err)}`, req);
+        req.payload.logger.warn({ msg: 'catalog sync deferred (draft edit)', err: describeError(err) });
+      }
     }
   }
 
@@ -183,6 +200,26 @@ export const Questions: CollectionConfig = {
       // externalRef = id (ổn định, dùng làm khoá idempotent khi phát hành)
       async ({ doc, operation, req }) => {
         if (operation === 'create' && !doc.externalRef) {
+          const content = validateQuestionContent(doc.questionType, doc.content);
+          if (content.ok && !(req.context as { skipWorkflow?: boolean }).skipWorkflow) {
+            try {
+              await syncQuestion({
+                external_ref: String(doc.id),
+                program: doc.program ?? 'toeic',
+                section_code: doc.sectionCode ?? '',
+                question_type: doc.questionType ?? content.value.type,
+                content: content.value,
+                status: 'draft',
+                difficulty: doc.difficulty ?? undefined,
+                topic_code: doc.topicCode ?? undefined,
+                subskill_codes: (doc.subskillCodes ?? []).map((s: { code: string }) => s.code).filter(Boolean),
+                source: doc.source === 'ai' ? 'ai' : 'human',
+                created_by_email: userEmail(req),
+              });
+            } catch (err) {
+              req.payload.logger.warn({ msg: 'catalog sync deferred (new draft)', err: describeError(err) });
+            }
+          }
           await req.payload.update({
             collection: 'questions',
             id: doc.id,

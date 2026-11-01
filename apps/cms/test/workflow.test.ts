@@ -24,7 +24,7 @@ describe('workflow – máy trạng thái câu hỏi', () => {
     if (!denied.ok) expect(denied.message).toContain('editor');
     const ok = evaluateTransition({ from: 'review1', to: 'review2', role: 'teacher' });
     expect(ok.ok).toBe(true);
-    if (ok.ok) expect(ok.effect).toEqual({ review: { stage: 'review1', decision: 'approve' }, publish: false });
+    if (ok.ok) expect(ok.effect).toEqual({ review: { stage: 'review1', decision: 'approve' }, publish: false, retire: false });
   });
 
   it('trả về draft từ review1/review2 bắt buộc có ghi chú', () => {
@@ -48,5 +48,13 @@ describe('workflow – máy trạng thái câu hỏi', () => {
     expect(allowedTargets('review1', 'teacher')).toEqual(['review2', 'draft', 'rejected']);
     expect(allowedTargets('retired', 'teacher')).toEqual([]);
     expect(allowedTargets('retired', 'admin')).toEqual(['draft']);
+  });
+
+  it('Sprint 2: vòng 2 chỉ admin; người duyệt vòng 2 khác vòng 1 (4 mắt)', () => {
+    expect(evaluateTransition({ from: 'review2', to: 'published', role: 'teacher' }).ok).toBe(false);
+    const same = evaluateTransition({ from: 'review2', to: 'published', role: 'admin', actorId: 'a@x', review1ApproverId: 'a@x' });
+    expect(same.ok).toBe(false);
+    if (!same.ok) expect(same.code).toBe('four_eyes');
+    expect(allowedTargets('review2', 'teacher')).toEqual([]);
   });
 });

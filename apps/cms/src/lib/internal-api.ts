@@ -40,6 +40,27 @@ export interface PublishQuestionResponse {
   question_id: string;
   question_version_id: string;
   version_no: number;
+  status?: string;
+  changed?: boolean;
+}
+
+/** Đồng bộ câu hỏi + trạng thái + quyết định duyệt sang catalog (ADR-0024) */
+export interface SyncQuestionRequest extends PublishQuestionRequest {
+  status: string;
+  review?: { stage: 'ai_check' | 'review1' | 'review2'; decision: string; notes?: string | null; reviewer_email?: string | null; ai_report?: Record<string, unknown> | null } | null;
+}
+
+export interface DuplicatesResponse {
+  threshold: number;
+  in_batch: Array<{ index: number; duplicate_of: number; similarity: number }>;
+  existing: Array<{ index: number; question_id: string; similarity: number; status: string }>;
+}
+
+export interface StructureReportResponse {
+  ok: boolean;
+  total: number;
+  by_section: Record<string, number>;
+  issues: Array<{ code: string; section?: string; message: string; expected?: number; actual?: number }>;
 }
 
 export interface PublishTestSetRequest {
@@ -115,8 +136,9 @@ async function request<T>(opts: RequestOptions): Promise<T> {
       }
     }
     if (!res.ok) {
-      const envelope = json as { error?: { code?: string; message?: string; details?: unknown } } | null;
-      const message = envelope?.error?.message ?? `HTTP ${res.status}`;
+      const envelope = json as { error?: { code?: string; message?: string; details?: { issues?: Array<{ message?: string }> } } } | null;
+      const issues = (envelope?.error?.details?.issues ?? []).map((i) => i.message).filter(Boolean).slice(0, 5);
+      const message = `${envelope?.error?.message ?? `HTTP ${res.status}`}${issues.length ? ` – ${issues.join('; ')}` : ''}`;
       const code = envelope?.error?.code ? ` [${envelope.error.code}]` : '';
       throw new InternalApiError('http', `API nội bộ từ chối${code}: ${message}`, res.status);
     }
@@ -136,6 +158,21 @@ export function checkQuestion(body: CheckQuestionRequest): Promise<CheckQuestion
 /** POST /internal/content/questions/publish – idempotent theo external_ref; nội dung đổi → version mới */
 export function publishQuestion(body: PublishQuestionRequest): Promise<PublishQuestionResponse> {
   return request<PublishQuestionResponse>({ method: 'POST', path: '/internal/content/questions/publish', body });
+}
+
+/** POST /internal/content/questions/sync – mỗi lần lưu/chuyển trạng thái (catalog là nguồn sự thật vòng đời) */
+export function syncQuestion(body: SyncQuestionRequest): Promise<PublishQuestionResponse> {
+  return request<PublishQuestionResponse>({ method: 'POST', path: '/internal/content/questions/sync', body });
+}
+
+/** POST /internal/content/questions/duplicates – trùng trong lô + với catalog (pg_trgm ≥ 0,85) */
+export function findDuplicates(body: { program: string; stems: string[]; threshold?: number; exclude_external_refs?: string[] }): Promise<DuplicatesResponse> {
+  return request<DuplicatesResponse>({ method: 'POST', path: '/internal/content/questions/duplicates', body, timeoutMs: 30_000 });
+}
+
+/** POST /internal/content/test-sets/validate – kiểm tra cấu trúc (TOEIC full: Part 1–7 đúng số câu) */
+export function validateTestSet(body: Pick<PublishTestSetRequest, 'program' | 'kind' | 'items'>): Promise<StructureReportResponse> {
+  return request<StructureReportResponse>({ method: 'POST', path: '/internal/content/test-sets/validate', body });
 }
 
 /** POST /internal/content/test-sets/publish */

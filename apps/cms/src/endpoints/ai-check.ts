@@ -20,9 +20,9 @@ export const aiCheckEndpoint: Endpoint = {
 
     const doc = await req.payload.findByID({ collection: 'questions', id, depth: 0, req, overrideAccess: false });
     const status = doc.status;
-    if (status !== 'draft' && status !== 'ai_checked' && status !== 'rejected') {
+    if (status !== 'draft' && status !== 'ai_checked') {
       return Response.json(
-        { error: { code: 'conflict', message: `Chỉ kiểm tra AI khi câu hỏi ở trạng thái nháp/AI đã kiểm tra/từ chối (hiện: ${status}).` } },
+        { error: { code: 'conflict', message: `Chỉ kiểm tra AI khi câu hỏi ở trạng thái nháp/AI đã kiểm tra (hiện: ${status}).` } },
         { status: 409 },
       );
     }
