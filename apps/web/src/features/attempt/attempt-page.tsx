@@ -1,30 +1,55 @@
 'use client';
 
 import * as React from 'react';
-import { ChevronLeft, ChevronRight, CloudOff, Flag, LayoutGrid } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CloudOff, LayoutGrid, RefreshCw } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Alert, AlertDescription, Badge, Button, buttonVariants, cn, Dialog, DialogContent, DialogHeader, DialogTitle, Separator, Skeleton } from '@allingo/ui';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { Alert, AlertDescription, AlertTitle, Badge, Button, buttonVariants, cn, Dialog, DialogContent, DialogHeader, DialogTitle, Skeleton, SplitPane } from '@allingo/ui';
 import { Link, useRouter } from '@/i18n/navigation';
-import { sendAttemptEvent, useAttempt, useSubmitAttempt } from '@/lib/queries';
+import { queryKeys, sendAttemptEvent, useAttempt, useSubmitAttempt } from '@/lib/queries';
 import { useLocalized } from '@/lib/localized';
+import { useMediaQuery } from '@/lib/use-media-query';
 import { asPublicContent, type AnswerInput, type Attempt, type QuestionPublic } from '@/lib/types';
 import { ErrorState } from '@/components/states';
-import { AudioPlayer } from './audio-player';
-import { ExamHeader } from './exam-header';
+import { ExamHeader, FocusBar } from './exam-header';
+import { ExamToolbar } from './exam-toolbar';
+import { PartBar } from './part-bar';
+import { PassagePane } from './passage-pane';
+import { markersInStem } from './passage-format';
+import { QuestionBlock } from './question-block';
 import { QuestionGrid } from './question-grid';
-import { QuestionRenderer } from './question-renderer';
 import { SubmitDialog } from './submit-dialog';
-import { useDraftSaver } from './use-draft-saver';
+import { useSectionLabel } from './section-label';
+import { useDraftSaver, useOnlineStatus, type DraftSaver } from './use-draft-saver';
 import { useExamClock } from './use-exam-clock';
-import { answerOrEmpty, attemptReducer, countUnanswered, initialAttemptState, isAnswered } from './attempt-state';
+import { FONT_SCALES, SPLIT_MAX, SPLIT_MIN, stepFont, useExamPrefs } from './exam-prefs';
+import {
+  answerOrEmpty,
+  attemptReducer,
+  countUnanswered,
+  groupOf,
+  initialAttemptState,
+  isAnswered,
+  modeTraits,
+  questionGroups,
+  sectionIndexOf,
+  sectionRanges,
+  sortQuestions,
+} from './attempt-state';
 
 export function AttemptPage({ attemptId }: { attemptId: string }) {
   const t = useTranslations('attempt');
   const query = useAttempt(attemptId, { refetchOnMount: 'always', staleTime: 0 });
+  const inProgress = query.data?.status === 'in_progress';
+  // Server từ chối lưu (409: quá hạn + 30 s ân hạn, hoặc đã nộp nơi khác) → runner nộp & chuyển sang kết quả
+  const [closed, setClosed] = React.useState(false);
+  const onClosed = React.useCallback(() => setClosed(true), []);
+  const saver = useDraftSaver(attemptId, { enabled: inProgress, onClosed });
 
-  if (query.isPending) {
+  if (query.isPending || (inProgress && !saver.ready)) {
     return (
-      <div className="min-h-dvh bg-background">
+      <div className="min-h-dvh bg-background" data-testid="attempt-loading">
         <div className="h-14 bg-navy" />
         <div className="mx-auto max-w-3xl space-y-4 p-6">
           <Skeleton className="h-6 w-1/2" />
@@ -52,39 +77,61 @@ export function AttemptPage({ attemptId }: { attemptId: string }) {
       </div>
     );
   }
-  return <AttemptRunner attempt={query.data} />;
+  return <AttemptRunner attempt={query.data} saver={saver} closed={closed} />;
 }
 
 const AUDIO_KEY = (attemptId: string) => `allingo.audio.${attemptId}`;
 
-function AttemptRunner({ attempt }: { attempt: Attempt }) {
+function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: DraftSaver; closed: boolean }) {
   const t = useTranslations('attempt');
-  const ts = useTranslations('sections');
   const L = useLocalized();
+  const sectionLabel = useSectionLabel();
   const router = useRouter();
-  const isExam = attempt.mode !== 'practice';
-  const questions = React.useMemo(() => [...attempt.questions].sort((a, b) => a.order_no - b.order_no), [attempt.questions]);
+  const qc = useQueryClient();
+  const online = useOnlineStatus();
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
+  const traits = modeTraits(attempt.mode);
+  const questions = React.useMemo(() => sortQuestions(attempt.questions), [attempt.questions]);
+  const ranges = React.useMemo(() => sectionRanges(questions), [questions]);
+  const groups = React.useMemo(() => questionGroups(questions), [questions]);
+  const feedback = React.useMemo(() => attempt.feedback ?? {}, [attempt.feedback]);
 
-  const saver = useDraftSaver(attempt.id, true);
-  const [state, dispatch] = React.useReducer(attemptReducer, undefined, () => initialAttemptState(attempt, saver.queue.pendingEntries()));
+  const [state, dispatch] = React.useReducer(attemptReducer, undefined, () => initialAttemptState(attempt, saver.queue.pendingEntries(), saver.queue.pendingUiState()));
   const current = questions[state.currentIndex] ?? questions[0]!;
-  const content = asPublicContent(current.content);
-  const currentAnswer = state.answers[current.question_id] ?? null;
+  const sectionIdx = Math.max(0, sectionIndexOf(ranges, state.currentIndex));
+  const group = groupOf(groups, state.currentIndex);
+  const passage = current.passage;
+  const groupItems = passage && group ? questions.slice(group.start, group.end + 1).map((q, k) => ({ q, index: group.start + k })) : [{ q: current, index: state.currentIndex }];
+  const inGroup = groupItems.length > 1;
 
-  // Thời gian trên câu hiện tại & section (để time_spent_ms và section_elapsed_sec); mốc đặt trong effect (không gọi Date.now() khi render)
+  const [prefs, setPrefs] = useExamPrefs();
+  const zoom = FONT_SCALES[prefs.font];
+  const [splitLive, setSplitLive] = React.useState<number | null>(null);
+  const [focus, setFocus] = React.useState(false);
+  const [passageCollapsed, setPassageCollapsed] = React.useState(false);
+  const [gridOpen, setGridOpen] = React.useState(false);
+  const [liveMessage, setLiveMessage] = React.useState('');
+  const [checking, setChecking] = React.useState<Record<string, true>>({});
+
+  // Thời gian trên câu hiện tại & theo Part (time_spent_ms, section_elapsed_sec); mốc đặt trong effect (không gọi Date.now() khi render)
   const enteredAtRef = React.useRef(0);
-  const loadedAtRef = React.useRef(0);
+  const sectionEnteredAtRef = React.useRef(0);
+  const sectionAccRef = React.useRef<Record<string, number>>({});
   React.useEffect(() => {
     const now = Date.now();
     enteredAtRef.current = now;
-    loadedAtRef.current = now;
+    sectionEnteredAtRef.current = now;
   }, []);
   const sectionBase = React.useMemo(() => Object.fromEntries(attempt.sections.map((s) => [s.section_code, s.elapsed_sec])), [attempt.sections]);
   const sectionElapsed = React.useCallback(() => {
     const code = current.section_code;
-    return { [code]: (sectionBase[code] ?? 0) + Math.floor((Date.now() - loadedAtRef.current) / 1000) };
+    const live = (Date.now() - sectionEnteredAtRef.current) / 1000;
+    const out: Record<string, number> = {};
+    for (const c of new Set([...Object.keys(sectionBase), ...Object.keys(sectionAccRef.current), code])) {
+      out[c] = Math.floor((sectionBase[c] ?? 0) + (sectionAccRef.current[c] ?? 0) + (c === code ? live : 0));
+    }
+    return out;
   }, [current.section_code, sectionBase]);
-  const [gridOpen, setGridOpen] = React.useState(false);
 
   // Audio đã phát (Exam Mode phát một lần) – nhớ qua localStorage để tải lại không phát lại
   const [playedAudio, setPlayedAudio] = React.useState<Set<string>>(() => {
@@ -107,234 +154,466 @@ function AttemptRunner({ attempt }: { attempt: Attempt }) {
     sendAttemptEvent(attempt.id, { type: 'audio_played', meta: { question_id: qid } });
   };
 
-  const setAnswer = React.useCallback(
-    (answer: AnswerInput) => {
-      dispatch({ type: 'answer', questionId: current.question_id, answer });
-      saver.enqueue({ question_id: current.question_id, answer, flagged: state.flags[current.question_id] });
+  // ---------------------------------------------------------------- Practice/drill: phản hồi tức thì
+  const isLocked = React.useCallback((qid: string) => traits.feedback && (!!feedback[qid] || !!checking[qid]), [checking, feedback, traits.feedback]);
+  const refreshFeedback = React.useCallback(() => qc.invalidateQueries({ queryKey: queryKeys.attempt(attempt.id), exact: true }), [attempt.id, qc]);
+  const requestFeedback = React.useCallback(
+    async (qid: string) => {
+      setChecking((prev) => ({ ...prev, [qid]: true }));
+      const before = saver.queue.lastSavedAt;
+      await saver.flushNow();
+      // Đã lưu từ trước (không có gì để gửi) → tự lấy phản hồi; nếu vừa lưu, effect bên dưới sẽ lấy
+      const stillPending = saver.queue.pendingEntries().some((e) => e.question_id === qid);
+      if (!stillPending && saver.queue.lastSavedAt === before) await refreshFeedback();
     },
-    [current.question_id, saver, state.flags],
+    [refreshFeedback, saver],
+  );
+  const awaitingFeedback = Object.keys(checking)
+    .filter((id) => !feedback[id])
+    .join(',');
+  const lastFeedbackFetchRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    // Lưu thành công (kể cả sau khi có mạng lại) và còn câu chờ phản hồi → GET attempt để lấy `feedback`; mỗi lần lưu chỉ lấy một lần
+    if (!traits.feedback || !awaitingFeedback || saver.status !== 'saved' || saver.lastSavedAt === null) return;
+    if (lastFeedbackFetchRef.current === saver.lastSavedAt) return;
+    lastFeedbackFetchRef.current = saver.lastSavedAt;
+    void refreshFeedback();
+  }, [awaitingFeedback, refreshFeedback, saver.lastSavedAt, saver.status, traits.feedback]);
+
+  // ---------------------------------------------------------------- Trả lời / đánh dấu / điều hướng
+  const setAnswerFor = React.useCallback(
+    (q: QuestionPublic, answer: AnswerInput) => {
+      if (isLocked(q.question_id)) return;
+      dispatch({ type: 'answer', questionId: q.question_id, answer });
+      saver.enqueue({ question_id: q.question_id, answer, flagged: state.flags[q.question_id] });
+      // Practice: trắc nghiệm một đáp án → lưu ngay và hiện đúng/sai (không chờ debounce/10 s)
+      if (traits.feedback && q.question_type === 'mcq_single' && isAnswered(answer)) void requestFeedback(q.question_id);
+    },
+    [isLocked, requestFeedback, saver, state.flags, traits.feedback],
   );
 
-  const toggleFlag = React.useCallback(() => {
-    const flagged = !state.flags[current.question_id];
-    dispatch({ type: 'flag', questionId: current.question_id, flagged });
-    saver.enqueue({ question_id: current.question_id, answer: answerOrEmpty(current, state.answers), flagged });
-  }, [current, saver, state.answers, state.flags]);
+  const toggleFlagFor = React.useCallback(
+    (q: QuestionPublic) => {
+      const flagged = !state.flags[q.question_id];
+      dispatch({ type: 'flag', questionId: q.question_id, flagged });
+      saver.enqueue({ question_id: q.question_id, answer: answerOrEmpty(q, state.answers), flagged });
+    },
+    [saver, state.answers, state.flags],
+  );
 
   const goTo = React.useCallback(
     (index: number) => {
       if (index < 0 || index >= questions.length || index === state.currentIndex) return;
-      const delta = Date.now() - enteredAtRef.current;
+      const now = Date.now();
+      const delta = now - enteredAtRef.current;
       if (delta >= 500 && (isAnswered(state.answers[current.question_id]) || delta >= 3000)) {
         saver.enqueue({ question_id: current.question_id, answer: answerOrEmpty(current, state.answers), time_spent_ms: delta });
       }
       const next = questions[index]!;
+      if (next.section_code !== current.section_code) {
+        sectionAccRef.current[current.section_code] = (sectionAccRef.current[current.section_code] ?? 0) + (now - sectionEnteredAtRef.current) / 1000;
+        sectionEnteredAtRef.current = now;
+        sendAttemptEvent(attempt.id, { type: 'part_switch', meta: { from: current.section_code, to: next.section_code, question_id: next.question_id } });
+      }
       saver.setMeta({ ui_state: { current_question_id: next.question_id, current_section_code: next.section_code }, section_elapsed_sec: sectionElapsed() });
-      enteredAtRef.current = Date.now();
+      enteredAtRef.current = now;
       dispatch({ type: 'goto', index });
       void saver.flushNow();
       setGridOpen(false);
     },
-    [current, questions, saver, sectionElapsed, state.answers, state.currentIndex],
+    [attempt.id, current, questions, saver, sectionElapsed, state.answers, state.currentIndex, setGridOpen],
   );
+  const goToPart = React.useCallback((i: number) => {
+    const r = ranges[i];
+    if (r) goTo(r.start);
+  }, [goTo, ranges]);
 
-  // Nộp bài
+  // Trong nhóm đoạn văn: đưa câu đang xem vào tầm nhìn khi chuyển bằng phím/nút; mobile vào nhóm mới → về đầu đoạn văn
+  const groupKey = group?.key ?? null;
+  const prevGroupRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const entered = prevGroupRef.current !== groupKey;
+    prevGroupRef.current = groupKey;
+    if (!inGroup) return;
+    if (entered && !isDesktop) {
+      document.querySelector('[data-testid="passage"]')?.scrollIntoView({ block: 'start' });
+      return;
+    }
+    document.getElementById(`qblock-${current.question_id}`)?.scrollIntoView({ block: 'nearest' });
+  }, [current.question_id, groupKey, inGroup, isDesktop]);
+
+  // ---------------------------------------------------------------- Nộp bài
   const submit = useSubmitAttempt(attempt.id);
   const [submitOpen, setSubmitOpen] = React.useState(false);
   const [forced, setForced] = React.useState(false);
-  const doSubmit = React.useCallback(async () => {
-    saver.setMeta({ section_elapsed_sec: sectionElapsed() });
-    await saver.flushNow();
+  const [syncBlocked, setSyncBlocked] = React.useState(false);
+  const goToResult = React.useCallback(() => router.replace(`/attempts/${attempt.id}/result`), [attempt.id, router]);
+  const doSubmit = React.useCallback(
+    async (opts: { force?: boolean } = {}) => {
+      setSyncBlocked(false);
+      saver.setMeta({ section_elapsed_sec: sectionElapsed() });
+      await saver.flushNow();
+      // Còn câu chưa lên server (mất mạng/lỗi) → không nộp để khỏi mất đáp án; người học bấm thử lại khi có mạng
+      if (!opts.force && saver.queue.pendingCount > 0) {
+        setSyncBlocked(true);
+        return;
+      }
+      submit.mutate(undefined, {
+        onSuccess: () => {
+          void saver.queue.clear();
+          goToResult();
+        },
+      });
+    },
+    [goToResult, saver, sectionElapsed, submit],
+  );
+
+  // Bài đã đóng phía server → nộp (idempotent; có thể job attempt.expire đã nộp) rồi mở kết quả
+  const closedHandledRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!closed || closedHandledRef.current) return;
+    closedHandledRef.current = true;
     submit.mutate(undefined, {
-      onSuccess: () => {
-        saver.queue.clear();
-        router.replace(`/attempts/${attempt.id}/result`);
+      onSettled: () => {
+        void saver.queue.clear();
+        goToResult();
       },
     });
-  }, [attempt.id, router, saver, sectionElapsed, submit]);
+  }, [closed, goToResult, saver.queue, submit]);
 
-  const clock = useExamClock(isExam ? attempt.expires_at : null, attempt.server_time, () => {
-    // Hết giờ → tự nộp với các câu đã trả lời
-    setForced(true);
-    setSubmitOpen(true);
-    sendAttemptEvent(attempt.id, { type: 'section_timeout', meta: { section_code: current.section_code } });
-    void doSubmit();
+  const clock = useExamClock(attempt.expires_at, attempt.server_time, {
+    onExpire: () => {
+      // Hết giờ → tự nộp với các câu đã trả lời (server còn nhận nháp trong 30 s ân hạn)
+      setForced(true);
+      setSubmitOpen(true);
+      sendAttemptEvent(attempt.id, { type: 'section_timeout', meta: { section_code: current.section_code } });
+      void doSubmit();
+    },
+    onWarning: (minutes) => {
+      const msg = t('timeWarning', { minutes });
+      setLiveMessage(msg);
+      toast.warning(msg, { id: `time-warning-${minutes}` });
+    },
   });
 
-  // Sự kiện rời tab / quay lại
+  // ---------------------------------------------------------------- Sự kiện phiên: rời tab / mất focus / quay lại
   React.useEffect(() => {
-    const onVis = () => sendAttemptEvent(attempt.id, { type: document.visibilityState === 'hidden' ? 'tab_leave' : 'resume' });
+    let away: 'tab' | 'focus' | null = null;
+    let blurTimer: number | null = null;
+    const send = (type: 'tab_hidden' | 'focus_lost' | 'resume') => sendAttemptEvent(attempt.id, { type });
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') {
+        if (blurTimer) window.clearTimeout(blurTimer);
+        blurTimer = null;
+        if (away !== 'tab') send('tab_hidden');
+        away = 'tab';
+      } else if (away) {
+        away = null;
+        send('resume');
+      }
+    };
+    // blur xảy ra trước visibilitychange khi chuyển tab → chờ một nhịp để không đếm trùng tab_hidden + focus_lost
+    const onBlur = () => {
+      if (blurTimer) window.clearTimeout(blurTimer);
+      blurTimer = window.setTimeout(() => {
+        blurTimer = null;
+        if (document.visibilityState === 'visible' && !document.hasFocus() && !away) {
+          away = 'focus';
+          send('focus_lost');
+        }
+      }, 400);
+    };
+    const onFocus = () => {
+      if (blurTimer) window.clearTimeout(blurTimer);
+      blurTimer = null;
+      if (away === 'focus') {
+        away = null;
+        send('resume');
+      }
+    };
     document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      if (blurTimer) window.clearTimeout(blurTimer);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [attempt.id]);
 
-  // Phím tắt: 1–4 / A–D chọn đáp án, ← → chuyển câu, F đánh dấu
+  // ---------------------------------------------------------------- Chế độ tập trung & cỡ chữ
+  const setFocusMode = React.useCallback(
+    (on: boolean) => {
+      setFocus(on);
+      setLiveMessage(on ? t('focusModeOn') : t('focusModeOff'));
+    },
+    [t],
+  );
+  const changeFont = React.useCallback((delta: 1 | -1) => setPrefs({ font: stepFont(prefs.font, delta) }), [prefs.font, setPrefs]);
+
+  // Phím tắt: 1–4 / A–D chọn đáp án, ← → chuyển câu, [ ] chuyển Part, F đánh dấu, Z tập trung, + − cỡ chữ, Esc thoát tập trung
+  const content = asPublicContent(current.content);
+  const currentAnswer = state.answers[current.question_id] ?? null;
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return;
       if (submitOpen || gridOpen || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        goTo(state.currentIndex + 1);
-      } else if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        goTo(state.currentIndex - 1);
-      } else if (e.key.toLowerCase() === 'f') {
-        e.preventDefault();
-        toggleFlag();
-      } else if (content && (content.type === 'mcq_single' || content.type === 'mcq_multi')) {
-        const k = e.key.toUpperCase();
-        const idx = /^[1-9]$/.test(k) ? Number(k) - 1 : /^[A-J]$/.test(k) ? k.charCodeAt(0) - 65 : -1;
-        const opt = idx >= 0 ? content.options[idx] : undefined;
-        if (!opt) return;
-        e.preventDefault();
-        if (content.type === 'mcq_single') {
-          setAnswer({ type: 'mcq_single', selected: opt.key });
-        } else {
-          const sel = new Set(currentAnswer?.type === 'mcq_multi' ? currentAnswer.selected : []);
-          if (sel.has(opt.key)) sel.delete(opt.key);
-          else sel.add(opt.key);
-          setAnswer({ type: 'mcq_multi', selected: content.options.filter((o) => sel.has(o.key)).map((o) => o.key) });
+      const key = e.key;
+      const commands: Record<string, () => void> = {
+        z: () => setFocusMode(!focus),
+        Z: () => setFocusMode(!focus),
+        '+': () => changeFont(1),
+        '=': () => changeFont(1),
+        '-': () => changeFont(-1),
+        _: () => changeFont(-1),
+        ']': () => goToPart(sectionIdx + 1),
+        '[': () => goToPart(sectionIdx - 1),
+        ArrowRight: () => goTo(state.currentIndex + 1),
+        ArrowLeft: () => goTo(state.currentIndex - 1),
+        f: () => toggleFlagFor(current),
+        F: () => toggleFlagFor(current),
+      };
+      if (key === 'Escape') {
+        if (focus) {
+          e.preventDefault();
+          setFocusMode(false);
         }
+        return;
+      }
+      const command = commands[key];
+      if (command) {
+        e.preventDefault();
+        command();
+        return;
+      }
+      if (!content || (content.type !== 'mcq_single' && content.type !== 'mcq_multi') || isLocked(current.question_id)) return;
+      const k = key.toUpperCase();
+      const idx = /^[1-9]$/.test(k) ? Number(k) - 1 : /^[A-J]$/.test(k) ? k.charCodeAt(0) - 65 : -1;
+      const opt = idx >= 0 ? content.options[idx] : undefined;
+      if (!opt) return;
+      e.preventDefault();
+      if (content.type === 'mcq_single') {
+        setAnswerFor(current, { type: 'mcq_single', selected: opt.key });
+      } else {
+        const sel = new Set(currentAnswer?.type === 'mcq_multi' ? currentAnswer.selected : []);
+        if (sel.has(opt.key)) sel.delete(opt.key);
+        else sel.add(opt.key);
+        setAnswerFor(current, { type: 'mcq_multi', selected: content.options.filter((o) => sel.has(o.key)).map((o) => o.key) });
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [content, currentAnswer, goTo, gridOpen, setAnswer, state.currentIndex, submitOpen, toggleFlag]);
+  }, [changeFont, content, current, currentAnswer, focus, goTo, goToPart, gridOpen, isLocked, sectionIdx, setAnswerFor, setFocusMode, state.currentIndex, submitOpen, toggleFlagFor]);
 
+  // ---------------------------------------------------------------- Dữ liệu hiển thị
   const gridItems = React.useMemo(
-    () => questions.map((q, i) => ({ questionId: q.question_id, number: i + 1, answered: isAnswered(state.answers[q.question_id]), flagged: !!state.flags[q.question_id] })),
+    () => questions.map((q, i) => ({ questionId: q.question_id, number: i + 1, answered: isAnswered(state.answers[q.question_id]), flagged: !!state.flags[q.question_id], sectionCode: q.section_code })),
     [questions, state.answers, state.flags],
   );
+  const partItems = React.useMemo(() => ranges.map((r) => ({ code: r.code, total: r.end - r.start + 1, answered: gridItems.slice(r.start, r.end + 1).filter((g) => g.answered).length })), [gridItems, ranges]);
   const unanswered = countUnanswered(questions, state.answers);
-  const title = attempt.test_set && typeof attempt.test_set === 'object' && 'title' in attempt.test_set ? L(attempt.test_set.title as Record<string, string>) : t('examTitle');
-  const sectionLabel = sectionName(ts, current.section_code);
-  const audio = current.media.find((m) => m.kind === 'audio');
-  const listenPolicy = content && 'media' in content && content.media?.listen_policy === 'once' && isExam ? 'once' : 'free';
-  const flagged = !!state.flags[current.question_id];
+  const title = attempt.test_set && typeof attempt.test_set === 'object' && 'title' in attempt.test_set && attempt.test_set.title ? L(attempt.test_set.title as Record<string, string>) || t('examTitle') : t('examTitle');
+  const modeLabel =
+    attempt.mode === 'exam' ? t('examTitle') : attempt.mode === 'timed_drill' ? t('timedDrillTitle') : attempt.mode === 'diagnostic' ? t('diagnosticTitle') : attempt.mode === 'drill' ? t('drillTitle') : t('practiceTitle');
+  const bannerMode = closed ? null : !online ? 'offline' : saver.recovering && saver.pending > 0 ? 'syncing' : null;
+  const disabled = submit.isPending || clock.expired || closed;
+  const isLast = state.currentIndex >= questions.length - 1;
 
-  return (
-    <div className="flex min-h-dvh flex-col bg-background">
-      <ExamHeader
-        title={title}
-        sectionLabel={sectionLabel}
-        mode={attempt.mode}
-        remaining={clock.remaining}
-        tone={clock.tone}
-        announcement={clock.announcement}
-        saveStatus={saver.status}
-        pending={saver.pending}
-        onSubmit={() => setSubmitOpen(true)}
-        submitting={submit.isPending}
+  const blocks = groupItems.map(({ q, index }) => {
+    const qContent = asPublicContent(q.content);
+    const listenOnce = traits.examLike && qContent && 'media' in qContent && qContent.media?.listen_policy === 'once';
+    return (
+      <QuestionBlock
+        key={q.question_id}
+        question={q}
+        number={index + 1}
+        total={questions.length}
+        answer={state.answers[q.question_id] ?? null}
+        flagged={!!state.flags[q.question_id]}
+        current={index === state.currentIndex}
+        inGroup={inGroup}
+        onActivate={() => goTo(index)}
+        onAnswer={(a) => setAnswerFor(q, a)}
+        onToggleFlag={() => toggleFlagFor(q)}
+        disabled={disabled}
+        zoom={zoom}
+        badge={!traits.examLike ? <Badge variant="secondary">{modeLabel}</Badge> : null}
+        audio={{
+          policy: listenOnce ? 'once' : 'free',
+          played: playedAudio.has(q.question_id),
+          onPlayed: () => markPlayed(q.question_id),
+          onStarted: () => sendAttemptEvent(attempt.id, { type: 'audio_started', meta: { question_id: q.question_id } }),
+        }}
+        practice={
+          traits.feedback
+            ? {
+                feedback: feedback[q.question_id],
+                checking: !!checking[q.question_id],
+                locked: isLocked(q.question_id),
+                online,
+                onCheck: () => void requestFeedback(q.question_id),
+              }
+            : undefined
+        }
       />
+    );
+  });
 
-      {saver.status === 'offline' ? (
-        <div className="border-b border-accent/50 bg-accent/15" role="status">
-          <div className="mx-auto flex max-w-7xl items-center gap-2 px-4 py-2 text-sm sm:px-5">
-            <CloudOff className="size-4 shrink-0" aria-hidden />
-            {t('offlineQueued')}
+  const navRow = (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+      <Button variant="outline" onClick={() => goTo(state.currentIndex - 1)} disabled={state.currentIndex === 0} data-testid="prev-button">
+        <ChevronLeft aria-hidden />
+        {t('prev')}
+      </Button>
+      <p className="hidden text-center text-xs text-muted-foreground md:block">{t('keyboardHintExam')}</p>
+      {!isLast ? (
+        <Button variant="navy" onClick={() => goTo(state.currentIndex + 1)} data-testid="next-button">
+          {t('next')}
+          <ChevronRight aria-hidden />
+        </Button>
+      ) : (
+        <Button variant="gold" onClick={() => setSubmitOpen(true)} data-testid="next-button">
+          {t('submit')}
+        </Button>
+      )}
+    </div>
+  );
+
+  const questionsColumn = (
+    <div className="space-y-4">
+      {traits.feedback && state.currentIndex === 0 ? (
+        <Alert variant="info">
+          <AlertDescription>{t('practiceFeedbackHint')}</AlertDescription>
+        </Alert>
+      ) : null}
+      {blocks}
+      {navRow}
+    </div>
+  );
+
+  const highlight = markersInStem(content && 'stem' in content ? content.stem : null);
+  const rangeLabel = inGroup ? t('groupRange', { from: groupItems[0]!.index + 1, to: groupItems[groupItems.length - 1]!.index + 1 }) : undefined;
+  let body: React.ReactNode = questionsColumn;
+  if (passage && isDesktop) {
+    body = (
+      <SplitPane
+        data-testid="split-pane"
+        className="h-full"
+        ratio={splitLive ?? prefs.split}
+        min={SPLIT_MIN}
+        max={SPLIT_MAX}
+        onRatioChange={setSplitLive}
+        onRatioCommit={(r) => {
+          setSplitLive(null);
+          setPrefs({ split: r });
+        }}
+        separatorLabel={t('splitterLabel')}
+        startClassName="h-full"
+        endClassName="h-full overflow-y-auto pb-4 pl-2"
+        start={
+          // key theo nhóm: đổi nhóm → cuộn đoạn văn về đầu; cùng nhóm → giữ vị trí đang đọc
+          <div key={group?.key} className="h-full overflow-y-auto pr-2 pb-4">
+            <PassagePane passage={passage} zoom={zoom} highlight={highlight} rangeLabel={rangeLabel} className="min-h-full" />
+          </div>
+        }
+        end={questionsColumn}
+      />
+    );
+  } else if (passage) {
+    body = (
+      <div className="space-y-4">
+        <PassagePane passage={passage} zoom={zoom} highlight={highlight} rangeLabel={rangeLabel} collapsible collapsed={passageCollapsed} onToggle={() => setPassageCollapsed((c) => !c)} />
+        {questionsColumn}
+      </div>
+    );
+  }
+
+  // Desktop có đoạn văn: khung cố định theo chiều cao màn hình, hai khung cuộn riêng (header/banner co giãn tự nhiên)
+  const splitLayout = !!passage && isDesktop;
+  return (
+    <div className={cn('flex flex-col bg-background', splitLayout ? 'h-dvh overflow-hidden' : 'min-h-dvh', focus && 'pt-2')} data-testid="attempt-runner" data-focus={focus} data-mode={attempt.mode} data-store={saver.storeKind}>
+      {focus ? (
+        <FocusBar remaining={clock.remaining} tone={clock.tone} saveStatus={saver.status} pending={saver.pending} onExit={() => setFocusMode(false)} />
+      ) : (
+        <>
+          <ExamHeader
+            title={title}
+            sectionLabel={sectionLabel(current.section_code)}
+            modeLabel={modeLabel}
+            remaining={clock.remaining}
+            tone={clock.tone}
+            saveStatus={saver.status}
+            pending={saver.pending}
+            onSubmit={() => setSubmitOpen(true)}
+            submitting={submit.isPending}
+          />
+          <ExamToolbar font={prefs.font} onFont={changeFont} onFocus={() => setFocusMode(true)}>
+            {ranges.length > 1 ? <PartBar items={partItems} activeIndex={sectionIdx} onSelect={goToPart} /> : null}
+          </ExamToolbar>
+        </>
+      )}
+
+      {/* Thông báo cho trình đọc màn hình: mốc thời gian 10′/5′/1′, bật/tắt tập trung (không đọc từng giây) */}
+      <p className="sr-only" role="status" aria-live="polite" data-testid="attempt-live">
+        {liveMessage}
+      </p>
+
+      {bannerMode ? (
+        <div className={cn('border-b', bannerMode === 'offline' ? 'border-accent/50 bg-accent/15' : 'border-primary/30 bg-primary/10')} role="status" data-testid="offline-banner" data-mode={bannerMode}>
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 text-sm sm:px-5">
+            {bannerMode === 'offline' ? <CloudOff className="size-4 shrink-0" aria-hidden /> : <RefreshCw className="size-4 shrink-0 animate-spin" aria-hidden />}
+            <span>{bannerMode === 'offline' ? t('offlineQueued') : t('syncingBanner')}</span>
+            {saver.pending > 0 ? <span className="tabular text-xs text-muted-foreground">({t('pendingCount', { count: saver.pending })})</span> : null}
           </div>
         </div>
       ) : null}
 
-      <div className="mx-auto grid w-full max-w-7xl flex-1 content-start items-start gap-6 px-3 py-5 pb-28 sm:px-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:pb-8">
-        <div className={cn('grid content-start items-start gap-5', current.passage ? 'xl:grid-cols-2' : '')}>
-          {current.passage ? (
-            <section aria-label={t('passageTitle')} className="rounded-xl border border-border bg-card p-5 xl:sticky xl:top-20 xl:max-h-[calc(100dvh-7rem)] xl:overflow-y-auto">
-              {current.passage.title ? <h2 className="mb-3 text-base font-semibold">{current.passage.title}</h2> : null}
-              <div className="text-[15px] leading-relaxed whitespace-pre-wrap">{current.passage.body}</div>
-            </section>
-          ) : null}
-
-          <section aria-labelledby={`q-${current.question_id}-stem`} className="rounded-xl border border-border bg-card p-5 sm:p-6" data-testid="question-card">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className="tabular text-sm font-semibold text-muted-foreground">{t('questionOf', { current: state.currentIndex + 1, total: questions.length })}</span>
-                {!isExam ? <Badge variant="secondary">{t('practiceTitle')}</Badge> : null}
-              </div>
-              <Button variant={flagged ? 'gold' : 'outline'} size="sm" onClick={toggleFlag} aria-pressed={flagged} data-testid="flag-button">
-                <Flag className={cn(flagged && 'fill-current')} aria-hidden />
-                {flagged ? t('flagged') : t('flag')}
-              </Button>
-            </div>
-
-            {audio ? (
-              <AudioPlayer
-                key={current.question_id}
-                src={audio.url}
-                policy={listenPolicy}
-                played={playedAudio.has(current.question_id)}
-                onPlayed={() => markPlayed(current.question_id)}
-                onStarted={() => sendAttemptEvent(attempt.id, { type: 'audio_started', meta: { question_id: current.question_id } })}
-                autoPlay={false}
-                className="mb-4"
-              />
-            ) : null}
-
-            {content?.stem && content.type !== 'fill_blank' ? (
-              <p id={`q-${current.question_id}-stem`} className="mb-5 text-lg leading-relaxed font-medium">
-                {content.stem}
-              </p>
-            ) : (
-              <span id={`q-${current.question_id}-stem`} className="sr-only">
-                {t('questionNumber', { number: state.currentIndex + 1 })}
-              </span>
-            )}
-
-            {content ? <QuestionRenderer questionId={current.question_id} content={content} answer={currentAnswer} onChange={setAnswer} disabled={submit.isPending || clock.expired} /> : null}
-
-            {!isExam ? (
-              // Practice mode: Sprint 0 chưa có endpoint kiểm tra đáp án tức thì (client không được nhận answer_key).
-              // Sprint 3 sẽ bổ sung POST /attempts/{id}/check (hoặc tương đương) để hiện đúng/sai ngay sau khi chọn.
-              <Alert variant="info" className="mt-5">
-                <AlertDescription>{t('practiceSavedHint')}</AlertDescription>
-              </Alert>
-            ) : null}
-
-            <Separator className="my-5" />
-            <div className="flex items-center justify-between gap-3">
-              <Button variant="outline" onClick={() => goTo(state.currentIndex - 1)} disabled={state.currentIndex === 0} data-testid="prev-button">
-                <ChevronLeft aria-hidden />
-                {t('prev')}
-              </Button>
-              <p className="hidden text-xs text-muted-foreground md:block">{t('keyboardHint')}</p>
-              {state.currentIndex < questions.length - 1 ? (
-                <Button variant="navy" onClick={() => goTo(state.currentIndex + 1)} data-testid="next-button">
-                  {t('next')}
-                  <ChevronRight aria-hidden />
-                </Button>
-              ) : (
-                <Button variant="gold" onClick={() => setSubmitOpen(true)} data-testid="next-button">
-                  {t('submit')}
-                </Button>
-              )}
-            </div>
-          </section>
+      {closed ? (
+        <div className="mx-auto w-full max-w-7xl px-3 pt-4 sm:px-5">
+          <Alert variant="destructive" data-testid="attempt-closed">
+            <AlertTitle>{t('closedTitle')}</AlertTitle>
+            <AlertDescription>{t('closedDesc')}</AlertDescription>
+          </Alert>
         </div>
+      ) : null}
 
-        <aside className="hidden lg:block">
-          <div className="sticky top-20 rounded-xl border border-border bg-card p-4">
-            <QuestionGrid items={gridItems} currentIndex={state.currentIndex} onSelect={goTo} />
-          </div>
-        </aside>
+      <div
+        className={cn(
+          'mx-auto grid w-full max-w-7xl flex-1 gap-6 px-3 py-4 pb-28 sm:px-5 lg:pb-6',
+          splitLayout ? 'min-h-0 grid-rows-[minmax(0,1fr)]' : 'content-start items-start',
+          !focus && 'lg:grid-cols-[minmax(0,1fr)_280px]',
+        )}
+      >
+        <div className={cn('min-w-0', splitLayout && 'h-full min-h-0')}>{body}</div>
+        {!focus ? (
+          <aside className={cn('hidden lg:block', splitLayout && 'min-h-0')}>
+            <div className={cn('overflow-y-auto rounded-xl border border-border bg-card p-4', splitLayout ? 'max-h-full' : 'sticky top-28 max-h-[calc(100dvh-8rem)]')}>
+              <QuestionGrid items={gridItems} currentIndex={state.currentIndex} onSelect={goTo} />
+            </div>
+          </aside>
+        ) : null}
       </div>
 
       {/* Thanh điều hướng mobile */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 backdrop-blur lg:hidden">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2">
-          <Button variant="ghost" size="sm" onClick={() => goTo(state.currentIndex - 1)} disabled={state.currentIndex === 0} aria-label={t('prev')}>
-            <ChevronLeft aria-hidden />
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setGridOpen(true)} aria-label={t('gridOpen')}>
-            <LayoutGrid aria-hidden />
-            <span className="tabular">{t('progress', { answered: questions.length - unanswered, total: questions.length })}</span>
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => goTo(state.currentIndex + 1)} disabled={state.currentIndex >= questions.length - 1} aria-label={t('next')}>
-            <ChevronRight aria-hidden />
-          </Button>
+      {!focus ? (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 backdrop-blur lg:hidden">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2">
+            <Button variant="ghost" size="sm" onClick={() => goTo(state.currentIndex - 1)} disabled={state.currentIndex === 0} aria-label={t('prev')}>
+              <ChevronLeft aria-hidden />
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setGridOpen(true)} aria-label={t('gridOpen')}>
+              <LayoutGrid aria-hidden />
+              <span className="tabular">{t('progress', { answered: questions.length - unanswered, total: questions.length })}</span>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => goTo(state.currentIndex + 1)} disabled={isLast} aria-label={t('next')}>
+              <ChevronRight aria-hidden />
+            </Button>
+          </div>
         </div>
-      </div>
+      ) : null}
       <Dialog open={gridOpen} onOpenChange={setGridOpen} side="bottom">
         <DialogContent>
           <DialogHeader>
@@ -344,14 +623,15 @@ function AttemptRunner({ attempt }: { attempt: Attempt }) {
         </DialogContent>
       </Dialog>
 
-      <SubmitDialog open={submitOpen} onOpenChange={setSubmitOpen} unanswered={unanswered} onConfirm={() => void doSubmit()} submitting={submit.isPending} error={submit.error} forced={forced} />
+      <SubmitDialog
+        open={submitOpen}
+        onOpenChange={setSubmitOpen}
+        unanswered={unanswered}
+        onConfirm={() => void doSubmit()}
+        submitting={submit.isPending}
+        error={submit.error ?? (syncBlocked ? new TypeError('draft not synced') : null)}
+        forced={forced}
+      />
     </div>
   );
 }
-
-function sectionName(ts: ReturnType<typeof useTranslations<'sections'>>, code: string): string | null {
-  const known = ['part1', 'part2', 'part3', 'part4', 'part5', 'part6', 'part7', 'listening', 'reading'] as const;
-  return (known as readonly string[]).includes(code) ? ts(code as (typeof known)[number]) : code;
-}
-
-export type { QuestionPublic };

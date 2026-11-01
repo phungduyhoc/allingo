@@ -11,16 +11,23 @@ export interface ExamClock {
   announcement: number | null;
 }
 
-/** Đồng hồ đếm ngược theo server_time/expires_at; gọi onExpire đúng một lần khi về 0 */
-export function useExamClock(expiresAt: string | null, serverTime: string, onExpire?: () => void): ExamClock {
+export interface ExamClockHandlers {
+  /** Gọi đúng một lần khi về 0 */
+  onExpire?: () => void;
+  /** Gọi mỗi khi vượt mốc cảnh báo (phút còn lại) – hiển thị toast */
+  onWarning?: (minutes: number) => void;
+}
+
+/** Đồng hồ đếm ngược theo server_time/expires_at (không tin đồng hồ máy khách) */
+export function useExamClock(expiresAt: string | null, serverTime: string, handlers: ExamClockHandlers = {}): ExamClock {
   const offset = React.useMemo(() => computeClockOffset(serverTime), [serverTime]);
   const [remainingState, setRemainingState] = React.useState<number | null>(() => remainingMs(expiresAt, offset));
   const [announcement, setAnnouncement] = React.useState<number | null>(null);
   const expiredRef = React.useRef(false);
-  const onExpireRef = React.useRef(onExpire);
+  const handlersRef = React.useRef(handlers);
   React.useEffect(() => {
-    onExpireRef.current = onExpire;
-  }, [onExpire]);
+    handlersRef.current = handlers;
+  }, [handlers]);
 
   React.useEffect(() => {
     if (!expiresAt) return;
@@ -28,12 +35,15 @@ export function useExamClock(expiresAt: string | null, serverTime: string, onExp
     const tick = () => {
       const next = remainingMs(expiresAt, offset);
       const mark = crossedAnnouncement(prev, next);
-      if (mark !== null) setAnnouncement(mark);
+      if (mark !== null) {
+        setAnnouncement(mark);
+        handlersRef.current.onWarning?.(mark);
+      }
       prev = next;
       setRemainingState(next);
       if (next !== null && next <= 0 && !expiredRef.current) {
         expiredRef.current = true;
-        onExpireRef.current?.();
+        handlersRef.current.onExpire?.();
       }
     };
     const id = window.setInterval(tick, 1000);

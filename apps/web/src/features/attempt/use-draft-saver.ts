@@ -2,15 +2,23 @@
 
 import * as React from 'react';
 import { saveAnswers } from '@/lib/queries';
+import { getErrorStatus } from '@/lib/errors';
 import { DraftQueue, type DraftEntry, type DraftStatus } from './draft-queue';
+import { browserDraftStore, type DraftStoreKind } from './draft-store';
 import type { AttemptAnswersPut } from '@/lib/types';
 
 export interface DraftSaver {
   queue: DraftQueue;
+  /** Đã khôi phục nháp cục bộ (IndexedDB) – chỉ dựng màn hình làm bài sau khi ready */
+  ready: boolean;
   status: DraftStatus;
   lastSavedAt: number | null;
   pending: number;
-  enqueue: (entry: DraftEntry) => void;
+  /** Đã mất mạng/lỗi lưu và chưa đồng bộ lại xong – banner "Đang lưu lại…" */
+  recovering: boolean;
+  storeKind: DraftStoreKind | 'none';
+  /** `immediate`: gửi ngay không chờ debounce (Practice cần phản hồi đúng/sai tức thì) */
+  enqueue: (entry: DraftEntry, opts?: { immediate?: boolean }) => void;
   setMeta: (meta: { section_elapsed_sec?: Record<string, number>; ui_state?: AttemptAnswersPut['ui_state'] }) => void;
   /** Gửi ngay (khi đổi câu/nộp bài); nuốt lỗi – hàng đợi tự giữ lại */
   flushNow: () => Promise<void>;
@@ -19,21 +27,38 @@ export interface DraftSaver {
 const AUTOSAVE_MS = 10_000;
 const DEBOUNCE_MS = 800;
 
+export interface DraftSaverOptions {
+  enabled: boolean;
+  /** Server từ chối lưu vì bài đã đóng (409: hết giờ + ân hạn 30 s, hoặc đã nộp) – gọi một lần */
+  onClosed?: (error: unknown) => void;
+}
+
 /**
  * Kết nối DraftQueue với vòng đời trang: tự lưu mỗi 10 s, debounce khi vừa đổi đáp án,
- * flush khi ẩn tab/đóng trang, gửi lại khi có mạng trở lại.
+ * flush khi ẩn tab/đóng trang, gửi lại khi có mạng trở lại. Nháp chưa gửi nằm trong IndexedDB (fallback bộ nhớ).
  */
-export function useDraftSaver(attemptId: string, enabled: boolean): DraftSaver {
+export function useDraftSaver(attemptId: string, { enabled, onClosed }: DraftSaverOptions): DraftSaver {
   const [status, setStatus] = React.useState<DraftStatus>('idle');
   const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null);
   const [pending, setPending] = React.useState(0);
+  const [ready, setReady] = React.useState(false);
+  const [recovering, setRecovering] = React.useState(false);
+  const onClosedRef = React.useRef(onClosed);
+  React.useEffect(() => {
+    onClosedRef.current = onClosed;
+  }, [onClosed]);
+
   const queue = React.useMemo(
     () =>
       new DraftQueue({
         attemptId,
         flush: (body) => saveAnswers(attemptId, body),
-        storage: typeof window === 'undefined' ? null : window.localStorage,
+        isClosedError: (err) => getErrorStatus(err) === 409,
+        store: typeof window === 'undefined' ? null : browserDraftStore(),
+        legacyStorage: legacyLocalStorage(),
         onStatus: (s, info) => {
+          if (s === 'offline' || s === 'error') setRecovering(true);
+          else if (s === 'saved') setRecovering(false);
           setStatus(s);
           setLastSavedAt(info.lastSavedAt);
           setPending(info.pending);
@@ -43,11 +68,27 @@ export function useDraftSaver(attemptId: string, enabled: boolean): DraftSaver {
   );
   const debounceRef = React.useRef<number | null>(null);
 
+  // 409 khi lưu → báo nơi dùng (nộp & chuyển trang)
+  React.useEffect(() => queue.onClosed((err) => onClosedRef.current?.(err)), [queue]);
+
+  React.useEffect(() => {
+    let alive = true;
+    void queue.ready.then(() => {
+      if (!alive) return;
+      setPending(queue.pendingCount);
+      setReady(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [queue]);
+
   const flushNow = React.useCallback(async () => {
     if (debounceRef.current) {
       window.clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    if (queue.closed) return;
     try {
       await queue.flush();
     } catch {
@@ -61,31 +102,37 @@ export function useDraftSaver(attemptId: string, enabled: boolean): DraftSaver {
   }, [flushNow]);
 
   const enqueue = React.useCallback(
-    (entry: DraftEntry) => {
+    (entry: DraftEntry, opts?: { immediate?: boolean }) => {
       queue.enqueue(entry);
       setPending(queue.pendingCount);
-      scheduleDebounced();
+      if (opts?.immediate) void flushNow();
+      else scheduleDebounced();
     },
-    [queue, scheduleDebounced],
+    [flushNow, queue, scheduleDebounced],
   );
 
   const setMeta = React.useCallback((meta: Parameters<DraftQueue['setMeta']>[0]) => queue.setMeta(meta), [queue]);
 
   React.useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !ready) return;
     const interval = window.setInterval(() => void flushNow(), AUTOSAVE_MS);
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') void flushNow();
     };
     const onOnline = () => void flushNow();
+    const onOffline = () => {
+      setRecovering(true);
+      if (queue.hasPending) setStatus('offline');
+    };
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (queue.hasPending) {
-        void flushNow();
-        e.preventDefault();
-      }
+      if (!queue.hasPending || queue.closed) return;
+      void flushNow();
+      // Nháp đã nằm bền trong IndexedDB → không cần hỏi; chỉ cảnh báo khi đang dùng bộ nhớ (mất khi đóng tab)
+      if (queue.storeKind !== 'indexeddb') e.preventDefault();
     };
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
     window.addEventListener('pagehide', onVisibility);
     window.addEventListener('beforeunload', onBeforeUnload);
     // Nháp còn tồn từ phiên trước (offline) → gửi ngay
@@ -94,11 +141,36 @@ export function useDraftSaver(attemptId: string, enabled: boolean): DraftSaver {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
       window.removeEventListener('pagehide', onVisibility);
       window.removeEventListener('beforeunload', onBeforeUnload);
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
     };
-  }, [enabled, flushNow, queue]);
+  }, [enabled, flushNow, queue, ready]);
 
-  return { queue, status, lastSavedAt, pending, enqueue, setMeta, flushNow };
+  return { queue, ready, status, lastSavedAt, pending, recovering, storeKind: ready ? queue.storeKind : 'none', enqueue, setMeta, flushNow };
+}
+
+function legacyLocalStorage(): Pick<Storage, 'getItem' | 'removeItem'> | null {
+  try {
+    return typeof window === 'undefined' ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** Trạng thái mạng của trình duyệt (navigator.onLine + sự kiện online/offline) */
+export function useOnlineStatus(): boolean {
+  return React.useSyncExternalStore(
+    (cb) => {
+      window.addEventListener('online', cb);
+      window.addEventListener('offline', cb);
+      return () => {
+        window.removeEventListener('online', cb);
+        window.removeEventListener('offline', cb);
+      };
+    },
+    () => navigator.onLine,
+    () => true,
+  );
 }

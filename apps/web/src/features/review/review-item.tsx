@@ -7,23 +7,8 @@ import { Badge, cn } from '@allingo/ui';
 import { asPublicContent, type AnswerInput, type ReviewItem as ReviewItemT } from '@/lib/types';
 import { QuestionRenderer } from '@/features/attempt/question-renderer';
 import { AudioPlayer } from '@/features/attempt/audio-player';
+import { formatAnswer } from '@/lib/format-answer';
 import { ExplainPanel } from './explain-panel';
-
-function formatAnswer(a: unknown): string {
-  if (a === null || a === undefined) return '';
-  if (typeof a === 'string') return a;
-  if (Array.isArray(a)) return a.map(formatAnswer).join(', ');
-  if (typeof a === 'object') {
-    const o = a as Record<string, unknown>;
-    if ('selected' in o) return formatAnswer(o.selected);
-    if ('values' in o) return formatAnswer(o.values);
-    if ('blanks' in o) return formatAnswer(o.blanks);
-    return Object.entries(o)
-      .map(([k, v]) => `${k}: ${Array.isArray(v) ? (v as unknown[]).map(String).join('/') : String(v)}`)
-      .join('; ');
-  }
-  return typeof a === 'number' || typeof a === 'boolean' ? String(a) : '';
-}
 
 export function ReviewItemCard({ item, number, attemptId }: { item: ReviewItemT; number: number; attemptId: string }) {
   const t = useTranslations('review');

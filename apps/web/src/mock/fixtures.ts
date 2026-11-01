@@ -361,7 +361,130 @@ export const FULL_TEST_LOCKED: MockTestSet = {
   questions: [],
 };
 
-export const MOCK_TEST_SETS: MockTestSet[] = [PART5_MINI, PART2_MINI, MIXED_DRILL, FULL_TEST_LOCKED];
+/** Câu trắc nghiệm có đoạn văn (Part 6–7) – đánh số câu theo đề mini Reading bên dưới */
+const passageMcq = (
+  n: number,
+  section: 'part5' | 'part6' | 'part7',
+  passage: MockQuestion['passage'],
+  groupKey: string | null,
+  stem: string,
+  options: [string, string, string, string],
+  correct: 'A' | 'B' | 'C' | 'D',
+  explanation: { vi: string; en: string },
+  tags: string[],
+  rate: number,
+): MockQuestion => ({
+  question_id: uid(400 + n, 'aaaa'),
+  question_version_id: uid(400 + n, 'bbbb'),
+  section_code: section,
+  group_key: groupKey,
+  order_no: n,
+  content: {
+    type: 'mcq_single',
+    stem,
+    options: options.map((text, i) => ({ key: String.fromCharCode(65 + i), text })),
+    answer_key: { correct },
+    explanation,
+    tags,
+  },
+  media: [],
+  passage,
+  community_correct_rate: rate,
+});
+
+const P6_PASSAGE = {
+  id: uid(2, 'eeee'),
+  kind: 'email',
+  title: 'E-mail: Office move',
+  body: `To: All staff
+From: Daniel Huynh, Office Manager
+Subject: Office move
+
+Dear colleagues,
+
+Our team will move to the fourth floor of the Harbor Building on Monday, 2 June. Please pack your personal items [4] Friday afternoon so that the movers can begin work on time.
+
+Boxes and labels are available in the supply room. [5], please write your name and new desk number on each box.
+
+The IT department will reconnect all computers over the weekend. [6] If your equipment is not working on Monday morning, contact the help desk immediately.
+
+Thank you for your [7] during this busy week.
+
+Daniel Huynh`,
+  media_url: null,
+};
+
+const P7_PASSAGE = {
+  id: uid(3, 'eeee'),
+  kind: 'double',
+  title: 'Notice + E-mail',
+  body: `[Notice]
+Riverside Community Library – Summer Hours
+
+From 1 July to 31 August, the library will open at 9:00 A.M. and close at 6:00 P.M. on weekdays. On Saturdays, the library will close at 1:00 P.M. The library will be closed on Sundays during the summer.
+
+[E-mail]
+From: Mai Linh Tran
+To: Riverside Community Library
+Date: 3 July
+Subject: Study room booking
+
+Hello,
+
+I would like to book a study room for a group of five students on Saturday, 12 July, from 11:00 A.M. to 3:00 P.M. Could you let me know whether a room is available?
+
+Thank you,
+Mai Linh Tran`,
+  media_url: null,
+};
+
+/** Đề mini Reading 3 Part (5–6–7) để thử thanh Part, đoạn văn chia đôi màn hình, nhóm câu chung đoạn văn (Sprint 3) */
+export const READING_MINI: MockTestSet = {
+  id: uid(5, 'cccc'),
+  code: 'toeic-reading-mini-01',
+  title: { vi: 'TOEIC Reading mini · 3 phần (P5–P7)', en: 'TOEIC Reading mini · three Parts (P5–P7)' },
+  kind: 'mini',
+  level: null,
+  is_free: true,
+  locked: false,
+  duration_sec: 600,
+  question_count: 10,
+  sections: [
+    { code: 'part5', skill: 'reading', name: { vi: 'Part 5 · Hoàn thành câu', en: 'Part 5 · Incomplete Sentences' }, duration_sec: 120, question_count: 3 },
+    { code: 'part6', skill: 'reading', name: { vi: 'Part 6 · Hoàn thành đoạn', en: 'Part 6 · Text Completion' }, duration_sec: 180, question_count: 4 },
+    { code: 'part7', skill: 'reading', name: { vi: 'Part 7 · Đọc hiểu', en: 'Part 7 · Reading Comprehension' }, duration_sec: 300, question_count: 3 },
+  ],
+  questions: [
+    passageMcq(1, 'part5', null, null, 'The quarterly report ______ to all department heads before the meeting on Friday.', ['was distributed', 'distributing', 'distribute', 'to distribute'], 'A', { vi: 'Báo cáo "được phân phát" → bị động quá khứ "was distributed".', en: 'The report receives the action → past passive "was distributed".' }, ['grammar:verb-form'], 62),
+    passageMcq(2, 'part5', null, null, 'Ms. Okafor asked the supplier to send the samples ______ possible.', ['as soon as', 'so that', 'even if', 'in case'], 'A', { vi: 'Cụm cố định "as soon as possible" = càng sớm càng tốt.', en: 'Fixed phrase "as soon as possible".' }, ['grammar:conjunction'], 80),
+    passageMcq(3, 'part5', null, null, 'Our new branch office is conveniently located ______ the central train station.', ['near', 'among', 'onto', 'during'], 'A', { vi: '"located near" = nằm gần; "among" cần danh từ số nhiều.', en: '"located near" = close to; "among" needs a plural noun.' }, ['grammar:preposition'], 77),
+    passageMcq(4, 'part6', P6_PASSAGE, 'mock-p6-office-move', 'Choose the best option for blank [4].', ['by', 'until', 'since', 'within'], 'A', { vi: '"by + mốc thời gian" = chậm nhất vào lúc đó.', en: '"by + time" = no later than that time.' }, ['grammar:preposition'], 58),
+    passageMcq(5, 'part6', P6_PASSAGE, 'mock-p6-office-move', 'Choose the best option for blank [5].', ['In addition', 'However', 'Otherwise', 'For instance'], 'A', { vi: 'Bổ sung thêm một yêu cầu → "In addition".', en: 'Adds a further instruction → "In addition".' }, ['grammar:connector'], 51),
+    passageMcq(6, 'part6', P6_PASSAGE, 'mock-p6-office-move', 'Choose the sentence that best fits blank [6].', ['No action is required from you during this process.', 'The fourth floor was renovated last year.', 'Please return your laptop to the supply room.', 'The movers will arrive on Thursday.'], 'A', { vi: 'Câu trước nói IT tự kết nối lại máy → nhân viên không cần làm gì.', en: 'IT reconnects everything → staff need not do anything.' }, ['reading:inference'], 43),
+    passageMcq(7, 'part6', P6_PASSAGE, 'mock-p6-office-move', 'Choose the best option for blank [7].', ['cooperation', 'cooperate', 'cooperative', 'cooperatively'], 'A', { vi: 'Sau tính từ sở hữu "your" cần danh từ → "cooperation".', en: 'A noun is needed after "your" → "cooperation".' }, ['grammar:word-form'], 69),
+    passageMcq(8, 'part7', P7_PASSAGE, 'mock-p7-library', 'What is the purpose of the notice?', ['To announce temporary opening hours', 'To advertise a new study room', 'To request volunteers', 'To explain a membership fee'], 'A', { vi: 'Thông báo nêu giờ mở cửa mùa hè (1/7–31/8).', en: 'The notice gives summer opening hours (1 July–31 August).' }, ['reading:main-idea'], 84),
+    passageMcq(9, 'part7', P7_PASSAGE, 'mock-p7-library', 'Why will Ms. Tran most likely need to change her booking?', ['The library closes before 3:00 P.M. on Saturdays.', 'Study rooms hold only four people.', 'The library is closed in July.', 'She asked for a Sunday.'], 'A', { vi: 'Thứ Bảy thư viện đóng cửa lúc 1:00 chiều, cô ấy đặt tới 3:00 chiều (kết hợp hai văn bản).', en: 'On Saturdays the library closes at 1:00 P.M. but she booked until 3:00 P.M. (combine both texts).' }, ['reading:inference'], 47),
+    passageMcq(10, 'part7', P7_PASSAGE, 'mock-p7-library', 'What is indicated about the library?', ['It is closed on Sundays in the summer.', 'It opens at 8:00 A.M. on weekdays.', 'It offers free laptops.', 'It moved to a new building.'], 'A', { vi: 'Câu cuối của thông báo: đóng cửa Chủ nhật trong mùa hè.', en: 'Last sentence of the notice: closed on Sundays during the summer.' }, ['reading:detail'], 73),
+  ],
+};
+
+export const MOCK_TEST_SETS: MockTestSet[] = [PART5_MINI, PART2_MINI, MIXED_DRILL, FULL_TEST_LOCKED, READING_MINI];
+
+/** Ánh xạ tag fixture → mã kỹ năng con của seed core (catalog.subskills) để chẩn đoán mock dùng nhãn i18n thật */
+export const MOCK_SUBSKILL_OF_TAG: Record<string, string> = {
+  'grammar:tense': 'verb_tense',
+  'grammar:verb-form': 'verb_tense',
+  'grammar:preposition': 'preposition',
+  'grammar:word-form': 'word_form',
+  'grammar:conjunction': 'conjunction',
+  'grammar:connector': 'conjunction',
+  'grammar:pronoun': 'pronoun',
+  'vocab:collocation': 'vocabulary_context',
+  'reading:main-idea': 'paraphrase_recognition',
+  'reading:detail': 'detail',
+  'reading:inference': 'inference',
+  'listening:part2': 'wh_question',
+};
 
 export const MOCK_PROGRAMS = [
   { code: 'toeic', name: { vi: 'TOEIC', en: 'TOEIC' }, score_scale: { min: 10, max: 990, step: 5 }, languages: ['en'] },

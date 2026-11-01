@@ -26,8 +26,10 @@ export interface MockAttemptRecord {
   answers: Record<string, MockAnswerRecord>;
   section_elapsed_sec: Record<string, number>;
   ui_state: Record<string, unknown>;
-  events: { type: string; at: string }[];
+  events: { type: string; at: string; meta?: Record<string, unknown> }[];
   result: AttemptResult | null;
+  /** Lượt luyện (GET /practice/questions): tập câu chọn từ nhiều đề, thay cho toàn bộ câu của test_set_id */
+  question_ids?: string[];
 }
 
 export interface MockState {

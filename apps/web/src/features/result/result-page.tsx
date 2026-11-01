@@ -9,6 +9,8 @@ import { Link } from '@/i18n/navigation';
 import { useAttemptResult } from '@/lib/queries';
 import { CardSkeleton, ErrorState } from '@/components/states';
 import { PageHeader } from '@/components/page-header';
+import { DiagnosisCard } from './diagnosis-card';
+import { parseDiagnosis, scaleView } from './diagnosis';
 
 const SectionChart = dynamic(() => import('./section-chart'), { ssr: false, loading: () => <Skeleton className="h-56 w-full" /> });
 
@@ -48,7 +50,9 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
 
   const r = result.data;
   const total = Object.values(r.by_section).reduce((s, x) => s + x.total, 0);
-  const unanswered = typeof r.scale.unanswered === 'number' ? r.scale.unanswered : null;
+  const diagnosis = parseDiagnosis(r.diagnosis);
+  const unanswered = diagnosis ? diagnosis.unanswered : typeof r.scale.unanswered === 'number' ? r.scale.unanswered : null;
+  const scale = scaleView(r);
   const delta = r.compared_to_previous?.scaled_delta ?? null;
 
   return (
@@ -83,6 +87,11 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
             ) : (
               <p className="text-sm text-white/80">{t('scaledUnavailable')}</p>
             )}
+            {r.scaled_score !== null && scale ? (
+              <p className="mt-2 text-sm font-medium text-white/90" data-testid="scale-range">
+                {scale.kind === 'total' ? t('scaleRangeTotal', { min: scale.min, max: scale.max }) : t('scaleRangeSkill', { skill: ts(scale.skill ?? 'reading'), min: scale.min, max: scale.max })}
+              </p>
+            ) : null}
             <p className="mt-3 text-xs leading-relaxed text-white/70">{t('estimatedNote')}</p>
           </CardContent>
         </Card>
@@ -117,6 +126,8 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
           </CardContent>
         </Card>
       </div>
+
+      {diagnosis ? <DiagnosisCard diagnosis={diagnosis} /> : null}
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
         <Card>

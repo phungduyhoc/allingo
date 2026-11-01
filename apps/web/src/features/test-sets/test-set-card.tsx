@@ -14,7 +14,7 @@ export function TestSetCard({ summary, onOpen, busy, compact = false }: { summar
 
   return (
     <article
-      className={cn('group relative flex flex-col gap-3 rounded-xl border border-border bg-card p-4 transition-colors sm:p-5', locked ? 'opacity-80' : 'hover:border-navy/40 dark:hover:border-accent/50')}
+      className={cn('group relative flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-card p-4 transition-colors sm:p-5', locked ? 'opacity-80' : 'hover:border-navy/40 dark:hover:border-accent/50')}
       data-testid={`test-set-${summary.code}`}
       aria-disabled={locked}
     >
@@ -30,7 +30,7 @@ export function TestSetCard({ summary, onOpen, busy, compact = false }: { summar
               </Badge>
             ) : null}
           </div>
-          <h3 className="mt-2 truncate text-base font-semibold sm:text-lg">{L(summary.title)}</h3>
+          <h3 className="mt-2 line-clamp-2 text-base font-semibold break-words sm:text-lg">{L(summary.title)}</h3>
         </div>
       </div>
       <dl className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">

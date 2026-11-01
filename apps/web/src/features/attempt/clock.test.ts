@@ -34,4 +34,24 @@ describe('clock', () => {
     expect(crossedAnnouncement(5 * 60_000 - 500, 5 * 60_000 - 1500)).toBeNull();
     expect(crossedAnnouncement(null, 1000)).toBeNull();
   });
+
+  it('mốc cảnh báo 10′/5′/1′: đúng một lần mỗi mốc, nhảy cóc báo mốc nhỏ nhất, hết giờ không báo', () => {
+    const marks: number[] = [];
+    // Mô phỏng đồng hồ chạy từng giây từ 10:03 → 0
+    let prev = 10 * 60_000 + 3_000;
+    for (let ms = prev - 1000; ms >= 0; ms -= 1000) {
+      const m = crossedAnnouncement(prev, ms);
+      if (m !== null) marks.push(m);
+      prev = ms;
+    }
+    expect(marks).toEqual([10, 5, 1]);
+    // Tab ẩn từ 11′ tới 4′ → chỉ báo 5′ (không báo 10′ đã cũ)
+    expect(crossedAnnouncement(11 * 60_000, 4 * 60_000)).toBe(5);
+    // Ngủ máy qua cả 3 mốc nhưng chưa hết giờ → 1′
+    expect(crossedAnnouncement(12 * 60_000, 30_000)).toBe(1);
+    // Về 0 → không phải mốc cảnh báo (luồng tự nộp lo)
+    expect(crossedAnnouncement(61_000, 0)).toBeNull();
+    // Mốc tuỳ chỉnh
+    expect(crossedAnnouncement(3 * 60_000, 119_000, [2])).toBe(2);
+  });
 });

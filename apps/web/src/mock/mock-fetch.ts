@@ -1,7 +1,9 @@
 import {
+  ATTEMPT_GRACE_SECONDS,
   DEFAULT_QUOTAS,
   XP_RULES,
   answerInputSchema,
+  attemptEventSchema,
   correctAnswerOf,
   grade,
   isAnswered,
@@ -16,9 +18,9 @@ import {
   type Stats,
   type User,
 } from '@allingo/schemas';
-import { SCALE_INFO, TOEIC_PART_SKILL, toeicLr } from '@allingo/scoring';
+import { SCALE_INFO, TOEIC_PART_SKILL, diagnoseAttempt, toeicLr } from '@allingo/scoring';
 import { env } from '@/env';
-import { MOCK_PROGRAMS, MOCK_TEST_SETS, type MockQuestion, type MockTestSet } from './fixtures';
+import { MOCK_PROGRAMS, MOCK_SUBSKILL_OF_TAG, MOCK_TEST_SETS, type MockQuestion, type MockTestSet } from './fixtures';
 import { loadState, saveState, type MockAttemptRecord, type MockState, type MockUserRecord } from './state';
 
 /**
@@ -75,7 +77,18 @@ export function createMockFetch(): typeof fetch {
   const persist = () => saveState(state);
 
   const findTestSet = (id: string): MockTestSet | undefined => MOCK_TEST_SETS.find((t) => t.id === id);
-  const questionsOf = (a: MockAttemptRecord): MockQuestion[] => findTestSet(a.test_set_id)?.questions ?? [];
+  const allQuestions = (): MockQuestion[] => MOCK_TEST_SETS.flatMap((t) => t.questions);
+  const questionsOf = (a: MockAttemptRecord): MockQuestion[] => {
+    if (!a.question_ids) return findTestSet(a.test_set_id)?.questions ?? [];
+    // Lượt luyện: câu từ nhiều đề → đánh số lại 1..n như snapshot question_order của API
+    const byId = new Map(allQuestions().map((q) => [q.question_id, q]));
+    return a.question_ids.flatMap((id, i) => {
+      const q = byId.get(id);
+      return q ? [{ ...q, order_no: i + 1 }] : [];
+    });
+  };
+  const FEEDBACK_MODES: ReadonlySet<string> = new Set(['practice', 'drill']);
+  const subskillsOf = (q: MockQuestion): string[] => [...new Set((q.content.tags ?? []).map((tag) => MOCK_SUBSKILL_OF_TAG[tag]).filter((x): x is string => !!x))];
 
   const currentUser = (): MockUserRecord | null => (state.sessionUserId ? (state.users[state.sessionUserId] ?? null) : null);
   const requireUser = (): MockUserRecord | Response => currentUser() ?? error(401, 'unauthorized', 'Session expired');
@@ -110,11 +123,11 @@ export function createMockFetch(): typeof fetch {
       program: a.program as Attempt['program'],
       mode: a.mode,
       status: a.status,
-      test_set: ts ? { id: ts.id, code: ts.code, title: ts.title, kind: ts.kind, question_count: ts.question_count, duration_sec: ts.duration_sec } : null,
-      sections: (ts?.sections ?? []).map((s) => ({
-        section_code: s.code,
-        duration_sec: a.mode === 'practice' ? null : s.duration_sec,
-        elapsed_sec: a.section_elapsed_sec[s.code] ?? 0,
+      test_set: ts && !a.question_ids ? { id: ts.id, code: ts.code, title: ts.title, kind: ts.kind, question_count: ts.question_count, duration_sec: ts.duration_sec } : null,
+      sections: [...new Set(qs.map((q) => q.section_code))].map((code) => ({
+        section_code: code,
+        duration_sec: FEEDBACK_MODES.has(a.mode) || a.question_ids ? null : (ts?.sections.find((s) => s.code === code)?.duration_sec ?? null),
+        elapsed_sec: a.section_elapsed_sec[code] ?? 0,
         locked: false,
       })),
       questions: qs.map((q) => ({
@@ -133,6 +146,19 @@ export function createMockFetch(): typeof fetch {
       expires_at: a.expires_at,
       server_time: nowIso(),
       ui_state: a.ui_state,
+      // Practice/drill: đáp án + đúng/sai + giải thích tác giả cho câu ĐÃ trả lời (exam/timed không bao giờ có)
+      ...(FEEDBACK_MODES.has(a.mode)
+        ? {
+            feedback: Object.fromEntries(
+              qs.flatMap((q) => {
+                const rec = a.answers[q.question_id];
+                if (!rec || !isAnswered(rec.answer)) return [];
+                const g = grade(q.content, rec.answer);
+                return [[q.question_id, { is_correct: g.is_correct, correct_answer: correctAnswerOf(q.content), explanation: q.content.explanation ? { ...q.content.explanation } : null }]];
+              }),
+            ),
+          }
+        : {}),
     };
   };
 
@@ -175,6 +201,15 @@ export function createMockFetch(): typeof fetch {
     }
     const lr = toeicLr({ listening: listening.total ? listening : undefined, reading: reading.total ? reading : undefined });
     const scaled = lr.total ?? lr.listening ?? lr.reading;
+    // Chẩn đoán theo quy tắc như API (packages/scoring.diagnoseAttempt); hết giờ mới nộp → coi là tự nộp
+    const autoSubmitted = !!a.expires_at && Date.now() >= Date.parse(a.expires_at);
+    const diagnosis = diagnoseAttempt(
+      qs.map((q) => {
+        const rec = a.answers[q.question_id];
+        return { question_id: q.question_id, section_code: q.section_code, subskill_codes: subskillsOf(q), topic_code: null, answered: !!rec && isAnswered(rec.answer), is_correct: grade(q.content, rec?.answer ?? null).is_correct, time_ms: rec?.time_spent_ms ?? null };
+      }),
+      { autoSubmitted },
+    );
     const previous = Object.values(state.attempts)
       .filter((x) => x.user_id === a.user_id && x.id !== a.id && x.result && x.test_set_id === a.test_set_id)
       .sort((x, y) => (y.submitted_at ?? '').localeCompare(x.submitted_at ?? ''))[0];
@@ -184,7 +219,8 @@ export function createMockFetch(): typeof fetch {
       attempt_id: a.id,
       raw_score: correct,
       scaled_score: scaled,
-      scale: { ...SCALE_INFO.toeic, skills: { listening: lr.listening, reading: lr.reading }, ci: lr.ci, total_questions: qs.length, unanswered },
+      // Cùng dạng scale của API: listening/reading/total + partial (một kỹ năng → thang 5–495)
+      scale: { ...SCALE_INFO.toeic, listening: lr.listening, reading: lr.reading, total: lr.total, ci: lr.ci, partial: lr.total === null, total_questions: qs.length, unanswered },
       by_section: bySection,
       by_question_type: byType,
       by_subskill: bySubskill,
@@ -192,7 +228,7 @@ export function createMockFetch(): typeof fetch {
         previous && previous.result
           ? { scaled_delta: scaled !== null && previous.result.scaled_score !== null ? scaled - previous.result.scaled_score : null, previous_attempt_id: previous.id }
           : null,
-      diagnosis: null,
+      diagnosis: diagnosis as unknown as Record<string, unknown>,
       xp_earned: xp,
     };
   };
@@ -375,8 +411,14 @@ export function createMockFetch(): typeof fetch {
       const u = requireUser();
       if (u instanceof Response) return u;
       const program = url.searchParams.get('program');
+      const status = url.searchParams.get('status');
+      const mode = url.searchParams.get('mode');
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      const day = (iso: string) => iso.slice(0, 10);
       const data: AttemptSummary[] = Object.values(state.attempts)
         .filter((a) => a.user_id === u.id && (!program || a.program === program))
+        .filter((a) => (!status || a.status === status) && (!mode || a.mode === mode) && (!from || day(a.started_at) >= from) && (!to || day(a.started_at) <= to))
         .sort((x, y) => y.started_at.localeCompare(x.started_at))
         .map((a) => ({
           id: a.id,
@@ -487,6 +529,44 @@ export function createMockFetch(): typeof fetch {
       persist();
       return json(201, toAttemptDto(rec));
     }),
+    // Luyện theo Part (mock): lấy đề mini của Part; có từ khoá thì phải có câu khớp đề bài, nếu không 404
+    route('GET', '/practice/questions', ({ url }) => {
+      const u = requireUser();
+      if (u instanceof Response) return u;
+      const section = url.searchParams.get('section') ?? 'part5';
+      const q = (url.searchParams.get('q') ?? '').toLowerCase();
+      const count = Math.min(50, Math.max(1, Number(url.searchParams.get('count') ?? 10) || 10));
+      const timed = url.searchParams.get('timed') === 'true';
+      const t = MOCK_TEST_SETS.find((x) => x.questions.some((qq) => qq.section_code === section));
+      if (!t) return error(404, 'not_found', 'No questions');
+      // Câu của Part từ mọi đề (mock không có ngẫu nhiên để E2E ổn định), từ khoá lọc theo nội dung
+      const picked = allQuestions()
+        .filter((qq) => qq.section_code === section && (!q || JSON.stringify(qq.content).toLowerCase().includes(q)))
+        .slice(0, count);
+      if (!picked.length) return error(404, 'not_found', 'No questions');
+      const started = Date.now();
+      const rec: MockAttemptRecord = {
+        id: uuid(),
+        user_id: u.id,
+        test_set_id: t.id,
+        question_ids: picked.map((qq) => qq.question_id),
+        program: 'toeic',
+        mode: timed ? 'timed_drill' : 'drill',
+        status: 'in_progress',
+        started_at: new Date(started).toISOString(),
+        // Như API: tính giờ 45 giây/câu
+        expires_at: timed ? new Date(started + picked.length * 45_000).toISOString() : null,
+        submitted_at: null,
+        answers: {},
+        section_elapsed_sec: {},
+        ui_state: {},
+        events: [],
+        result: null,
+      };
+      state.attempts[rec.id] = rec;
+      persist();
+      return json(201, toAttemptDto(rec));
+    }),
     route('GET', '/attempts/{attemptId}', ({ params }) => {
       const u = requireUser();
       if (u instanceof Response) return u;
@@ -500,6 +580,8 @@ export function createMockFetch(): typeof fetch {
       const a = state.attempts[params.attemptId!];
       if (!a || a.user_id !== u.id) return error(404, 'not_found', 'Attempt not found');
       if (a.status !== 'in_progress') return error(409, 'conflict', 'Attempt already submitted');
+      // Quá hạn + ân hạn 30 s → 409 (như API)
+      if (a.expires_at && Date.now() > Date.parse(a.expires_at) + ATTEMPT_GRACE_SECONDS * 1000) return error(409, 'conflict', 'Attempt has expired', { expires_at: a.expires_at });
       const b = body as { answers?: { question_id: string; answer: unknown; time_spent_ms?: number; flagged?: boolean }[]; section_elapsed_sec?: Record<string, number>; ui_state?: Record<string, unknown> };
       for (const ans of b.answers ?? []) {
         const parsed = answerInputSchema.safeParse(ans.answer);
@@ -513,11 +595,12 @@ export function createMockFetch(): typeof fetch {
       return empty(204);
     }),
     route('POST', '/attempts/{attemptId}/events', ({ params, body }) => {
+      const parsed = attemptEventSchema.safeParse(body);
+      if (!parsed.success) return error(400, 'validation_failed', 'Invalid event', { issues: parsed.error.issues.map((i) => i.path.join('.')) });
       const a = state.attempts[params.attemptId!];
       if (a) {
-        const b = body as { type?: string; at?: string };
-        a.events.push({ type: b.type ?? 'unknown', at: b.at ?? nowIso() });
-        if (a.events.length > 200) a.events.shift();
+        a.events.push({ type: parsed.data.type, at: parsed.data.at ?? nowIso(), meta: parsed.data.meta });
+        if (a.events.length > 500) a.events.shift();
         persist();
       }
       return empty(202);
@@ -548,12 +631,17 @@ export function createMockFetch(): typeof fetch {
       const a = state.attempts[params.attemptId!];
       if (!a || a.user_id !== u.id) return error(404, 'not_found', 'Attempt not found');
       if (!a.result) return error(409, 'conflict', 'Attempt not submitted yet');
+      // Lọc kết hợp như API: only_wrong (is_correct === false), flagged, section
       const onlyWrong = url.searchParams.get('only_wrong') === 'true';
+      const flaggedOnly = url.searchParams.get('flagged') === 'true';
+      const section = url.searchParams.get('section');
       const items: AttemptReview['items'] = [];
       for (const q of questionsOf(a)) {
         const rec = a.answers[q.question_id];
         const g = grade(q.content, rec?.answer ?? null);
-        if (onlyWrong && g.is_correct === true) continue;
+        if (onlyWrong && g.is_correct !== false) continue;
+        if (flaggedOnly && !rec?.flagged) continue;
+        if (section && q.section_code !== section) continue;
         const chosen = rec?.answer.type === 'mcq_single' ? (rec.answer.selected ?? '') : '';
         const cacheKey = `${q.question_version_id}:${chosen}:${u.explain_locale ?? locale}`;
         items.push({
@@ -633,6 +721,8 @@ export function createMockFetch(): typeof fetch {
   };
 
   return async (input, init) => {
+    // Giả lập mất mạng như fetch thật (Playwright context.setOffline → navigator.onLine = false)
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new TypeError('Failed to fetch');
     const req = input instanceof Request ? input : new Request(input, init);
     const url = new URL(req.url);
     const base = new URL(env.apiUrl);

@@ -1,6 +1,6 @@
 'use client';
 
-import { LayoutDashboard, ListChecks, LogOut, Settings, UserRound } from 'lucide-react';
+import { Dumbbell, LayoutDashboard, ListChecks, LogOut, Settings, UserRound } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Badge, Button, buttonVariants, cn } from '@allingo/ui';
 import { Link, usePathname, useRouter } from '@/i18n/navigation';
@@ -12,6 +12,7 @@ import { LocaleSwitcher } from './locale-switcher';
 const NAV = [
   { href: '/toeic/dashboard', key: 'dashboard', icon: LayoutDashboard },
   { href: '/toeic/test-sets', key: 'testSets', icon: ListChecks },
+  { href: '/toeic/practice', key: 'practice', icon: Dumbbell },
   { href: '/settings', key: 'settings', icon: Settings },
 ] as const;
 

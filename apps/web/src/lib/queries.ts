@@ -106,19 +106,38 @@ export function useAttempt(attemptId: string, opts?: Opts<Attempt>) {
   });
 }
 
-export function useAttemptReview(attemptId: string, onlyWrong = false, opts?: Opts<AttemptReview>) {
+/** Tham số lọc của GET /attempts/{id}/review (kết hợp được: sai + Part, đánh dấu + Part) */
+export interface AttemptReviewFilter {
+  only_wrong?: boolean;
+  flagged?: boolean;
+  section?: string;
+}
+
+export function useAttemptReview(attemptId: string, filter: AttemptReviewFilter = {}, opts?: Opts<AttemptReview>) {
+  const query = { ...(filter.only_wrong ? { only_wrong: true } : {}), ...(filter.flagged ? { flagged: true } : {}), ...(filter.section ? { section: filter.section } : {}) };
   return useQuery<AttemptReview, Error>({
-    queryKey: queryKeys.attemptReview(attemptId, onlyWrong),
-    queryFn: async () =>
-      unwrap(await getApi().GET('/attempts/{attemptId}/review', { params: { path: { attemptId }, query: { only_wrong: onlyWrong } } })) as unknown as AttemptReview,
+    queryKey: ['attempts', attemptId, 'review', query] as const,
+    queryFn: async () => unwrap(await getApi().GET('/attempts/{attemptId}/review', { params: { path: { attemptId }, query } })) as unknown as AttemptReview,
     ...opts,
   });
 }
 
-export function useMyAttempts(program?: string, opts?: Opts<Page<AttemptSummary>>) {
+/** Lọc lịch sử bài làm (GET /me/attempts v1.1): trạng thái, chế độ, khoảng ngày YYYY-MM-DD theo UTC */
+export interface MyAttemptsFilter {
+  program?: string;
+  status?: string;
+  mode?: string;
+  from?: string;
+  to?: string;
+}
+
+export function useMyAttempts(filter?: string | MyAttemptsFilter, opts?: Opts<Page<AttemptSummary>>) {
+  const f: MyAttemptsFilter = typeof filter === 'string' ? { program: filter } : (filter ?? {});
+  const query = Object.fromEntries(Object.entries(f).filter(([, v]) => typeof v === 'string' && v.length > 0));
+  const onlyProgram = Object.keys(query).every((k) => k === 'program');
   return useQuery<Page<AttemptSummary>, Error>({
-    queryKey: queryKeys.myAttempts(program),
-    queryFn: async () => unwrap(await getApi().GET('/me/attempts', { params: { query: (program ? { program } : {}) as never } })) as unknown as Page<AttemptSummary>,
+    queryKey: onlyProgram ? queryKeys.myAttempts(f.program) : [...queryKeys.myAttempts(f.program), query],
+    queryFn: async () => unwrap(await getApi().GET('/me/attempts', { params: { query: query as never } })) as unknown as Page<AttemptSummary>,
     ...opts,
   });
 }
@@ -157,7 +176,8 @@ export function useSubmitAttempt(attemptId: string) {
     mutationFn: async () => unwrap(await getApi().POST('/attempts/{attemptId}/submit', { params: { path: { attemptId } } })) as unknown as AttemptResult,
     onSuccess: (result) => {
       qc.setQueryData(resultKey(attemptId), result);
-      void qc.invalidateQueries({ queryKey: queryKeys.attempt(attemptId) });
+      // exact: không làm hỏng kết quả vừa nhận (resultKey có cùng tiền tố ['attempts', id]; GET /result trả xp_earned = 0)
+      void qc.invalidateQueries({ queryKey: queryKeys.attempt(attemptId), exact: true });
       void qc.invalidateQueries({ queryKey: ['me'] });
     },
   });

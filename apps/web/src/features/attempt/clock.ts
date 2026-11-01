@@ -40,12 +40,20 @@ export function clockTone(ms: number | null): ClockTone {
   return 'normal';
 }
 
-/** Mốc cần thông báo bằng aria-live (phút còn lại) – trả mốc vừa vượt qua, nếu có */
-export function crossedAnnouncement(prevMs: number | null, nextMs: number | null, marksMin: readonly number[] = [10, 5, 1]): number | null {
-  if (prevMs === null || nextMs === null) return null;
+/** Mốc cảnh báo Exam Mode (phút còn lại): toast + aria-live */
+export const WARNING_MARKS_MIN = [10, 5, 1] as const;
+
+/**
+ * Mốc cần thông báo (phút còn lại) khi đồng hồ đi từ `prevMs` tới `nextMs`. Nếu vượt nhiều mốc một lúc
+ * (tab bị ẩn lâu, máy ngủ) → chỉ báo mốc NHỎ NHẤT vừa vượt (thông tin đúng nhất), không báo dồn.
+ * Hết giờ (0) không tính là mốc – đã có luồng tự nộp.
+ */
+export function crossedAnnouncement(prevMs: number | null, nextMs: number | null, marksMin: readonly number[] = WARNING_MARKS_MIN): number | null {
+  if (prevMs === null || nextMs === null || nextMs <= 0) return null;
+  let crossed: number | null = null;
   for (const m of marksMin) {
     const mark = m * 60_000;
-    if (prevMs > mark && nextMs <= mark) return m;
+    if (prevMs > mark && nextMs <= mark && (crossed === null || m < crossed)) crossed = m;
   }
-  return null;
+  return crossed;
 }
