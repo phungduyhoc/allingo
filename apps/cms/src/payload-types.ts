@@ -295,6 +295,13 @@ export interface Question {
       }[]
     | null;
   passage?: (string | null) | Passage;
+  /**
+   * Listening only. Exam Mode: "once" = play once, no seeking/pausing; Practice is always free. Pause = answer time after the audio. Stored in content.media.
+   */
+  media?: {
+    listen_policy?: ('once' | 'free') | null;
+    pause_ms?: number | null;
+  };
   content:
     | {
         [k: string]: unknown;
@@ -732,6 +739,12 @@ export interface QuestionsSelect<T extends boolean = true> {
         id?: T;
       };
   passage?: T;
+  media?:
+    | T
+    | {
+        listen_policy?: T;
+        pause_ms?: T;
+      };
   content?: T;
   status?: T;
   reviewNote?: T;

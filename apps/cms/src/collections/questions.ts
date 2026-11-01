@@ -7,6 +7,7 @@ import { importQuestionsEndpoint } from '../endpoints/import-questions';
 import { referenceEndpoint } from '../endpoints/reference';
 import { isAdmin, isLoggedIn, roleOf } from '../lib/access';
 import { describeError, syncQuestion, type SyncQuestionRequest } from '../lib/internal-api';
+import { isListeningSection, LISTEN_POLICIES, MAX_PAUSE_MS, mergeListeningMedia } from '../lib/listening';
 import { DIFFICULTY_CODES, PROGRAM_OPTIONS, QUESTION_TYPE_OPTIONS } from '../lib/reference';
 import { validateMcqAnswerKeys, validateQuestionContent } from '../lib/validate';
 import {
@@ -57,15 +58,31 @@ function sameJson(a: unknown, b: unknown): boolean {
   return canonical(a) === canonical(b);
 }
 
-/** Chuẩn hoá: ép content.type = questionType, parse qua Zod để lưu giá trị có default; sinh title nếu trống */
-const normalizeBeforeValidate: CollectionBeforeValidateHook<Question> = ({ data, originalDoc }) => {
+/**
+ * Chuẩn hoá: gộp trường Listening (media.listen_policy/pause_ms – Sprint 4) vào content.media, ép content.type = questionType,
+ * parse qua Zod để lưu giá trị có default; sinh title nếu trống
+ */
+const normalizeBeforeValidate: CollectionBeforeValidateHook<Question> = ({ data, originalDoc, operation }) => {
   if (!data) return data;
   const questionType = data.questionType ?? originalDoc?.questionType;
-  const rawContent = data.content ?? originalDoc?.content;
+  let rawContent = data.content ?? originalDoc?.content;
+  const listening = mergeListeningMedia({
+    program: data.program ?? originalDoc?.program,
+    sectionCode: data.sectionCode ?? originalDoc?.sectionCode,
+    content: rawContent,
+    fields: data.media,
+    previousFields: originalDoc?.media ?? null,
+    isCreate: operation === 'create',
+  });
+  if (listening.content !== rawContent) {
+    rawContent = listening.content as Question['content'];
+    data.content = rawContent;
+  }
   if (questionType && rawContent && typeof rawContent === 'object') {
     const res = validateQuestionContent(questionType, rawContent);
     if (res.ok) data.content = res.value;
   }
+  if (listening.fields) data.media = { listen_policy: (listening.fields.listen_policy as 'once' | 'free' | null) ?? null, pause_ms: listening.fields.pause_ms ?? null };
   if (!data.title || data.title.trim() === '') {
     const c = (data.content ?? originalDoc?.content) as Partial<QuestionContent> | undefined;
     const stem = typeof c?.stem === 'string' ? c.stem.trim() : '';
@@ -285,6 +302,33 @@ export const Questions: CollectionConfig = {
       admin: { initCollapsed: true },
     },
     { name: 'passage', type: 'relationship', relationTo: 'passages', label: { vi: 'Đoạn văn / script', en: 'Passage' } },
+    {
+      // Sprint 4: lưu vào content.media (đồng bộ hai chiều trong beforeValidate) → gửi catalog qua sync hiện có
+      name: 'media',
+      type: 'group',
+      label: { vi: 'Audio Listening', en: 'Listening audio' },
+      admin: {
+        condition: (data: QuestionData) => isListeningSection(data.program, data.sectionCode),
+        description: {
+          vi: 'Chỉ câu Listening. Exam Mode: "Một lần" = phát một lần, không tua/tạm dừng; Practice luôn nghe tự do. Khoảng dừng = thời gian trả lời sau audio. Giá trị lưu trong content.media.',
+          en: 'Listening only. Exam Mode: "once" = play once, no seeking/pausing; Practice is always free. Pause = answer time after the audio. Stored in content.media.',
+        },
+      },
+      fields: [
+        {
+          type: 'row',
+          fields: [
+            {
+              name: 'listen_policy',
+              type: 'select',
+              options: LISTEN_POLICIES.map((p) => ({ value: p, label: p === 'once' ? { vi: 'Một lần (thi thật)', en: 'Once (exam)' } : { vi: 'Tự do', en: 'Free' } })),
+              label: { vi: 'Chính sách nghe', en: 'Listen policy' },
+            },
+            { name: 'pause_ms', type: 'number', min: 0, max: MAX_PAUSE_MS, label: { vi: 'Khoảng dừng sau audio (ms)', en: 'Pause after audio (ms)' }, admin: { step: 500 } },
+          ],
+        },
+      ],
+    },
     {
       name: 'content',
       type: 'json',
