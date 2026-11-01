@@ -37,7 +37,8 @@ export const attemptAnswersPutSchema = z.object({
 export type AttemptAnswersPut = z.infer<typeof attemptAnswersPutSchema>;
 
 export const attemptEventSchema = z.object({
-  type: z.enum(['tab_leave', 'section_timeout', 'audio_played', 'focus_lost', 'resume', 'part_switch', 'audio_started', 'audio_ended', 'audio_stalled']),
+  /** tab_hidden = visibilitychange (v1.1, Sprint 3); tab_leave giữ để tương thích client Sprint 0 */
+  type: z.enum(['tab_leave', 'tab_hidden', 'section_timeout', 'audio_played', 'focus_lost', 'resume', 'part_switch', 'audio_started', 'audio_ended', 'audio_stalled']),
   at: z.iso.datetime({ offset: true }).optional(),
   meta: z.record(z.string(), z.unknown()).optional(),
 });

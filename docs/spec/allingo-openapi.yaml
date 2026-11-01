@@ -474,7 +474,7 @@ paths:
       requestBody:
         content:
           application/json:
-            schema: { type: object, properties: { type: { type: string, enum: [tab_leave, section_timeout, audio_played] }, at: { type: string, format: date-time }, meta: { type: object } } }
+            schema: { type: object, required: [type], properties: { type: { type: string, enum: [tab_leave, tab_hidden, section_timeout, audio_played, focus_lost, resume, part_switch, audio_started, audio_ended, audio_stalled], description: 'v1.1: thêm tab_hidden, focus_lost, resume, part_switch, audio_started/ended/stalled' }, at: { type: string, format: date-time }, meta: { type: object } } }
       responses: { '202': { description: Đã ghi } }
   /attempts/{attemptId}/submit:
     post:
