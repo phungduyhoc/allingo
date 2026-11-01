@@ -1,68 +1,100 @@
-# HANDOFF — Sprint 0 (01/11/2026)
+# HANDOFF — Sprint 1 → Sprint 3 (01/11/2026)
 
-Bàn giao sau phiên Claude Code dựng walking skeleton Allingo. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md`, `docs/SPEC-ISSUES.md`.
+Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1, 2, 3 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A39), `docs/SPEC-ISSUES.md` (S1–S29), ADR 0001–0025. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
 
-## 1. Kết quả theo tiêu chí nghiệm thu (master prompt §7)
+Repo chưa push (theo yêu cầu: làm tiếp trên phiên, push sau). Mọi kiểm tra dưới đây chạy trong phiên cloud: Postgres 16 + pgvector, Valkey/Redis cục bộ, không Docker, không Meilisearch/MinIO/Azure/khoá AI thật (A1, A25).
+
+## 1. Nghiệm thu theo sprint
+
+### Sprint 1 — IAM đầy đủ, 12 dạng câu, IaC
 
 | # | Tiêu chí | Kết quả | Ghi chú |
 | --- | --- | --- | --- |
-| 1 | `pnpm i` · `docker:up` · `db:migrate` · `db:seed --set core,demo` | ĐẠT | Trong phiên không có Docker daemon → Postgres 16 + pgvector 0.6, Valkey chạy cục bộ (A1); `compose.dev.yml` đầy đủ cho máy dev |
-| 2 | `pnpm db:diff` | ĐẠT | 97 bảng, 188 index, 4 policy RLS khớp spec; Drizzle schema khớp 97 bảng |
-| 3 | `pnpm lint && typecheck && test` | ĐẠT | turbo 35/35 task; test: api 36 (21 unit + 15 integration), db 8 (integration Postgres), api-client 8, web 12, cms 24, schemas/scoring/fsrs unit |
-| 4 | `pnpm api:openapi && api:diff` | ĐẠT | 45/112 operation triển khai, 0 lệch; 67 operation còn lại thuộc Sprint 1–10 |
-| 5 | Trình duyệt (1)–(5): landing 4 chương trình → khách → dashboard → đề Part 5 mini (nháp giữ khi tải lại) → nộp (điểm thô + ước tính + breakdown) → review → Giải thích SSE rồi `cached: true` → đăng ký ghép tiến độ | ĐẠT | Playwright `e2e/guest-flow.spec.ts` 3/3 với API thật và 6/6 với mock (desktop + mobile); ảnh màn hình đính kèm báo cáo |
-| 6 | CMS: teacher đăng nhập, thấy câu demo, tạo câu Part 5 mới, "AI kiểm tra" → `ai_checked` | ĐẠT | Qua UI và REST (`POST /api/questions/{id}/ai-check`); mock `check_question` trả `verdict: pass` |
-| 7 | `GET /admin/reports/ai-costs` liệt kê `ai_tasks`, credit explain = 1, cache hit không trừ | ĐẠT | Thêm `explanation_cache_hits` (đếm từ `ai.explanation_cache.hit_count`, tăng cả khi trúng Redis) |
-| 8 | Tắt Redis → `PUT /answers` vẫn lưu DB, log cảnh báo; bật lại → bình thường | ĐẠT | Log `redis connection lost (degraded mode…)`; `/v1/health/ready` báo `redis: false` rồi `true` |
-| 9 | CI GitHub xanh | CHƯA | Repo chưa push (GitHub chưa liên kết trong phiên). Workflow `ci.yml` đã rà lại để khớp lệnh; cần push và xem lần chạy đầu |
+| 1 | Đăng nhập Google thật → tạo user, ghép khách, lần 2 không trùng | ĐẠT (mock) / CHƯA (Google thật) | Luồng đầy đủ qua `MockOAuthProvider` (cùng đường mã `jose` + JWKS); cần `GOOGLE_CLIENT_ID` của anh để thử thật |
+| 2 | OTP email, sai 5 lần → khoá 30 phút | ĐẠT | Integration + E2E (`e2e/auth.spec.ts`); Mailpit thay bằng mailer memory trong phiên |
+| 3 | `DELETE /me` → purge ẩn danh hoá, ledger còn | ĐẠT | `PURGE_DELAY_MINUTES`; từ S2 xoá cả tệp ảnh người học (`PersonalDataRegistry`) |
+| 4 | Refresh token dùng lại → thu hồi toàn bộ phiên + audit | ĐẠT | Thu hồi commit ở transaction riêng; access token bị chặn ngay (denylist Redis, fallback DB) |
+| 5 | ≥ 36 test schemas, `grade()` đúng fixture | ĐẠT | `packages/schemas` 242 test (12 dạng × ≥ 3 fixture) |
+| 6 | `terraform validate` + `deploy-staging` tới bước build image | CHƯA | Phiên không có terraform/Docker; `infra/terraform/scripts/validate.sh` + job `terraform-validate` trong `preview.yml` chạy ở lần push đầu |
+| 7 | `api:diff` nhóm Auth/Me, `db:diff` | ĐẠT | |
 
-Số liệu: `pnpm i` ~2 phút (cold, 1.070 gói); `pnpm build` toàn repo ~2 phút (web 16 s với Turbopack cache); JS client web 433 KB gzip tổng, chunk lớn nhất 102 KB gz (recharts, tải động ở trang kết quả); Lighthouse chưa đo (không có Chromium headless trong phiên — dùng Chrome hệ thống cho Playwright).
+### Sprint 2 — Catalog & CMS workflow, media, tìm kiếm, PoC → GATE-1
 
-## 2. Đã làm (theo nhóm việc Sprint 0)
-
-1. **Nền tảng**: Turborepo + pnpm 10, TS 5.9 strict, ESLint 9 flat + `eslint-plugin-boundaries` (ranh giới module §5.1 — đã kiểm chứng bắt vi phạm sau khi thêm resolver TypeScript), Prettier, Vitest 4, compose dev, CI 4 job, 21 ADR.
-2. **Lớp dữ liệu** (`db/`): migration 0001 = DDL nguyên văn; Drizzle schema sinh bằng `drizzle-kit pull` + `organize-schema.ts` (4 bảng partition viết tay); `db:diff` 2 lớp; `withRls`; partition tháng; seed core (programs/sections/question_types/roles/plans/quotas/prompts/model_routes/badges/flags) + demo (16 câu TOEIC P5/P2 tự biên soạn, 2 bộ đề mini, 1 bài học, từ vựng, 2 người học, 1 tổ chức).
-3. **Packages**: `schemas` (Zod cho content 4 dạng câu, answer, AI output 14 task sinh từ JSON Schema, product constants), `scoring` (TOEIC ước tính), `fsrs` (ts-fsrs 6), `api-client` (openapi-fetch cookie/bearer, refresh 1 lần, SSE reader, hooks), `i18n` (vi/en 352 khoá), `ui` (Button/Card/Dialog/Tabs… trên `<dialog>` + roving tabindex), `config`.
-4. **API** (`apps/api`, NestJS 12/Fastify 5, ESM): shared (env Zod, pino redaction, OTel, Drizzle/RLS, Redis degrade, BullMQ, S3 presign, outbox + EventEmitter, JWT + refresh xoay vòng, AuthGuard cookie/bearer, Socket.IO, envelope lỗi + trace_id, Zod pipe + OpenAPI metadata); modules `iam` (register/login/guest/refresh/logout, ghép khách, /me, sessions, consents, enrollments, credit chào mừng), `catalog` (programs/test-sets/lessons/vocab, QuestionPublic lọc answer_key, API nội bộ CMS publish/check/reference), `billing` (entitlement cache, quota Redis + DB fallback + flush đêm, credit ledger append-only), `ai-gateway` (registry DB + canary, Handlebars, ModelRouter + circuit breaker, adapter Vercel AI SDK google/anthropic/openai + MockProvider 14 task, structured output validate→repair→fallback→failed, metering + credit cùng transaction, ExplanationCache, Guardrails, SSE), `test-engine` (attempt snapshot, nháp idempotent, grace 30 s, submit idempotent, grade, review, drills), `learning` (XP/streak), `admin` (ai-costs), worker (outbox relay, quota flush, partition ensure).
-5. **CMS** (`apps/cms`, Payload 3.92 trên Next 16, schema `cms`): collections questions/passages/test-sets/lessons/vocab/media/prompts/users, workflow draft→ai_checked→review1→review2→published, nút AI kiểm tra, import JSON/CSV, phát hành sang catalog qua `/v1/internal/content/*` (`X-Internal-Token`), seed CMS, 24 test.
-6. **Web** (`apps/web`, Next 16 App Router, next-intl, Tailwind 4, TanStack Query, PWA SW đóng gói bằng esbuild): landing, login/signup, dashboard, test-sets, Exam/Practice Mode (đồng hồ theo `expires_at` + `server_time`, nháp gộp lô 10 s + offline queue, phím tắt, audio `once`, hết giờ tự nộp), result (recharts), review (SSE explain + cache + quota CTA), settings; mock API bám OpenAPI (`dev:mock`).
-7. **Tài liệu**: README, VERSIONS, LICENSES, ASSUMPTIONS A1–A15, SPEC-ISSUES S1–S10, ADR 0001–0021, prompts master/sprint, runbook thư mục (trống, Sprint 1 bổ sung secrets.md).
-
-## 3. Cách chạy & kiểm tra
-
-Xem `README.md` (5 phút). Kiểm tra nhanh toàn bộ: `pnpm lint && pnpm typecheck && pnpm test && pnpm db:diff && pnpm api:openapi && pnpm api:diff`. E2E API thật: chạy `pnpm dev` rồi `E2E_REAL_API=1 E2E_NO_SERVER=1 pnpm --filter @allingo/web test:e2e`. Chụp màn hình rà soát UI: `SHOT_DIR=/tmp/shots E2E_NO_SERVER=1 E2E_REAL_API=1 pnpm --filter @allingo/web exec playwright test e2e/screenshots.spec.ts --project=chromium`.
-
-Lưu ý môi trường phiên: Playwright không tải được Chromium (cdn.playwright.dev chặn) → `E2E_CHROME_CHANNEL=chrome`; trên máy dev/CI dùng `playwright install chromium` bình thường.
-
-## 4. Việc còn lại / TODO có chủ đích
-
-| # | Việc | Nơi | Sprint |
+| # | Tiêu chí | Kết quả | Ghi chú |
 | --- | --- | --- | --- |
-| T1 | Push repo lên GitHub `phungduyhoc/allingo`, bật branch protection, xác nhận CI xanh (mục 9) | `.github/workflows/ci.yml` | Ngay |
-| T2 | Better Auth thật (Google/Apple/Facebook/OTP) thay lõi auth Sprint 0 (ADR-0020) | `apps/api/src/modules/iam` | S1 |
-| T3 | 8 dạng câu còn lại trong `packages/schemas` (matching, drag_drop, map_label, ordering, dictation, essay, speaking, handwriting) + `grade()` | `packages/schemas/src/question` | S1 |
-| T4 | Terraform modules + `deploy-staging.yml` + runbook secrets | `infra/terraform`, `.github/workflows` | S1 |
-| T5 | CMS: đồng bộ media/lessons/vocab khi phát hành (hiện chỉ questions/passages/test-sets), `payload migrate` cho prod, Playwright cho CMS | `apps/cms` | S2 |
-| T6 | Thử AI thật với khoá Gemini: eval Promptfoo `explain_mcq`, `check_question` ≥ ngưỡng trong `allingo-prompts.yaml` (A5) | `pnpm eval:*` | S2 (trước GATE-1) |
-| T7 | Practice Mode: endpoint kiểm tra đáp án tức thì (client không nhận `answer_key`) | test-engine + web | S3 |
-| T8 | Job `attempt.expire` quét `draft_state->>'expires_at'`; cân nhắc cột `expires_at` (S2) | test-engine worker | S3 |
-| T9 | Meilisearch/MinIO/Mailpit: relay outbox → Meilisearch, upload audio thật qua S3 presign | shared/storage, worker | S2 |
-| T10 | Thay audio demo WAV tổng hợp bằng TTS Azure (A7) | `apps/web/public/demo-audio` | S2 |
-| T11 | Lighthouse mobile ≥ 90 cho landing/dashboard; đo và ghi vào HANDOFF | web | S1 |
-| T12 | `pnpm audit` và trivy đang `exit-code 0` trong CI — chuyển sang chặn khi có baseline | ci.yml | S1 |
+| 1 | Editor → AI kiểm tra → teacher review1 → admin review2 → `GET /practice/questions`; reject review1 có ghi chú | ĐẠT | Integration + E2E thật CMS→API→web (`e2e/practice.spec.ts`). Reject → `rejected` (bắt buộc ghi chú); "cần sửa" → `draft` kèm ghi chú (ADR-0024) |
+| 2 | Sửa câu published → v2; attempt cũ review vẫn v1 | ĐẠT | Phiên bản chờ duyệt không ảnh hưởng người học tới khi phát hành |
+| 3 | Import 50 câu có 2 trùng → báo 2 dòng, nhập 48 | ĐẠT | Trùng trong lô + trùng catalog (pg_trgm ≥ 0,85) |
+| 4 | Audio 5 MB → `ready`, duration, waveform, URL ký 10 phút | ĐẠT | Driver `fs` (không MinIO); job `media.process` qua BullMQ; S3 driver chỉ typecheck |
+| 5 | Tìm "invoice" trong Meilisearch; draft không xuất hiện; index không có `answer_key` | ĐẠT một phần | Kiểm chứng với `PgSearchProvider`; adapter Meilisearch chưa chạy với server thật (A25) |
+| 6 | `GATE-1-report.md` có số liệu thật | CHƯA | Harness PoC-W/PoC-P xong, chỉ có số chạy mock. Cần: 30–50 bài Writing có band giáo viên, 20–30 ghi âm có điểm, khoá Gemini/Claude/Azure |
+| 7 | `api:diff`, `db:diff` xanh; ≥ 25 ca test mới | ĐẠT | ~ 60 ca mới (schemas content 10, CMS 3, API workflow 8, media 33…) |
 
-## 5. Rủi ro & lưu ý vận hành
+### Sprint 3 — Test Engine TOEIC Reading & Exam Mode
 
-- **Cache giải thích dùng chung** theo (question_version, chosen_option, locale) giữa mọi người học: đúng spec, tiết kiệm credit, nhưng UX cần nói rõ "giải thích đã có sẵn" (web đã hiển thị nhãn). Test tích hợp tự dọn cache của câu đang test.
-- **Exam Mode** chặn giải thích **trước** cache hit (sửa trong phiên này — trước đó cache hit lọt qua khoá). Khoá đặt ở Redis `exam:lock:{userId}`; khi Redis degrade, Guardrails đọc DB (`attempts.status = in_progress AND mode = exam`).
-- **CORS**: đã cho phép PUT/PATCH/DELETE + `Idempotency-Key`, `X-Client`, `X-Internal-Token`; `CORS_ORIGINS` phải khớp domain web khi lên staging.
-- **Lịch sử git**: commit theo module, chưa push; `apps/web/AGENTS.md` do Next tự sinh đã xoá và tắt `agentRules`.
-- **Giá/quota/credit** trong seed là giá trị tạm (A9); Free 300 credit/tháng, khách 30 credit — đổi trong admin trước khi bán.
-- **Mock AI** trả kết quả cố định đúng schema; không dùng để đánh giá chất lượng nội dung.
+| # | Tiêu chí | Kết quả | Ghi chú |
+| --- | --- | --- | --- |
+| 1 | Đề 100 câu, tắt mạng giữa chừng, tải lại: không mất câu, đồng hồ đúng | ĐẠT | Playwright `exam-offline.spec.ts`: offline giữa bài → vẫn trả lời (banner) → online → tải lại → đúng câu đang xem và đáp án, đồng hồ theo `expires_at` server; thêm bước đóng tab khi offline, mở lại khôi phục từ IndexedDB. `exam-layout.spec.ts` chạy trên đề Reading full 100 câu thật. Mất mạng mô phỏng bằng `context.setOffline` (chưa thử wifi thật 2 phút) |
+| 2 | Hết giờ tự nộp; nộp 2 lần cùng kết quả; `PUT /answers` sau hạn + 31 s → 409 | ĐẠT | Integration `test-engine-s3.test.ts` |
+| 3 | Breakdown Part 5/6/7, ước tính thang điểm, review lọc "câu sai" | ĐẠT (API) | Đề `toeic-reading-full-01` trả đúng hết → 495, by_section 30/16/54 |
+| 4 | k6 1.000 VU, p95 `PUT /answers` < 150 ms | CHƯA | Máy phiên 2 CPU dùng chung (API + PG + Redis cùng máy): 229–261 req/s, p97,5 ≈ 360 ms ở 50 kết nối, 0 lỗi, không deadlock. Script k6 `tests/load/attempt-flow.js` để chạy trên staging (A38) |
+| 5 | `api:diff`, `db:diff` xanh; Playwright luồng thi trong CI | ĐẠT cục bộ | E2E 18/18 ở cả mock và API thật (4 bỏ qua có chủ đích: CMS ×2, ảnh màn hình ×2); job E2E trong CI chạy với mock – chờ push để thấy lần chạy đầu |
 
-## 6. Đề xuất Sprint 1 (khớp `docs/prompts/ALLINGO-SPRINT-PROMPTS.md` §S1)
+## 2. Đã làm
 
-1. `iam`: Better Auth Google/Apple/Facebook + OTP email/SMS (`SmsProvider`), guest merge đầy đủ 8 bảng + audit `guest.merged`, RBAC `@Roles()`, `/me/sessions*`, phát hiện tái sử dụng refresh token, `/me/consents`, `DELETE /me` + job `iam.purge` 72 giờ, Turnstile, outbox `user.*` (T2).
-2. `packages/schemas`: đủ 12 dạng câu + `grade()` + fixture 3 câu/dạng + JSON Schema xuất `schemas/question/*.json` (T3, S7).
-3. `infra`: Terraform modules + envs dev/staging, `deploy-staging.yml`, `preview.yml`, `docs/runbooks/secrets.md` (T4). Chốt phương án hạ tầng bằng ADR trước khi apply.
-4. Dọn nợ Sprint 0: T1, T11, T12; cập nhật OpenAPI theo S3/S4 (hoặc giữ mở rộng tương thích và ghi vào YAML).
+**Sprint 1.** `iam`: OAuth Google/Apple/Facebook tự triển khai bằng `jose` + JWKS (ADR-0022, không Better Auth), liên kết tài khoản cần mật khẩu/xác nhận (409 `link_required`), OTP email/SMS/Zalo (HMAC trong Redis, 5′, 5 lần sai khoá 30′, 3 yêu cầu/15′), thu hồi phiên tức thời, phát hiện tái sử dụng refresh, consents theo `POLICY_VERSION`, Turnstile, `DELETE /me` + job `iam.purge`, RBAC admin cấp vai trò. `packages/schemas`: đủ 12 dạng câu + `grade()` partial credit + JSON Schema. Web: đăng nhập mã email, nút Google, đồng ý điều khoản, trang Điều khoản/Chính sách. Infra: Dockerfile api/web/cms, Terraform phương án B (ADR-0023 Proposed), deploy-staging, runbooks.
+
+**Sprint 2.** Catalog là nguồn sự thật vòng đời nội dung (ADR-0024): máy trạng thái dùng chung API/CMS, `content_reviews` (ai_check/review1/review2), nguyên tắc 4 mắt, phiên bản chờ duyệt, outbox `content.published/retired`; `/admin/questions*`, `/internal/content/*`; CMS đồng bộ mọi lần lưu, báo trùng khi import; tìm kiếm `SearchProvider` (Meilisearch → fallback PG), `search:reindex`; trang Luyện tập theo Part + từ khoá. Media (ADR-0025): presign + PUT trực tiếp, `media.process` (ffmpeg mp3/webp, waveform 200 điểm, thumbnail 320 px), driver `fs` dev/test, TTS có cache, `/uploads/presign`, migration 0002 (`media_assets.status/metadata`). PoC GATE-1: harness `eval/poc` + `docs/poc/GATE-1-report.md` (mock).
+
+**Sprint 3.** Practice/drill hiện đáp án + giải thích ngay (exam không bao giờ), chẩn đoán theo quy tắc sau nộp (`diagnoseAttempt`), lọc review sai/đánh dấu/Part, lọc lịch sử trạng thái/khoảng ngày, sự kiện phiên mở rộng, tối ưu `saveAnswers` (≈ 2× thông lượng), đề **TOEIC Reading đầy đủ 01** (100 câu tự biên soạn, 19 nhóm đoạn văn, 75 phút) + 3 bộ luyện Part 5/6/7. Giao diện Exam Mode: thanh Part + lưới câu, Part 6–7 đoạn văn | câu hỏi kéo đổi tỉ lệ (mobile xếp dọc, thu gọn đoạn văn), chế độ tập trung, 3 cỡ chữ, cảnh báo 10′/5′/1′ (toast + `aria-live`), nháp IndexedDB (fallback bộ nhớ) đồng bộ khi có mạng, khôi phục câu đang xem; practice phản hồi ngay và khoá câu đã kiểm tra; kết quả có khối chẩn đoán (Part/kỹ năng yếu, gợi ý luyện → trang Luyện tập chọn sẵn); xem lại lọc Tất cả/Sai/Đánh dấu + Part, nút câu sai tiếp theo/trước. Sửa 2 lỗi phát hiện với dữ liệu thật: tiêu đề đề full tràn ngang mobile, màn kết quả hiện "+0 XP".
+
+**Sửa lỗi quan trọng phát hiện trong phiên.** `QueueService.enqueue` luôn thất bại âm thầm vì jobId chứa `:` (BullMQ ≥ 5) → `jobIdFor()`; Postgres jsonb đổi thứ tự khoá làm so sánh nội dung sai → so sánh chuẩn hoá; `@allingo/db` dist nhúng kiểu cũ → luôn build lại sau khi sửa schema.
+
+## 3. Số liệu kiểm thử (lần chạy cuối)
+
+| Gói | Test | Kết quả |
+| --- | --- | --- |
+| `packages/schemas` | 242 | xanh |
+| `packages/scoring` | 12 | xanh |
+| `db` | 26 (gồm 18 test cấu trúc đề Reading 01) | xanh |
+| `apps/api` | 102 (unit + integration Testcontainers-like trên PG/Redis cục bộ) | xanh |
+| `apps/cms` | 27 | xanh |
+| `packages/api-client`, `packages/fsrs` | 8, 4 | xanh |
+| `apps/web` | unit 39; E2E 18 (mock) + 18 (API thật) | xanh |
+
+`pnpm api:diff`: 53/114 operation đã triển khai, 0 lệch. `pnpm db:diff`: 97 bảng, 189 index, 4 policy khớp DDL tham chiếu (v1.1).
+
+## 4. Cách chạy
+
+```bash
+pnpm i && pnpm docker:up && pnpm db:migrate && pnpm db:seed --set core,demo
+pnpm dev                                  # web :3000, api :4000, cms :3001, worker
+pnpm --filter @allingo/api search:reindex # sau khi bật Meilisearch
+STORAGE_DRIVER=fs pnpm --filter @allingo/api dev   # thử upload khi không có MinIO
+pnpm lint && pnpm typecheck && pnpm test && pnpm db:diff && pnpm api:openapi && pnpm api:diff
+E2E_REAL_API=1 E2E_CMS_URL=http://localhost:3001 pnpm --filter @allingo/web test:e2e
+node tests/load/attempt-flow.autocannon.mjs   # đo cục bộ; k6 run tests/load/attempt-flow.js trên staging
+```
+
+Đề demo: `toeic-mini-part5-01`, `toeic-mini-part2-01`, `toeic-reading-full-01`, `toeic-reading-01-drill-part5|6|7`. Tài khoản demo mật khẩu `Allingo@2026`: `learner_free@`, `learner_pro@`, `teacher@`, `admin@`, `org_admin@allingo.dev`.
+
+## 5. Việc còn lại
+
+| # | Việc | Sprint |
+| --- | --- | --- |
+| T1 | Push GitHub `phungduyhoc/allingo`, bật branch protection, xác nhận CI (gồm `terraform-validate`, ffmpeg trong job integration) | Khi anh sẵn sàng |
+| T2 | Thử Google/Apple/Facebook thật với client id của anh; Zalo ZNS/eSMS thật | S1 dư |
+| T3 | GATE-1 số liệu thật: dataset Writing/Speaking có điểm giáo viên + khoá AI/Azure → `pnpm --filter @allingo/api poc:w|poc:p` | Trước GATE-1 |
+| T4 | Meilisearch + MinIO thật trên máy dev (`pnpm docker:up`), chạy lại test search/media với driver thật | S4 |
+| T5 | k6 1.000 VU trên staging; tối ưu index nếu p95 > 150 ms | Trước GATE-2 |
+| T6 | Outbox: retry + dead-letter cho consumer (S26) | S5 |
+| T7 | Bảng `passage_parts` cho Part 7 đa đoạn (S24); custom view kéo thả test set trong CMS (A26) | v1.2 |
+| T8 | Job xoá ghi âm hết hạn + lifecycle bucket; xử lý EXIF orientation ảnh | S6/S8 |
+
+## 6. Rủi ro & lưu ý
+
+- **Không có hạ tầng thật trong phiên**: Meilisearch, MinIO/R2, Azure Speech, OAuth thật, Terraform chưa chạy — mọi adapter có test với mock/fake; lần chạy thật đầu tiên có thể lộ lỗi cấu hình.
+- **Thang điểm 5–495 là ước tính** do Allingo tự xây dựng, không phải bảng ETS — giao diện phải luôn ghi "ước tính".
+- **Đề demo** tự biên soạn (`source = human`), tên riêng hư cấu, tên miền `.example`; trước khi bán cần biên tập viên rà soát.
+- **ffmpeg bắt buộc** cho worker (image đã cài); thiếu ffmpeg thì test media tự skip — CI đã cài để không bỏ sót.
+- **`INTERNAL_API_TOKEN`** dùng chung API ↔ CMS: đổi trên staging/prod (Key Vault).
