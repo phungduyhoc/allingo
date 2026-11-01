@@ -24,6 +24,23 @@ Không có gói GPL/AGPL trong cây phụ thuộc.
 | Payload CMS | MIT | |
 | Font/icon | Hệ thống (không nhúng font ngoài ở Sprint 0) | Khi thêm font thương mại cần giấy phép web |
 
+## Dữ liệu từ điển (Sprint 6)
+
+| Bộ dữ liệu | Nguồn | Giấy phép | Dùng ở đâu |
+| --- | --- | --- | --- |
+| **Allingo TOEIC Core EN–VI** v1.0 – 1.750 mục (headword, từ loại, IPA Mỹ/Anh, 1–3 nghĩa vi/en, ví dụ, collocations, CEFR, topic, dạng biến đổi) | `db/seed/dictionary/toeic-core-en-vi.ts` + `entries-*.ts`, đội nội dung Allingo **tự biên soạn** (không sao chép từ điển có bản quyền; tên người/công ty trong ví dụ hư cấu) | Nội dung độc quyền của Allingo (`DICTIONARY_LICENSE.license = "Proprietary – Allingo content (tự biên soạn)"`) | Nhập vào `catalog.vocab_items` (kind `word`, `source = human`) bằng `db/seed/dictionary.ts`; `GET /dictionary/lookup` trả `attribution` = tên + giấy phép |
+| Bản dịch AI khi không có trong từ điển | `segment_translate` qua AiGateway (Gemini/GPT – điều khoản API nhà cung cấp) | Kết quả do model sinh, lưu `ai.translation_cache` | Chỉ hiển thị cho người tra; mục SRS tạo từ đó gắn `source = ai`, `status = draft` |
+
+Nếu sau này nhập dữ liệu mở (Wiktionary – CC BY-SA 4.0, FreeDict – GPL/CC tuỳ bộ), phải: ghi nguồn + giấy phép từng bộ ở bảng trên, giữ `attribution` trong API, và
+kiểm tra điều kiện "share-alike" trước khi trộn với nội dung độc quyền.
+
+## Thư viện thêm ở Sprint 6
+
+| Gói | Giấy phép | Ghi chú |
+| --- | --- | --- |
+| `web-push` 3.6.x (+ `http_ece`, `asn1.js`, `jws`, `https-proxy-agent`) | MPL-2.0 (`web-push`), MIT (phụ thuộc) | MPL-2.0 copyleft theo tệp: dùng nguyên bản, không sửa mã nguồn thư viện → không phát sinh nghĩa vụ ngoài giữ thông báo |
+| `@types/web-push` (dev) | MIT | |
+
 ## Nội dung đề thi
 
 Không sao chép đề ETS/Cambridge/JLPT/HSK thật. Nội dung demo trong `db/seed/demo/content.ts` và `apps/cms/samples/` do đội tự biên soạn, gắn `source = 'human'`; nội dung do AI sinh gắn `source = 'ai'` và phải qua luồng duyệt CMS (draft → ai_checked → review1 → review2 → published).

@@ -20,5 +20,6 @@
 | Payload CMS | 3.92.x | |
 | Vercel AI SDK | 7.0.x | |
 | Playwright | 1.64.x | |
+| web-push | 3.6.x | Sprint 6 – Web Push VAPID (aes128gcm) trong `apps/api` (growth); khoá qua env `VAPID_*` |
 
 Cập nhật khi nâng cấp; thay đổi major cần ADR.

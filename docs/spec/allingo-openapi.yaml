@@ -427,12 +427,25 @@ paths:
     get:
       tags: [Catalog]
       summary: Tra từ/cụm theo ngữ cảnh (chạm từ trong đề)
+      description: |
+        v1.1 – Sprint 6. Tra headword hoặc dạng biến đổi (`forms`) trong `catalog.vocab_items` (từ điển mở, kind `word`); không khớp →
+        gợi ý pg_trgm (`suggestions`). `ai=auto` (mặc định): không có trong từ điển và không có gợi ý gần (similarity ≥ 0,6 với từ đơn)
+        → dịch AI `segment_translate` qua AiGateway, cache `ai.translation_cache` theo (term, context, locale, prompt version) chuẩn hoá;
+        lần sau `cached: true` (không gọi model, không tính quota). Dịch AI tiêu quota `dictionary_ai` (Free theo `billing.quotas`).
+        `audio_url` là URL ký 10 phút khi TTS đã có trong `ai.tts_cache`; chưa có → `null` và server sinh nền (gọi `GET /tts` để lấy ngay).
+        Đang có attempt `exam` `in_progress` → 403 `exam_mode_locked` cho MỌI lần tra (không chỉ câu của đề).
       parameters:
-        - { name: q, in: query, required: true, schema: { type: string } }
-        - { $ref: '#/components/parameters/ProgramQuery' }
-        - { name: context, in: query, schema: { type: string, description: 'Câu chứa từ, ≤ 300 ký tự' } }
+        - { name: q, in: query, required: true, schema: { type: string, maxLength: 500 }, description: 'Từ/cụm/câu cần tra (bí danh `term` – v1.1)' }
+        - { name: term, in: query, schema: { type: string, maxLength: 500 }, description: 'v1.1 – bí danh của q' }
+        - { name: program, in: query, schema: { type: string, enum: [toeic, ielts, jlpt, hsk], default: toeic }, description: 'v1.1 – mặc định toeic' }
+        - { name: context, in: query, schema: { type: string, maxLength: 300, description: 'Câu chứa từ, ≤ 300 ký tự' } }
+        - { name: locale, in: query, schema: { type: string, enum: [vi, en, ja, ko, th] }, description: 'v1.1 – ngôn ngữ nghĩa/bản dịch; mặc định explain_locale của người học' }
+        - { name: ai, in: query, schema: { type: string, enum: [auto, always, never], default: auto }, description: 'v1.1 – chính sách dịch AI khi không có trong từ điển' }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/DictionaryEntry' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { description: 'exam_mode_locked (đang thi) | forbidden (gói không có dictionary_ai)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '429': { description: 'quota_exceeded (dictionary_ai) – details.quota = QuotaExceededDetails', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   # ---------------------------------------------------------------- Attempts
   /attempts:
@@ -562,14 +575,66 @@ paths:
       responses:
         '201': { description: Tạo attempt mode=drill (hoặc timed_drill khi timed=true) và trả câu hỏi, content: { application/json: { schema: { $ref: '#/components/schemas/Attempt' } } } }
   /notes:
+    get:
+      tags: [Attempts]
+      summary: Ghi chú của tôi (v1.1 – S6) – lọc theo câu/phiên bản/attempt/đề, tìm kiếm `q` (pg_trgm/ILIKE), cursor
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: question_version_id, in: query, schema: { type: string, format: uuid } }
+        - { name: question_id, in: query, schema: { type: string, format: uuid } }
+        - { name: attempt_id, in: query, schema: { type: string, format: uuid } }
+        - { name: test_set_id, in: query, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Note' } }, next_cursor: { type: [string, 'null'] } } } } } }
+    post:
+      tags: [Attempts]
+      summary: Tạo ghi chú gắn câu hỏi (question_version_id) / attempt (v1.1 – S6)
+      description: 'Markdown ngắn ≤ 2.000 ký tự sau khi làm sạch (bỏ thẻ HTML, liên kết javascript:). Đang thi (attempt exam in_progress) → 403 `exam_mode_locked`.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NoteInput' }
+      responses:
+        '201': { description: Đã tạo, content: { application/json: { schema: { $ref: '#/components/schemas/Note' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
     put:
       tags: [Attempts]
       summary: Bảng ghi chú theo đề/câu (Pro)
+      description: 'v1.1 – S6: ghi đè ghi chú mới nhất của người học theo `question_id` (hoặc `test_set_id`), tạo mới nếu chưa có; trả Note. Đang thi → 403 `exam_mode_locked`. Spec v1.0 ghi "(Pro)" – S6 chưa chặn theo gói (SPEC-ISSUES S60).'
       requestBody:
         content:
           application/json:
-            schema: { type: object, required: [body], properties: { test_set_id: { type: string, format: uuid }, question_id: { type: string, format: uuid }, body: { type: string } } }
-      responses: { '200': { description: Đã lưu } }
+            schema: { type: object, required: [body], properties: { test_set_id: { type: string, format: uuid }, question_id: { type: string, format: uuid }, question_version_id: { type: string, format: uuid, description: v1.1 }, attempt_id: { type: string, format: uuid, description: v1.1 }, body: { type: string } } }
+      responses:
+        '200': { description: Đã lưu, content: { application/json: { schema: { $ref: '#/components/schemas/Note' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+  /notes/{noteId}:
+    parameters: [ { name: noteId, in: path, required: true, schema: { type: string, format: uuid } } ]
+    patch:
+      tags: [Attempts]
+      summary: Sửa ghi chú (v1.1 – S6)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [body], properties: { body: { type: string } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Note' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Attempts]
+      summary: Xoá ghi chú (v1.1 – S6)
+      responses:
+        '204': { description: Đã xoá }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
 
   # ---------------------------------------------------------------- AI
   /ai/explain:
@@ -600,37 +665,70 @@ paths:
     get:
       tags: [AI]
       summary: Danh sách hội thoại gia sư
+      description: 'v1.1 – S6: mới cập nhật trước, cursor `{data, next_cursor}`, mỗi thread kèm `turns`. Đang thi → 403 `exam_mode_locked`.'
       parameters: [ { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Thread' } }, next_cursor: { type: [string, 'null'] } } } } } }
+        '403': { $ref: '#/components/responses/Error' }
     post:
       tags: [AI]
       summary: Tạo hội thoại với ngữ cảnh (attempt/submission/lesson)
+      description: |
+        v1.1 – S6: ngữ cảnh `attempt_id` (bài của tôi) | `question_version_id` (câu đang xem, có thể kèm attempt_id chứa câu đó) | `kind: free`.
+        attempt của người khác → 403; không tồn tại → 404; câu không thuộc attempt → 400. Đang thi → 403 `exam_mode_locked`.
       requestBody:
         content:
           application/json:
-            schema: { type: object, properties: { program: { type: string }, context: { $ref: '#/components/schemas/ThreadContext' } } }
+            schema: { type: object, properties: { program: { type: string }, context: { $ref: '#/components/schemas/ThreadContext' }, title: { type: string, maxLength: 120, description: v1.1 } } }
       responses:
         '201': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Thread' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /ai/threads/{threadId}:
+    get:
+      tags: [AI]
+      summary: Chi tiết hội thoại + tin nhắn mới nhất (v1.1 – S6)
+      description: 'Tin nhắn cũ → mới (tối đa `limit`, mặc định 50); `next_cursor` tải trang cũ hơn qua GET /ai/threads/{id}/messages. Thread của người khác → 403. Đang thi → 403 `exam_mode_locked`.'
+      parameters: [ { $ref: '#/components/parameters/ThreadId' }, { $ref: '#/components/parameters/Limit' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ThreadDetail' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
   /ai/threads/{threadId}/messages:
     get:
       tags: [AI]
       summary: Lịch sử tin nhắn
+      description: 'v1.1 – S6: trang mới nhất trước khi không có cursor; mỗi trang sắp xếp cũ → mới; `next_cursor` trỏ tới trang CŨ hơn.'
       parameters: [ { $ref: '#/components/parameters/ThreadId' }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Message' } }, next_cursor: { type: [string, 'null'] } } } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
     post:
       tags: [AI]
       summary: Gửi tin nhắn (text hoặc audio đã upload) → trả lời stream, có thể kèm action mở trang
+      description: |
+        v1.1 – S6. `text` 1–2.000 ký tự (S6 chưa nhận `recording_id` → 400). Thứ tự kiểm tra: Exam Mode (403 `exam_mode_locked`) →
+        giới hạn lượt/thread theo gói (`billing.quotas` feature `ai_tutor_thread_turns` – vượt → 429 `quota_exceeded`, `details.quota.scope = thread`)
+        → guard (`guard_classify` + luật cục bộ, PII bị che trước khi tới model) → entitlement/credit (402)/quota ngày `ai_tutor` (429) → stream.
+        SSE giống /ai/explain: `start` {ai_task_id, cached} → `delta` {text = mảnh của reply_markdown, văn bản thuần} * → `result`
+        {data = TutorReply, ai_task_id, cached} → `done`; lỗi AI → `error` {code: ai_failed | ai_timeout} → `done` (hoàn quota, không trừ credit).
+        Bị guard từ chối: `start` → `result` (data.refused = true, data.refusal_code = injection | off_topic | answer_leak | unsafe,
+        reply_markdown rỗng – web hiển thị theo i18n) → `done`; `ai_tasks.status = refused`, không gọi model chính, không trừ credit/lượt.
       parameters: [ { $ref: '#/components/parameters/ThreadId' } ]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object, properties: { text: { type: string }, recording_id: { type: string, format: uuid }, want_audio: { type: boolean, default: false } } }
+            schema: { type: object, properties: { text: { type: string, maxLength: 2000 }, recording_id: { type: string, format: uuid }, want_audio: { type: boolean, default: false } } }
       responses:
-        '200': { description: SSE delta/done, content: { text/event-stream: { schema: { type: string } } } }
+        '200': { description: SSE start/delta/result/done (error), content: { text/event-stream: { schema: { type: string } } } }
+        '400': { $ref: '#/components/responses/Error' }
         '402': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { description: 'quota_exceeded – ai_tutor (ngày) hoặc ai_tutor_thread_turns (scope thread)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /ai/realtime/token:
     post:
       tags: [AI]
@@ -758,11 +856,13 @@ paths:
     get:
       tags: [Speech]
       summary: Audio TTS cho chuỗi (cache), trả URL
+      description: 'v1.1 – S6: cache `ai.tts_cache` theo (provider, locale, văn bản chuẩn hoá) × voice; URL ký 10 phút (`expires_at`). `voice` nhận bí danh `en-US-neural-f|m`, `en-GB-neural-f|m` hoặc tên giọng Azure `xx-YY-<Name>Neural`.'
       parameters:
         - { name: text, in: query, required: true, schema: { type: string, maxLength: 500 } }
         - { name: voice, in: query, schema: { type: string, default: en-US-neural-f } }
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { url: { type: string }, duration_ms: { type: integer } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { url: { type: string }, duration_ms: { type: integer }, expires_at: { type: [string, 'null'], format: date-time, description: v1.1 }, cached: { type: boolean, description: v1.1 }, voice: { type: string, description: v1.1 } } } } } }
+        '400': { $ref: '#/components/responses/Error' }
 
   # ---------------------------------------------------------------- Learning
   /me/plan:
@@ -858,12 +958,22 @@ paths:
     post:
       tags: [Learning]
       summary: Thêm thẻ (lưu từ từ bài đọc/feedback, thêm từ tự do, lưu bản đồ paraphrase)
+      description: |
+        v1.1 – S6: chỉ `card_type = vocab` (loại khác → 400, làm ở S10). `ref_id` = vocab_item_id, hoặc `headword` (tra từ điển; không có →
+        tạo mục `catalog.vocab_items` source `ai`/status `draft` từ bản dịch đã cache). Thẻ mới `state = new`, `due_at = now` (lịch FSRS ở S10).
+        Idempotent theo (user, card_type, ref_id): đã có → 200 `created: false`; mới → 201 (tiêu quota `srs_new_cards`, vượt → 429).
+        Đang thi → không chặn (không lộ đáp án).
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [program, card_type], properties: { program: { type: string }, card_type: { type: string, enum: [vocab, error, grammar, phoneme, sentence] }, ref_id: { type: string, format: uuid }, headword: { type: string }, source_type: { type: string }, source_id: { type: string, format: uuid } } }
-      responses: { '201': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SrsCard' } } } } }
+            schema: { type: object, required: [program, card_type], properties: { program: { type: string }, card_type: { type: string, enum: [vocab, error, grammar, phoneme, sentence] }, ref_id: { type: string, format: uuid }, headword: { type: string }, source_type: { type: string }, source_id: { type: string, format: uuid }, context: { type: string, maxLength: 300, description: 'v1.1 – câu chứa từ' } } }
+      responses:
+        '200': { description: 'Đã có (v1.1)', content: { application/json: { schema: { $ref: '#/components/schemas/SrsCard' } } } }
+        '201': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SrsCard' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
   /me/errors:
     get:
       tags: [Learning]
@@ -994,12 +1104,51 @@ paths:
     get:
       tags: [Growth]
       summary: Kênh & khung giờ thông báo
+      description: 'v1.1 – S6: chưa có hàng → trả mặc định DDL (email/push/inapp bật, zalo tắt, 22:00–07:00, nhắc 20:00).'
       responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPreferences' } } } } }
     patch:
       tags: [Growth]
       summary: Cập nhật kênh/khung giờ
+      description: 'v1.1 – S6: cập nhật một phần (channels gộp theo khoá); giờ dạng HH:MM, ≤ 5 giờ nhắc. Trả bản đầy đủ.'
       requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPreferences' } } } }
-      responses: { '200': { description: OK } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPreferences' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+  /me/push-subscriptions:
+    get:
+      tags: [Growth]
+      summary: Thiết bị đã đăng ký Web Push (v1.1 – S6)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/PushSubscription' } }, next_cursor: { type: [string, 'null'] } } } } } }
+    post:
+      tags: [Growth]
+      summary: Đăng ký Web Push (VAPID) – body là PushSubscription.toJSON() của trình duyệt (v1.1 – S6)
+      description: 'Idempotent theo `endpoint`: đã có → 200 `created: false` (cập nhật khoá, chuyển sang người dùng hiện tại); mới → 201. Lưu `ops.push_subscriptions`. Server chưa cấu hình VAPID → 503 `feature_disabled`.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PushSubscriptionInput' }
+      responses:
+        '200': { description: Đã có, content: { application/json: { schema: { $ref: '#/components/schemas/PushSubscription' } } } }
+        '201': { description: Đã đăng ký, content: { application/json: { schema: { $ref: '#/components/schemas/PushSubscription' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /me/push-subscriptions/{subscriptionId}:
+    delete:
+      tags: [Growth]
+      summary: Huỷ đăng ký Web Push của một thiết bị (v1.1 – S6)
+      parameters: [ { name: subscriptionId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '204': { description: Đã huỷ }
+        '404': { $ref: '#/components/responses/Error' }
+  /push/vapid-public-key:
+    get:
+      tags: [Growth]
+      summary: Khoá công khai VAPID cho pushManager.subscribe (công khai, v1.1 – S6)
+      security: []
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { public_key: { type: [string, 'null'] }, enabled: { type: boolean } } } } } }
   /me/notifications:
     get:
       tags: [Growth]
@@ -1205,6 +1354,23 @@ paths:
       parameters: [ { name: userId, in: path, required: true, schema: { type: string, format: uuid } } ]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [delta, note], properties: { delta: { type: integer }, note: { type: string } } } } } }
       responses: { '200': { description: OK } }
+  /admin/notifications/test:
+    post:
+      tags: [Admin]
+      summary: Gửi thử thông báo đẩy "Đến giờ học" tới các thiết bị của một người dùng (v1.1 – S6)
+      description: |
+        Vai trò admin. Mặc định gửi cho chính admin. Ghi `ops.notifications` (channel push, template_code), gửi tới mọi
+        `ops.push_subscriptions` của người nhận; endpoint trả 404/410 → xoá đăng ký. Người nhận tắt `channels.push` → `skipped`
+        trừ khi `force = true`. Payload = PushPayload (`title`/`body` null → service worker dịch theo `template_code`). Lịch tự động ở S9.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminTestNotificationInput' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AdminTestNotificationResult' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
   /admin/reports/ai-costs:
     get:
       tags: [Admin]
@@ -1265,7 +1431,7 @@ components:
           type: object
           required: [code, message]
           properties:
-            code: { type: string, example: quota_exceeded, description: 'validation_failed | unauthorized | forbidden | not_found | conflict | quota_exceeded | insufficient_credits | payment_failed | rate_limited | internal' }
+            code: { type: string, example: quota_exceeded, description: 'validation_failed | unauthorized | forbidden | not_found | conflict | quota_exceeded | insufficient_credits | payment_failed | rate_limited | exam_mode_locked | feature_disabled | internal' }
             message: { type: string }
             details: { type: object }
             trace_id: { type: string }
@@ -1551,6 +1717,7 @@ components:
         community_correct_rate: { type: [number, 'null'], description: '% người làm đúng' }
         community_avg_time_ms: { type: [integer, 'null'], description: 'Thời gian trung bình cộng đồng (catalog.questions.avg_time_ms) – v1.1 Sprint 4' }
         audio_plays: { type: integer, description: 'Số lần người học bắt đầu phát audio của câu (v1.1 – Sprint 4)' }
+        note: { oneOf: [ { $ref: '#/components/schemas/Note' }, { type: 'null' } ], description: 'Ghi chú mới nhất của người học cho câu này (v1.1 – Sprint 6)' }
     AttemptReview:
       type: object
       properties:
@@ -1588,6 +1755,7 @@ components:
         lesson_id: { type: string, format: uuid }
         question_version_id: { type: string, format: uuid }
         mode: { type: string, enum: [text, voice] }
+        kind: { type: string, enum: [attempt, question, free], description: 'v1.1 – S6: loại ngữ cảnh (server suy ra; client gửi `free` để bỏ qua id)' }
     Thread:
       type: object
       properties:
@@ -1596,6 +1764,8 @@ components:
         title: { type: string, nullable: true }
         context: { $ref: '#/components/schemas/ThreadContext' }
         updated_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time, description: v1.1 – S6 }
+        turns: { type: object, description: 'v1.1 – S6: lượt người học đã gửi / giới hạn theo gói (null = không giới hạn)', properties: { used: { type: integer }, limit: { type: [integer, 'null'] }, remaining: { type: [integer, 'null'] } } }
     Message:
       type: object
       properties:
@@ -1606,6 +1776,40 @@ components:
         actions: { type: array, items: { type: object, properties: { type: { type: string, example: open_page }, target: { type: string }, label: { type: string } } } }
         ai_task_id: { type: string, format: uuid, nullable: true }
         created_at: { type: string, format: date-time }
+        refused: { type: boolean, description: 'v1.1 – S6: trả lời bị guard từ chối (text rỗng)' }
+        refusal_code: { type: [string, 'null'], enum: [injection, off_topic, answer_leak, unsafe, null], description: 'v1.1 – S6: web dịch theo i18n tutor.refusal.<code>' }
+        suggested_followups: { type: array, items: { type: string }, description: v1.1 – S6 }
+        citations: { type: array, items: { $ref: '#/components/schemas/TutorCitation' }, description: v1.1 – S6 }
+    TutorCitation:
+      type: object
+      description: 'Câu hỏi được trích trong câu trả lời (v1.1 – S6) – trích đề ≤ 160 ký tự, không đáp án'
+      properties:
+        type: { type: string, enum: [question] }
+        question_version_id: { type: string, format: uuid }
+        section_code: { type: [string, 'null'] }
+        excerpt: { type: string }
+    ThreadDetail:
+      allOf:
+        - { $ref: '#/components/schemas/Thread' }
+        - type: object
+          description: v1.1 – S6
+          properties:
+            messages: { type: array, items: { $ref: '#/components/schemas/Message' } }
+            next_cursor: { type: [string, 'null'] }
+    TutorReply:
+      type: object
+      description: 'data của sự kiện SSE `result` khi gửi tin nhắn gia sư (v1.1 – S6)'
+      properties:
+        message_id: { type: string, format: uuid }
+        user_message_id: { type: string, format: uuid }
+        reply_markdown: { type: string }
+        actions: { type: array, items: { type: object, properties: { type: { type: string, enum: [open_page, start_task, show_question] }, target: { type: string }, label: { type: string } } } }
+        suggested_followups: { type: array, items: { type: string } }
+        grounded_on: { type: array, items: { type: string } }
+        citations: { type: array, items: { $ref: '#/components/schemas/TutorCitation' } }
+        refused: { type: boolean }
+        refusal_code: { type: [string, 'null'], enum: [injection, off_topic, answer_leak, unsafe, null] }
+        turns: { type: object, properties: { used: { type: integer }, limit: { type: [integer, 'null'] }, remaining: { type: [integer, 'null'] } } }
     SubmissionCreate:
       type: object
       required: [program, kind, prompt_ref_type]
@@ -1781,14 +1985,31 @@ components:
       properties:
         query: { type: string }
         headword: { type: string }
-        pos: { type: string }
-        ipa: { type: string }
-        audio_url: { type: string }
-        meaning_en: { type: string }
-        meaning_local: { type: string }
-        example: { type: string }
+        pos: { type: string, nullable: true }
+        ipa: { type: string, nullable: true }
+        audio_url: { type: string, nullable: true, description: 'v1.1 – S6: URL ký 10 phút khi TTS đã cache; null → GET /tts' }
+        meaning_en: { type: string, nullable: true }
+        meaning_local: { type: string, nullable: true }
+        example: { type: string, nullable: true }
         vocab_item_id: { type: string, format: uuid, nullable: true }
         saved: { type: boolean }
+        ipa_us: { type: [string, 'null'], description: v1.1 – S6 }
+        ipa_uk: { type: [string, 'null'], description: v1.1 – S6 }
+        audio_expires_at: { type: [string, 'null'], format: date-time, description: v1.1 – S6 }
+        meanings: { type: array, items: { type: object, properties: { en: { type: [string, 'null'] }, local: { type: [string, 'null'] }, pos: { type: [string, 'null'] } } }, description: 'v1.1 – S6: mọi nghĩa của headword (mọi từ loại)' }
+        examples: { type: array, items: { type: object, properties: { text: { type: string }, translation: { type: [string, 'null'] } } }, description: v1.1 – S6 }
+        collocations: { type: array, items: { type: string }, description: v1.1 – S6 }
+        forms: { type: array, items: { type: string }, description: 'v1.1 – S6: dạng biến đổi (invoices, invoiced…)' }
+        level: { type: [string, 'null'], description: v1.1 – S6 }
+        topics: { type: array, items: { type: string }, description: v1.1 – S6 }
+        srs_card_id: { type: [string, 'null'], format: uuid, description: v1.1 – S6 }
+        source: { type: string, enum: [dictionary, ai, none], description: v1.1 – S6 }
+        matched: { type: string, enum: [headword, form, none], description: v1.1 – S6 }
+        translation: { type: [object, 'null'], description: 'v1.1 – S6: bản dịch segment_translate', properties: { text: { type: string }, needs_review: { type: boolean }, ai_task_id: { type: [string, 'null'], format: uuid } } }
+        cached: { type: boolean, description: 'v1.1 – S6: bản dịch lấy từ ai.translation_cache' }
+        suggestions: { type: array, items: { type: object, properties: { headword: { type: string }, similarity: { type: number } } }, description: 'v1.1 – S6: gợi ý pg_trgm' }
+        locale: { type: string, description: v1.1 – S6 }
+        attribution: { type: [string, 'null'], description: 'v1.1 – S6: ghi nguồn/giấy phép dữ liệu từ điển' }
     SrsCard:
       type: object
       nullable: true
@@ -1803,6 +2024,7 @@ components:
         reps: { type: integer }
         lapses: { type: integer }
         payload: { type: object, description: Nội dung thẻ để hiển thị (từ/lỗi/ngữ pháp) }
+        created: { type: boolean, description: 'v1.1 – S6: false khi thẻ đã tồn tại (POST idempotent)' }
     StudyPlan:
       type: object
       properties:
@@ -1970,6 +2192,87 @@ components:
         channels: { type: object, additionalProperties: { type: boolean } }
         quiet_hours: { type: object, properties: { start: { type: string, example: '22:00' }, end: { type: string, example: '07:00' } } }
         reminder_times: { type: array, items: { type: string } }
+        updated_at: { type: string, format: date-time, description: v1.1 – S6 }
+        push_subscriptions: { type: integer, description: 'v1.1 – S6: số thiết bị đã đăng ký Web Push' }
+    PushSubscriptionInput:
+      type: object
+      description: 'PushSubscription.toJSON() của trình duyệt (v1.1 – S6)'
+      required: [endpoint, keys]
+      properties:
+        endpoint: { type: string, format: uri, maxLength: 2048, description: https }
+        expirationTime: { type: [integer, 'null'] }
+        keys: { type: object, required: [p256dh, auth], properties: { p256dh: { type: string }, auth: { type: string } } }
+        user_agent: { type: string, maxLength: 300 }
+        locale: { type: string, enum: [vi, en, ja, ko, th] }
+    PushSubscription:
+      type: object
+      description: v1.1 – S6 (không trả endpoint đầy đủ/khoá)
+      properties:
+        id: { type: string, format: uuid }
+        endpoint_origin: { type: string }
+        user_agent: { type: [string, 'null'] }
+        locale: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        last_success_at: { type: [string, 'null'], format: date-time }
+        expires_at: { type: [string, 'null'], format: date-time }
+        created: { type: boolean }
+    PushPayload:
+      type: object
+      description: 'Nội dung mã hoá gửi tới service worker (v1.1 – S6); title/body null → dịch theo template_code (i18n push.<template_code>.*)'
+      properties:
+        v: { type: integer, enum: [1] }
+        notification_id: { type: string, format: uuid }
+        template_code: { type: string, enum: [study_reminder, test] }
+        title: { type: [string, 'null'] }
+        body: { type: [string, 'null'] }
+        url: { type: string }
+        tag: { type: string }
+        locale: { type: string }
+        sent_at: { type: string, format: date-time }
+    AdminTestNotificationInput:
+      type: object
+      description: v1.1 – S6
+      properties:
+        user_id: { type: string, format: uuid, description: Mặc định chính admin }
+        template_code: { type: string, enum: [study_reminder, test], default: study_reminder }
+        title: { type: string, maxLength: 80 }
+        body: { type: string, maxLength: 200 }
+        url: { type: string, default: /, description: Đường dẫn tương đối }
+        force: { type: boolean, default: false }
+    AdminTestNotificationResult:
+      type: object
+      description: v1.1 – S6
+      properties:
+        notification_id: { type: [string, 'null'], format: uuid }
+        user_id: { type: string, format: uuid }
+        status: { type: string, enum: [sent, failed, skipped] }
+        reason: { type: [string, 'null'], description: 'push_disabled | no_subscriptions | …' }
+        sent: { type: integer }
+        failed: { type: integer }
+        removed: { type: integer }
+        results: { type: array, items: { type: object, properties: { subscription_id: { type: string, format: uuid }, ok: { type: boolean }, status_code: { type: [integer, 'null'] }, removed: { type: boolean } } } }
+    Note:
+      type: object
+      description: 'Ghi chú của người học (learn.notes kind user) – v1.1 S6'
+      properties:
+        id: { type: string, format: uuid }
+        body: { type: string, description: Markdown đã làm sạch }
+        question_id: { type: [string, 'null'], format: uuid }
+        question_version_id: { type: [string, 'null'], format: uuid }
+        attempt_id: { type: [string, 'null'], format: uuid }
+        test_set_id: { type: [string, 'null'], format: uuid }
+        created_at: { type: [string, 'null'], format: date-time }
+        updated_at: { type: string, format: date-time }
+    NoteInput:
+      type: object
+      description: v1.1 – S6
+      required: [body]
+      properties:
+        body: { type: string, description: 'Markdown ngắn; sau khi làm sạch 1–2.000 ký tự' }
+        question_version_id: { type: string, format: uuid }
+        attempt_id: { type: string, format: uuid }
+        question_id: { type: string, format: uuid }
+        test_set_id: { type: string, format: uuid }
     ReferralSummary:
       type: object
       properties:
@@ -2051,6 +2354,8 @@ components:
         remaining: { type: integer, example: 0 }
         resets_at: { type: string, format: date-time }
         reset_at: { type: string, format: date-time, description: Bí danh cũ của resets_at }
+        scope: { type: string, enum: [user, thread], description: 'v1.1 – S6: thread = giới hạn lượt của một hội thoại (ai_tutor_thread_turns, không reset theo ngày)' }
+        thread_id: { type: string, format: uuid, description: 'v1.1 – S6 (scope = thread)' }
     AttemptAiDiagnosis:
       type: object
       description: Kết quả diagnose_rl lưu tại learn.attempts.score_breakdown.ai_diagnosis (v1.1 – Sprint 5)
