@@ -1,6 +1,6 @@
-# HANDOFF — Sprint 1 → Sprint 3 (01/11/2026)
+# HANDOFF — Sprint 1 → Sprint 4 (01/11/2026)
 
-Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1, 2, 3 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A39), `docs/SPEC-ISSUES.md` (S1–S29), ADR 0001–0025. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
+Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1, 2, 3, 4 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A39), `docs/SPEC-ISSUES.md` (S1–S29), ADR 0001–0025. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
 
 Repo chưa push (theo yêu cầu: làm tiếp trên phiên, push sau). Mọi kiểm tra dưới đây chạy trong phiên cloud: Postgres 16 + pgvector, Valkey/Redis cục bộ, không Docker, không Meilisearch/MinIO/Azure/khoá AI thật (A1, A25).
 
@@ -40,6 +40,19 @@ Repo chưa push (theo yêu cầu: làm tiếp trên phiên, push sau). Mọi ki�
 | 4 | k6 1.000 VU, p95 `PUT /answers` < 150 ms | CHƯA | Máy phiên 2 CPU dùng chung (API + PG + Redis cùng máy): 229–261 req/s, p97,5 ≈ 360 ms ở 50 kết nối, 0 lỗi, không deadlock. Script k6 `tests/load/attempt-flow.js` để chạy trên staging (A38) |
 | 5 | `api:diff`, `db:diff` xanh; Playwright luồng thi trong CI | ĐẠT cục bộ | E2E 18/18 ở cả mock và API thật (4 bỏ qua có chủ đích: CMS ×2, ảnh màn hình ×2); job E2E trong CI chạy với mock – chờ push để thấy lần chạy đầu |
 
+### Sprint 4 — Listening Part 1–4, practice & drill, quy đổi điểm L&R
+
+| # | Tiêu chí | Kết quả | Ghi chú |
+| --- | --- | --- | --- |
+| 1 | Đề L&R 200 câu: Listening phát liên tục một lần, không tua; sau nộp xem transcript, nghe lại từng câu | ĐẠT | `e2e/listening.spec.ts`: không thanh tua/`controls`, ←/→ và click không đổi `currentTime`, `pause()`/tua từ ngoài bị trả lại; tải lại → "Tiếp tục nghe" không lùi; hết Listening → Reading; Review có transcript tô dòng đang phát |
+| 2 | Practice Part 3: tua, đổi tốc độ, lặp; đáp án hiện ngay | ĐẠT | Tua ±5 s, 0,75/1/1,25, lặp câu/nhóm |
+| 3 | Mini 60 câu sinh ngẫu nhiên hợp lệ cấu trúc, lặp lại được bằng `seed` | ĐẠT | `generateMiniTest` (mulberry32): 100 seed đều hợp lệ; `POST /admin/test-sets/generate` + CLI; seed demo có `toeic-mini-lr-01/02` |
+| 4 | Điểm L/R/Tổng + khoảng ước tính, test bảng quy đổi | ĐẠT | Thang tự xây dựng, luôn ghi "ước tính"; ±25 mỗi kỹ năng |
+| 5 | Chrome/Safari/Firefox phát được audio | ĐẠT một phần | Chrome 153 (Playwright) phát MP3/WAV + SVG đúng; Safari/Firefox không có trong phiên – cần thử tay (mã đã mở khoá nhóm `<audio>` trong cùng cú bấm cho Safari) |
+| 6 | `api:diff`, `db:diff` xanh; Playwright Listening chạy trong CI với audio mock | ĐẠT cục bộ | E2E 28/28 (mock và API thật); CI chờ push |
+
+Audio đề Listening 01 hiện là MP3 im lặng đúng thời lượng (TTS mock): chạy `pnpm --filter @allingo/api seed:media --force` với `SPEECH_PROVIDER=azure` + khoá để có giọng thật (A54). Đo tải đề 200 câu: 188 req/s, `PUT /answers` p97,5 340 ms, 0 lỗi; sửa deadlock khi nhiều người nộp cùng lúc (S35).
+
 ## 2. Đã làm
 
 **Sprint 1.** `iam`: OAuth Google/Apple/Facebook tự triển khai bằng `jose` + JWKS (ADR-0022, không Better Auth), liên kết tài khoản cần mật khẩu/xác nhận (409 `link_required`), OTP email/SMS/Zalo (HMAC trong Redis, 5′, 5 lần sai khoá 30′, 3 yêu cầu/15′), thu hồi phiên tức thời, phát hiện tái sử dụng refresh, consents theo `POLICY_VERSION`, Turnstile, `DELETE /me` + job `iam.purge`, RBAC admin cấp vai trò. `packages/schemas`: đủ 12 dạng câu + `grade()` partial credit + JSON Schema. Web: đăng nhập mã email, nút Google, đồng ý điều khoản, trang Điều khoản/Chính sách. Infra: Dockerfile api/web/cms, Terraform phương án B (ADR-0023 Proposed), deploy-staging, runbooks.
@@ -48,21 +61,23 @@ Repo chưa push (theo yêu cầu: làm tiếp trên phiên, push sau). Mọi ki�
 
 **Sprint 3.** Practice/drill hiện đáp án + giải thích ngay (exam không bao giờ), chẩn đoán theo quy tắc sau nộp (`diagnoseAttempt`), lọc review sai/đánh dấu/Part, lọc lịch sử trạng thái/khoảng ngày, sự kiện phiên mở rộng, tối ưu `saveAnswers` (≈ 2× thông lượng), đề **TOEIC Reading đầy đủ 01** (100 câu tự biên soạn, 19 nhóm đoạn văn, 75 phút) + 3 bộ luyện Part 5/6/7. Giao diện Exam Mode: thanh Part + lưới câu, Part 6–7 đoạn văn | câu hỏi kéo đổi tỉ lệ (mobile xếp dọc, thu gọn đoạn văn), chế độ tập trung, 3 cỡ chữ, cảnh báo 10′/5′/1′ (toast + `aria-live`), nháp IndexedDB (fallback bộ nhớ) đồng bộ khi có mạng, khôi phục câu đang xem; practice phản hồi ngay và khoá câu đã kiểm tra; kết quả có khối chẩn đoán (Part/kỹ năng yếu, gợi ý luyện → trang Luyện tập chọn sẵn); xem lại lọc Tất cả/Sai/Đánh dấu + Part, nút câu sai tiếp theo/trước. Sửa 2 lỗi phát hiện với dữ liệu thật: tiêu đề đề full tràn ngang mobile, màn kết quả hiện "+0 XP".
 
+**Sprint 4.** Đề **TOEIC Listening đầy đủ 01** (100 câu tự biên soạn, 23 hội thoại/bài nói, 6 ảnh SVG tự vẽ, script nhiều giọng us/uk/au/ca) + 4 bộ luyện, đề **L&R 200 câu/120 phút**, 2 đề mini tự sinh; script `seed:media` sinh TTS theo segment + ghép ffmpeg + transcript có mốc thời gian. API: không lộ transcript khi làm bài, `GET /attempts/{id}/media` gia hạn URL, `timed_drill`, nguồn câu luyện (chưa làm → sai gần đây, giữ nhóm), sinh đề mini, `audio_plays`, ảnh SVG nội dung (chặn SVG chủ động), điểm L/R/Tổng + `by_skill`, thống kê câu cập nhật khi nộp. Web: chuỗi phát Exam Mode, player luyện tập, gia hạn URL, transcript Review, kết quả L/R/Tổng. CMS: trường `listen_policy`/`pause_ms`.
+
 **Sửa lỗi quan trọng phát hiện trong phiên.** `QueueService.enqueue` luôn thất bại âm thầm vì jobId chứa `:` (BullMQ ≥ 5) → `jobIdFor()`; Postgres jsonb đổi thứ tự khoá làm so sánh nội dung sai → so sánh chuẩn hoá; `@allingo/db` dist nhúng kiểu cũ → luôn build lại sau khi sửa schema.
 
 ## 3. Số liệu kiểm thử (lần chạy cuối)
 
 | Gói | Test | Kết quả |
 | --- | --- | --- |
-| `packages/schemas` | 242 | xanh |
-| `packages/scoring` | 12 | xanh |
-| `db` | 26 (gồm 18 test cấu trúc đề Reading 01) | xanh |
-| `apps/api` | 102 (unit + integration Testcontainers-like trên PG/Redis cục bộ) | xanh |
-| `apps/cms` | 27 | xanh |
+| `packages/schemas` | 251 | xanh |
+| `packages/scoring` | 21 | xanh |
+| `db` | 57 (cấu trúc đề Reading 01, Listening 01, đề mini tự sinh, integration DB) | xanh |
+| `apps/api` | 130 (unit + integration trên PG/Redis cục bộ) | xanh |
+| `apps/cms` | 32 | xanh |
 | `packages/api-client`, `packages/fsrs` | 8, 4 | xanh |
-| `apps/web` | unit 39; E2E 18 (mock) + 18 (API thật) | xanh |
+| `apps/web` | unit 70; E2E 28 (mock) + 28 (API thật) | xanh |
 
-`pnpm api:diff`: 53/114 operation đã triển khai, 0 lệch. `pnpm db:diff`: 97 bảng, 189 index, 4 policy khớp DDL tham chiếu (v1.1).
+`pnpm api:diff`: 55/116 operation đã triển khai, 0 lệch. `pnpm db:diff`: 97 bảng, 189 index, 4 policy khớp DDL tham chiếu (v1.1).
 
 ## 4. Cách chạy
 
@@ -76,7 +91,7 @@ E2E_REAL_API=1 E2E_CMS_URL=http://localhost:3001 pnpm --filter @allingo/web test
 node tests/load/attempt-flow.autocannon.mjs   # đo cục bộ; k6 run tests/load/attempt-flow.js trên staging
 ```
 
-Đề demo: `toeic-mini-part5-01`, `toeic-mini-part2-01`, `toeic-reading-full-01`, `toeic-reading-01-drill-part5|6|7`. Tài khoản demo mật khẩu `Allingo@2026`: `learner_free@`, `learner_pro@`, `teacher@`, `admin@`, `org_admin@allingo.dev`.
+Đề demo: `toeic-mini-part5-01`, `toeic-mini-part2-01`, `toeic-mini-lr-01/02` (tự sinh), `toeic-reading-full-01`, `toeic-listening-full-01`, `toeic-lr-full-01`, 7 bộ luyện `toeic-{reading,listening}-01-drill-part1…7`. Sau `db:seed --set demo` chạy `pnpm --filter @allingo/api seed:media` để sinh audio/ảnh. Tài khoản demo mật khẩu `Allingo@2026`: `learner_free@`, `learner_pro@`, `teacher@`, `admin@`, `org_admin@allingo.dev`.
 
 ## 5. Việc còn lại
 
