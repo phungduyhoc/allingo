@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 import { eq } from 'drizzle-orm';
-import type { QuestionContent } from '@allingo/schemas';
+import { generateMiniTest, TOEIC_MINI_BLUEPRINT_60, type MiniBankItem, type QuestionContent } from '@allingo/schemas';
 import type { Db } from '../../src/client.js';
 import { catalogPassages } from '../../drizzle/schema/index.js';
 import type { PartSeedResult } from './reading-01.seed.js';
@@ -255,4 +255,69 @@ export async function seedLrFull01(
     items,
     questionIdByKey,
   });
+}
+
+/** Thời gian ước tính mỗi câu theo Part cho đề mini sinh tự động (giây) */
+const MINI_SECONDS_PER_QUESTION: Record<string, number> = {
+  part1: 35,
+  part2: 25,
+  part3: 45,
+  part4: 45,
+  part5: 40,
+  part6: 60,
+  part7: 60,
+};
+
+/** 2 đề mini L&R 60 câu sinh bằng generator (S4): seed cố định, ngân hàng = khoá seed nên giống nhau trên mọi DB */
+export const GENERATED_MINIS = [
+  { code: 'toeic-mini-lr-01', seed: 101 },
+  { code: 'toeic-mini-lr-02', seed: 202 },
+] as const;
+
+/** Ngân hàng cho generator: khoá seed (l01-q1, r01-q101…) làm question_id → kết quả không phụ thuộc UUID của từng DB */
+export function buildMiniBank(items: readonly SeedItem[]): MiniBankItem[] {
+  return items.map((it, i) => ({
+    question_id: it.key,
+    section_code: it.section,
+    group_key: it.group_key ?? null,
+    order: i,
+  }));
+}
+
+export async function seedGeneratedMinis(
+  db: Db,
+  ctx: SeedContext,
+  listening: PartSeedResult,
+  reading: PartSeedResult,
+): Promise<string[]> {
+  const bank = buildMiniBank([...listening.items, ...reading.items]);
+  const questionIdByKey = new Map([...listening.questionIdByKey, ...reading.questionIdByKey]);
+  const specs = await loadSectionSpecs(db);
+  const ids: string[] = [];
+  for (const m of GENERATED_MINIS) {
+    const r = generateMiniTest(bank, TOEIC_MINI_BLUEPRINT_60, m.seed);
+    if (r.shortfall.length) throw new Error(`[seed:demo] ${m.code} thiếu câu: ${JSON.stringify(r.shortfall)}`);
+    const items: SeedItem[] = r.items.map((it) => ({
+      key: it.question_id,
+      section: it.section_code,
+      group_key: it.group_key,
+    }));
+    assertStructure(specs, 'mini', m.code, items);
+    const durationSec = items.reduce((sum, it) => sum + (MINI_SECONDS_PER_QUESTION[it.section] ?? 40), 0);
+    ids.push(
+      await upsertSeedTestSet(db, ctx, {
+        code: m.code,
+        title: {
+          vi: `Đề mini TOEIC L&R 60 câu – tự sinh (seed ${m.seed})`,
+          en: `TOEIC L&R mini test, 60 questions – generated (seed ${m.seed})`,
+        },
+        kind: 'mini',
+        durationSec,
+        items,
+        questionIdByKey,
+      }),
+    );
+  }
+  console.log(`[seed:demo] mini L&R tự sinh: ${GENERATED_MINIS.map((m) => m.code).join(', ')}`);
+  return ids;
 }

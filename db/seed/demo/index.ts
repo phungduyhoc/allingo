@@ -32,7 +32,7 @@ import {
 } from '../../drizzle/schema/index.js';
 import { questionContentSchema } from '@allingo/schemas';
 import { DEMO_LESSON, DEMO_PART2, DEMO_PART5, DEMO_VOCAB, type DemoQuestion } from './content.js';
-import { seedListeningFull01, seedLrFull01 } from './listening-01.seed.js';
+import { seedGeneratedMinis, seedListeningFull01, seedLrFull01 } from './listening-01.seed.js';
 import { seedReadingFull01 } from './reading-01.seed.js';
 
 export const DEMO_PASSWORD = 'Allingo@2026';
@@ -378,6 +378,7 @@ export async function seedDemo(db: Db, opts: { webPublicUrl?: string } = {}): Pr
   // ---------------------------------------------------------------- Đề TOEIC Listening 01 + 4 bộ luyện + đề L&R 200 câu (Sprint 4)
   const listening = await seedListeningFull01(db, { adminId, sectionId, subskillId, topicId });
   await seedLrFull01(db, { adminId, sectionId, subskillId, topicId }, listening, reading);
+  await seedGeneratedMinis(db, { adminId, sectionId, subskillId, topicId }, listening, reading);
 
   // ---------------------------------------------------------------- Từ vựng
   const vocabIds: string[] = [];
@@ -479,6 +480,6 @@ export async function seedDemo(db: Db, opts: { webPublicUrl?: string } = {}): Pr
   );
 
   console.log(
-    `[seed:demo] users=${DEMO_USERS.length} questions=${questionIdByKey.size} vocab=${vocabIds.length} org=1 class=1 lesson=1 test_sets=${3 + Object.keys(reading.testSetIds).length + Object.keys(listening.testSetIds).length}`,
+    `[seed:demo] users=${DEMO_USERS.length} questions=${questionIdByKey.size} vocab=${vocabIds.length} org=1 class=1 lesson=1 test_sets=${5 + Object.keys(reading.testSetIds).length + Object.keys(listening.testSetIds).length}`,
   );
 }
