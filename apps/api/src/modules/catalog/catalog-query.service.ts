@@ -137,6 +137,33 @@ export class CatalogQueryService {
     return rows.map((r, i) => this.toLoaded(r.q, r.v, { id: r.s.id, code: r.s.code, skill: r.skill }, r.p, r.topic, subskills.get(r.q.id) ?? [], { group_key: r.item.groupKey ?? null, order_no: i + 1, points: Number(r.item.points) }));
   }
 
+  /** Cache trong tiến trình: question_version_id → question_type (phiên bản bất biến nên không cần vô hiệu) */
+  private readonly versionTypeCache = new Map<string, string>();
+
+  /** Dạng câu theo phiên bản – nhẹ, dùng khi lưu nháp (kiểm tra kiểu câu trả lời) thay vì nạp đầy đủ câu hỏi */
+  async questionTypesByVersion(versionIds: string[], db: DbOrTx = this.dbs.db): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    const missing: string[] = [];
+    for (const id of versionIds) {
+      const t = this.versionTypeCache.get(id);
+      if (t) out.set(id, t);
+      else missing.push(id);
+    }
+    if (missing.length) {
+      const rows = await db
+        .select({ id: catalogQuestionVersions.id, type: catalogQuestions.questionTypeCode })
+        .from(catalogQuestionVersions)
+        .innerJoin(catalogQuestions, eq(catalogQuestions.id, catalogQuestionVersions.questionId))
+        .where(inArray(catalogQuestionVersions.id, missing));
+      for (const r of rows) {
+        out.set(r.id, r.type);
+        if (this.versionTypeCache.size > 50_000) this.versionTypeCache.clear();
+        this.versionTypeCache.set(r.id, r.type);
+      }
+    }
+    return out;
+  }
+
   /** Nạp theo question_version_id (review/explain) */
   async loadByVersionIds(versionIds: string[], db: DbOrTx = this.dbs.db): Promise<Map<string, LoadedQuestion>> {
     if (versionIds.length === 0) return new Map();
@@ -156,7 +183,8 @@ export class CatalogQueryService {
   }
 
   /** Câu ngẫu nhiên đã phát hành theo bộ lọc (practice/drill) */
-  async randomQuestions(program: string, filter: { section_code?: string; question_type?: string; topic?: string; subskill?: string; count: number; excludeQuestionIds?: string[] }): Promise<LoadedQuestion[]> {
+  async randomQuestions(program: string, filter: { section_code?: string; question_type?: string; topic?: string; subskill?: string; count: number; excludeQuestionIds?: string[]; onlyQuestionIds?: string[] }): Promise<LoadedQuestion[]> {
+    if (filter.onlyQuestionIds && filter.onlyQuestionIds.length === 0) return [];
     const rows = await this.dbs.db
       .select({ q: catalogQuestions, v: catalogQuestionVersions, s: catalogSections, skill: catalogSkills.code, p: catalogPassages, topic: catalogTopics.code })
       .from(catalogQuestions)
@@ -174,6 +202,7 @@ export class CatalogQueryService {
           filter.topic ? eq(catalogTopics.code, filter.topic) : sql`true`,
           filter.subskill ? sql`exists (select 1 from catalog.question_subskills qs join catalog.subskills ss on ss.id = qs.subskill_id where qs.question_id = ${catalogQuestions.id} and ss.code = ${filter.subskill})` : sql`true`,
           filter.excludeQuestionIds?.length ? sql`${catalogQuestions.id} <> all(${filter.excludeQuestionIds}::uuid[])` : sql`true`,
+          filter.onlyQuestionIds?.length ? inArray(catalogQuestions.id, filter.onlyQuestionIds) : sql`true`,
         ),
       )
       .orderBy(sql`random()`)
@@ -229,7 +258,8 @@ export class CatalogQueryService {
     const out = new Map<string, { id: string; kind: string; url: string; duration_ms: number | null }>();
     const ids = [...new Set(assetIds.filter(Boolean))];
     if (ids.length === 0) return out;
-    const rows = await this.dbs.db.select().from(catalogMediaAssets).where(inArray(catalogMediaAssets.id, ids));
+    // Chỉ phát asset đã xử lý xong (uploading/processing/failed → không trả URL)
+    const rows = await this.dbs.db.select().from(catalogMediaAssets).where(and(inArray(catalogMediaAssets.id, ids), eq(catalogMediaAssets.status, 'ready')));
     for (const m of rows) {
       let url = m.externalUrl ?? '';
       if (!url && m.storageKey) {

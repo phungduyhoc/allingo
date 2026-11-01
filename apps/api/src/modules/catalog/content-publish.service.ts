@@ -2,27 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { schema } from '@allingo/db';
-import { DOMAIN_EVENTS, localizedTextSchema, programCodeSchema, questionContentSchema, questionTypeCodeSchema } from '@allingo/schemas';
+import { DOMAIN_EVENTS, localizedTextSchema, programCodeSchema, validateTestSetStructure, type StructureReport } from '@allingo/schemas';
 import { DbService } from '../../shared/db/db.module.js';
 import { OutboxService } from '../../shared/events/outbox.service.js';
 import { NotFound, ValidationFailed } from '../../shared/http/errors.js';
 
-const { catalogQuestions, catalogQuestionVersions, catalogSections, catalogTopics, catalogSubskills, catalogQuestionSubskills, catalogTestSets, catalogTestSetItems, catalogTestSetSections } = schema;
-
-export const publishQuestionSchema = z.object({
-  external_ref: z.string().min(1).max(128),
-  program: programCodeSchema,
-  section_code: z.string().min(1).max(32),
-  question_type: questionTypeCodeSchema,
-  content: questionContentSchema,
-  difficulty: z.string().max(10).optional(),
-  topic_code: z.string().max(64).optional(),
-  subskill_codes: z.array(z.string().max(64)).max(10).optional(),
-  source: z.enum(['human', 'ai', 'licensed']).default('human'),
-  change_note: z.string().max(500).optional(),
-  created_by_email: z.string().max(254).optional(),
-});
-export type PublishQuestionInput = z.infer<typeof publishQuestionSchema>;
+const { catalogQuestions, catalogQuestionVersions, catalogSections, catalogTopics, catalogSubskills, catalogTestSets, catalogTestSetItems, catalogTestSetSections, catalogSkills } = schema;
 
 export const publishTestSetSchema = z.object({
   external_ref: z.string().min(1).max(128),
@@ -39,8 +24,8 @@ export const publishTestSetSchema = z.object({
 export type PublishTestSetInput = z.infer<typeof publishTestSetSchema>;
 
 /**
- * Phát hành nội dung từ CMS vào catalog (ADR-0019). Idempotent theo external_ref (lưu trong question_versions.metadata.external_ref
- * và test_sets.code). Sửa nội dung đã phát hành → version mới; attempt cũ vẫn trỏ version cũ (CLAUDE.md §5.9).
+ * Phát hành bộ đề từ CMS vào catalog (ADR-0019/0024). Idempotent theo test_sets(program, code).
+ * Câu hỏi đi qua ContentWorkflowService (đồng bộ mọi trạng thái). Bộ đề phải đạt kiểm tra cấu trúc trước khi phát hành.
  */
 @Injectable()
 export class ContentPublishService {
@@ -49,55 +34,23 @@ export class ContentPublishService {
     private readonly outbox: OutboxService,
   ) {}
 
-  async publishQuestion(input: PublishQuestionInput): Promise<{ question_id: string; question_version_id: string; version_no: number; changed: boolean }> {
-    if (input.content.type !== input.question_type) throw new ValidationFailed({ issues: [{ path: 'content.type', message: 'content.type must match question_type' }] });
-    return this.dbs.db.transaction(async (tx) => {
-      const [section] = await tx.select({ id: catalogSections.id }).from(catalogSections).where(and(eq(catalogSections.programCode, input.program), eq(catalogSections.code, input.section_code))).limit(1);
-      if (!section) throw new NotFound('section', input.section_code);
-      const topic = input.topic_code ? (await tx.select({ id: catalogTopics.id }).from(catalogTopics).where(eq(catalogTopics.code, input.topic_code)).limit(1))[0] : undefined;
-
-      const [existing] = await tx
-        .select({ questionId: catalogQuestionVersions.questionId, versionId: catalogQuestionVersions.id, versionNo: catalogQuestionVersions.versionNo, content: catalogQuestionVersions.content })
-        .from(catalogQuestionVersions)
-        .where(sql`${catalogQuestionVersions.metadata} ->> 'external_ref' = ${input.external_ref}`)
-        .orderBy(sql`${catalogQuestionVersions.versionNo} desc`)
-        .limit(1);
-
-      let questionId: string;
-      let versionNo = 1;
-      if (existing) {
-        questionId = existing.questionId;
-        if (JSON.stringify(existing.content) === JSON.stringify(input.content)) {
-          await tx.update(catalogQuestions).set({ status: 'published', updatedAt: new Date(), retiredAt: null }).where(eq(catalogQuestions.id, questionId));
-          return { question_id: questionId, question_version_id: existing.versionId, version_no: existing.versionNo, changed: false };
-        }
-        versionNo = existing.versionNo + 1;
-      } else {
-        const [q] = await tx
-          .insert(catalogQuestions)
-          .values({ programCode: input.program, sectionId: section.id, questionTypeCode: input.question_type, topicId: topic?.id ?? null, status: 'published', source: input.source, difficultyTarget: (input.difficulty as never) ?? null })
-          .returning({ id: catalogQuestions.id });
-        questionId = q!.id;
-      }
-      const [version] = await tx
-        .insert(catalogQuestionVersions)
-        .values({ questionId, versionNo, content: input.content, metadata: { external_ref: input.external_ref, source: 'cms', created_by_email: input.created_by_email ?? null }, changeNote: input.change_note ?? null })
-        .returning({ id: catalogQuestionVersions.id });
-      await tx
-        .update(catalogQuestions)
-        .set({ currentVersionId: version!.id, status: 'published', sectionId: section.id, questionTypeCode: input.question_type, topicId: topic?.id ?? null, difficultyTarget: (input.difficulty as never) ?? null, updatedAt: new Date(), retiredAt: null })
-        .where(eq(catalogQuestions.id, questionId));
-      if (input.subskill_codes?.length) {
-        await tx.delete(catalogQuestionSubskills).where(eq(catalogQuestionSubskills.questionId, questionId));
-        const subs = await tx.select({ id: catalogSubskills.id, code: catalogSubskills.code }).from(catalogSubskills).where(and(eq(catalogSubskills.programCode, input.program), inArray(catalogSubskills.code, input.subskill_codes)));
-        for (const s of subs) await tx.insert(catalogQuestionSubskills).values({ questionId, subskillId: s.id, weight: '1' }).onConflictDoNothing();
-      }
-      await this.outbox.write(tx, { aggregateType: 'question', aggregateId: questionId, eventType: DOMAIN_EVENTS.CONTENT_PUBLISHED, payload: { entity: 'question', question_id: questionId, question_version_id: version!.id, version_no: versionNo, program: input.program } });
-      return { question_id: questionId, question_version_id: version!.id, version_no: versionNo, changed: true };
-    });
+  /** Kiểm tra cấu trúc (TOEIC L&R: Part 1–7 đúng số câu với đề full) – dùng cho test set builder và trước khi phát hành */
+  async validateTestSet(input: Pick<PublishTestSetInput, 'program' | 'kind' | 'items'>): Promise<StructureReport> {
+    const sections = await this.dbs.db
+      .select({ code: catalogSections.code, skill: catalogSkills.code, questionCount: catalogSections.questionCount, sortOrder: catalogSections.sortOrder })
+      .from(catalogSections)
+      .innerJoin(catalogSkills, eq(catalogSkills.id, catalogSections.skillId))
+      .where(eq(catalogSections.programCode, input.program));
+    return validateTestSetStructure(
+      input.kind,
+      sections.map((s) => ({ code: s.code, skill: s.skill, question_count: s.questionCount ?? null, sort_order: s.sortOrder })),
+      input.items.map((i) => ({ question_ref: i.question_external_ref, section_code: i.section_code, sort_order: i.sort_order, group_key: i.group_key ?? null })),
+    );
   }
 
-  async publishTestSet(input: PublishTestSetInput): Promise<{ test_set_id: string }> {
+  async publishTestSet(input: PublishTestSetInput): Promise<{ test_set_id: string; structure: StructureReport }> {
+    const structure = await this.validateTestSet(input);
+    if (!structure.ok) throw new ValidationFailed({ issues: structure.issues.map((i) => ({ path: `items${i.section ? `.${i.section}` : ''}`, message: i.message, code: i.code })), structure });
     return this.dbs.db.transaction(async (tx) => {
       const sections = await tx.select({ id: catalogSections.id, code: catalogSections.code }).from(catalogSections).where(eq(catalogSections.programCode, input.program));
       const sectionId = new Map(sections.map((s) => [s.code, s.id]));
@@ -124,7 +77,7 @@ export class ContentPublishService {
       await tx.delete(catalogTestSetItems).where(eq(catalogTestSetItems.testSetId, testSetId));
       await tx.insert(catalogTestSetItems).values(input.items.map((i) => ({ testSetId, questionId: questionId.get(i.question_external_ref)!, sectionId: sectionId.get(i.section_code)!, sortOrder: i.sort_order, groupKey: i.group_key ?? null, points: String(i.points) })));
       await this.outbox.write(tx, { aggregateType: 'test_set', aggregateId: testSetId, eventType: DOMAIN_EVENTS.CONTENT_PUBLISHED, payload: { entity: 'test_set', test_set_id: testSetId, program: input.program, code: input.code } });
-      return { test_set_id: testSetId };
+      return { test_set_id: testSetId, structure };
     });
   }
 

@@ -33,9 +33,20 @@ export const envSchema = z.object({
   S3_FORCE_PATH_STYLE: bool(true),
   S3_PRESIGN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(600),
   S3_PUBLIC_BASE_URL: z.string().optional(),
+  // Sprint 2 – driver lưu trữ: rỗng = tự chọn (APP_ENV=test → fs, còn lại → s3). fs chỉ dùng cho dev/test (ADR-0025)
+  STORAGE_DRIVER: z.preprocess((v) => (v === '' ? undefined : v), z.enum(['s3', 'fs']).optional()),
+  STORAGE_FS_DIR: z.string().default('./.storage'),
+  // Sprint 2 – media pipeline (ffmpeg/ffprobe trong image worker) và TTS
+  FFMPEG_PATH: z.string().default('ffmpeg'),
+  FFPROBE_PATH: z.string().default('ffprobe'),
+  MEDIA_FFMPEG_TIMEOUT_SECONDS: z.coerce.number().int().min(10).max(3600).default(300),
+  TTS_DEFAULT_VOICE: z.string().default('en-US-JennyNeural'),
 
   MEILISEARCH_HOST: z.string().default('http://localhost:7700'),
   MEILISEARCH_API_KEY: z.string().optional(),
+  /** auto: Meilisearch khi sẵn sàng, nếu không dùng PostgreSQL (pg_trgm/ILIKE); meili | pg: ép buộc */
+  SEARCH_PROVIDER: z.enum(['auto', 'meili', 'pg']).default('auto'),
+  SEARCH_INDEX_PREFIX: z.string().default('allingo_'),
 
   API_PORT: z.coerce.number().int().default(4000),
   API_HOST: z.string().default('0.0.0.0'),
