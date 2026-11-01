@@ -88,6 +88,8 @@ export async function registerFsStorageRoutes(fastify: FastifyInstance, driver: 
         const head = await driver.headObject(bucket, params.key);
         if (!head) return sendError(req, reply, 404, 'not_found', 'Object not found');
         const maxAge = Math.max(0, params.exp - Math.floor(Date.now() / 1000));
+        // SVG (ảnh nội dung Sprint 4): chặn script nếu mở trực tiếp URL (đã kiểm tra khi xử lý, đây là lớp phòng thủ thêm)
+        if (baseMime(head.contentType) === 'image/svg+xml') reply.header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:").header('x-content-type-options', 'nosniff');
         reply
           .header('content-type', head.contentType ?? 'application/octet-stream')
           .header('accept-ranges', 'bytes')

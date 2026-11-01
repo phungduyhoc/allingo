@@ -22,7 +22,9 @@
     "poc:p": "node --import @swc-node/register/esm-register ../../eval/poc/pronunciation/run-poc-p.ts",
     "poc:typecheck": "tsc -p ../../eval/poc/tsconfig.json --noEmit",
     "start:dev": "node --import @swc-node/register/esm-register src/main.ts",
-    "search:reindex": "node --import @swc-node/register/esm-register scripts/search-reindex.ts"
+    "search:reindex": "node --import @swc-node/register/esm-register scripts/search-reindex.ts",
+    "test-sets:generate": "node --import @swc-node/register/esm-register scripts/generate-test-set.ts",
+    "seed:media": "node --import @swc-node/register/esm-register scripts/seed-media.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.94",

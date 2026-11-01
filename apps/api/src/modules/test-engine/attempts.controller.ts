@@ -1,7 +1,7 @@
-import { Controller, Get, Headers, HttpCode, Post, Put } from '@nestjs/common';
+import { Controller, Get, Header, Headers, HttpCode, Post, Put } from '@nestjs/common';
 import { ApiHeader, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { attemptAnswersPutSchema, attemptCreateSchema, attemptEventSchema, attemptResultSchema, attemptReviewQuerySchema, attemptReviewSchema, type AttemptReviewQuery, attemptSchema, attemptSummarySchema, myAttemptsQuerySchema, pageSchema, practiceQuestionsQuerySchema, type AttemptAnswersPut, type AttemptCreate, type AttemptEvent } from '@allingo/schemas';
+import { attemptAnswersPutSchema, attemptCreateSchema, attemptEventSchema, attemptMediaListSchema, attemptResultSchema, attemptReviewQuerySchema, attemptReviewSchema, type AttemptReviewQuery, attemptSchema, attemptSummarySchema, myAttemptsQuerySchema, pageSchema, practiceQuestionsQuerySchema, type AttemptAnswersPut, type AttemptCreate, type AttemptEvent } from '@allingo/schemas';
 import { CurrentUser, type AuthUser } from '../../shared/auth/auth.guard.js';
 import { ApiZod, ZodBody, ZodParams, ZodQuery } from '../../shared/http/zod.js';
 import { AttemptsService } from './attempts.service.js';
@@ -56,6 +56,14 @@ export class AttemptsController {
     return this.attempts.result(user.id, p.attemptId);
   }
 
+  /** URL ký mới cho mọi media của attempt (v1.1 – Sprint 4): client gọi trước khi `expires_at` hết hạn (đề L&R 120′ > TTL 10′) */
+  @Get('attempts/:attemptId/media')
+  @Header('cache-control', 'no-store')
+  @ApiZod({ responses: { 200: attemptMediaListSchema } })
+  media(@CurrentUser() user: AuthUser, @ZodParams(attemptParam) p: z.infer<typeof attemptParam>) {
+    return this.attempts.media(user.id, p.attemptId);
+  }
+
   @Get('attempts/:attemptId/review')
   @ApiZod({ query: attemptReviewQuerySchema, responses: { 200: attemptReviewSchema } })
   review(@CurrentUser() user: AuthUser, @ZodParams(attemptParam) p: z.infer<typeof attemptParam>, @ZodQuery(attemptReviewQuerySchema) q: AttemptReviewQuery) {
@@ -68,7 +76,7 @@ export class AttemptsController {
     return this.attempts.listMine(user.id, q);
   }
 
-  /** Theo OpenAPI: GET /practice/questions tạo attempt drill (201) */
+  /** Theo OpenAPI: GET /practice/questions tạo attempt drill (201); `timed=true` → timed_drill (giới hạn theo Part / per_question_sec) */
   @Get('practice/questions')
   @HttpCode(201)
   @ApiZod({ query: practiceQuestionsQuerySchema, responses: { 201: attemptSchema } })

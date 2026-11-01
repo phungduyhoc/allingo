@@ -13,7 +13,7 @@ export const MAX_IMAGE_PIXELS = 50_000_000;
 export const MAX_IMAGE_SIDE = 12_000;
 
 /** MIME cho phép tải lên trực tiếp (OpenAPI /uploads/presign + API nội bộ CMS) */
-export { ALLOWED_AUDIO_MIME, ALLOWED_IMAGE_MIME } from '@allingo/schemas';
+export { ALLOWED_AUDIO_MIME, ALLOWED_IMAGE_MIME, CONTENT_IMAGE_MIME } from '@allingo/schemas';
 
 const EXT: Record<string, string> = {
   'audio/webm': 'webm',
@@ -24,6 +24,7 @@ const EXT: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
   'image/webp': 'webp',
+  'image/svg+xml': 'svg',
 };
 
 export function extForMime(mime: string): string {
@@ -55,6 +56,8 @@ export const mediaMetadataSchema = z
     thumbnail_key: z.string().nullable().optional(),
     tts: z.object({ voice: z.string(), locale: z.string(), provider: z.string(), text_hash: z.string() }).optional(),
     processed_at: z.string().nullable().optional(),
+    /** sha256 bytes gốc – khoá idempotent của MediaAssetsService.createContentAsset (seed/script) */
+    source_checksum: z.string().optional(),
     /** Đã xoá tệp do chủ tài khoản bị xoá (PersonalDataRegistry) */
     purged_at: z.string().optional(),
     processing_ms: z.number().int().nullable().optional(),

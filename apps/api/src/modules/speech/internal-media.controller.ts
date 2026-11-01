@@ -7,7 +7,7 @@ import { AppError, ValidationFailed } from '../../shared/http/errors.js';
 import { ZodValidationPipe } from '../../shared/http/zod.js';
 import { baseMime, MAX_UPLOAD_BYTES } from '../../shared/storage/storage.module.js';
 import { MediaAssetsService } from './media/media-assets.service.js';
-import { ALLOWED_AUDIO_MIME, ALLOWED_IMAGE_MIME } from './media/media.types.js';
+import { ALLOWED_AUDIO_MIME, CONTENT_IMAGE_MIME } from './media/media.types.js';
 import { LOCALE_PATTERN, SpeechProviderError, VOICE_PATTERN } from './speech-provider.js';
 import { TtsService } from './tts.service.js';
 import { HttpStatus } from '@nestjs/common';
@@ -32,7 +32,8 @@ export const internalPresignSchema = z
     license: z.string().regex(/^(own|cc-by|licensed:[\w.-]+)$/).default('own'),
   })
   .superRefine((v, ctx) => {
-    const allowed: readonly string[] = v.kind === 'audio' ? ALLOWED_AUDIO_MIME : ALLOWED_IMAGE_MIME;
+    // Nội dung CMS: ảnh được thêm SVG (Part 1 – Sprint 4); người học vẫn chỉ png/jpeg/webp (uploadPresignSchema)
+    const allowed: readonly string[] = v.kind === 'audio' ? ALLOWED_AUDIO_MIME : CONTENT_IMAGE_MIME;
     if (!allowed.includes(baseMime(v.mime_type))) ctx.addIssue({ code: 'custom', path: ['mime_type'], message: `mime_type must be one of ${allowed.join(', ')}` });
   });
 

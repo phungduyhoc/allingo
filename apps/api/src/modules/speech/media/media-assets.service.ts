@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -119,6 +119,36 @@ export class MediaAssetsService implements OnModuleInit {
     const ttl = this.storage.defaultTtlSec;
     const uploadUrl = await this.storage.presignPut(input.bucket, key, { contentType: input.mimeType, contentLength: input.sizeBytes, ttlSec: ttl });
     return { mediaAssetId: id, uploadUrl, expiresAt: new Date(now.getTime() + ttl * 1000), storageKey: key };
+  }
+
+  /**
+   * Tạo asset NỘI DUNG từ bytes (seed/script, Sprint 4 – vd. ảnh SVG Part 1, audio Listening có sẵn): ghi bản gốc vào bucket media,
+   * xử lý ĐỒNG BỘ (ffmpeg/SVG) và trả trạng thái cuối. Idempotent theo sha256 nội dung (`metadata.source_checksum`): cùng bytes →
+   * dùng lại asset `ready`. `transcript` (audio): [{start_ms,end_ms,text,speaker}] – dùng cho Review Listening.
+   */
+  async createContentAsset(input: { kind: 'audio' | 'image'; mimeType: string; body: Buffer; license?: string; createdBy?: string | null; transcript?: Array<{ start_ms: number | null; end_ms: number | null; text: string; speaker: string | null }> | null }): Promise<{ mediaAssetId: string; status: string; reused: boolean; error: { code: string; message: string } | null }> {
+    if (input.body.length === 0 || input.body.length > MAX_UPLOAD_BYTES) throw new Conflict('File size out of range', { size_bytes: input.body.length });
+    const checksum = createHash('sha256').update(input.body).digest('hex');
+    const [hit] = await this.dbs.db
+      .select({ id: catalogMediaAssets.id, transcript: catalogMediaAssets.transcript })
+      .from(catalogMediaAssets)
+      .where(and(eq(catalogMediaAssets.kind, input.kind), eq(catalogMediaAssets.status, 'ready'), sql`${catalogMediaAssets.metadata}->>'source_checksum' = ${checksum}`))
+      .limit(1);
+    if (hit) {
+      if (input.transcript !== undefined) await this.dbs.db.update(catalogMediaAssets).set({ transcript: input.transcript }).where(eq(catalogMediaAssets.id, hit.id));
+      return { mediaAssetId: hit.id, status: 'ready', reused: true, error: null };
+    }
+    const id = randomUUID();
+    const now = new Date();
+    const mime = baseMime(input.mimeType);
+    const key = `content/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}/original.${extForMime(mime)}`;
+    await this.storage.putObject('media', key, input.body, { contentType: mime });
+    const metadata: MediaMetadata = { bucket: 'media', origin: 'cms', original: { key, mime_type: mime, size_bytes: input.body.length }, source_checksum: checksum };
+    await this.dbs.db.insert(catalogMediaAssets).values({ id, kind: input.kind, storageKey: key, mimeType: mime, sizeBytes: input.body.length, license: input.license ?? 'own', createdBy: input.createdBy ?? null, status: 'processing', metadata, transcript: input.transcript ?? null });
+    await this.processor.process(id);
+    const after = await this.getRow(id);
+    const err = readMetadata(after.metadata).error ?? null;
+    return { mediaAssetId: id, status: after.status, reused: false, error: err ? { code: err.code, message: err.message } : null };
   }
 
   async getRow(id: string): Promise<MediaAssetRow> {

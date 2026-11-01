@@ -12,6 +12,7 @@ import { DbService } from '../../../shared/db/db.module.js';
 import { MAX_UPLOAD_BYTES, StorageService, type Bucket } from '../../../shared/storage/storage.module.js';
 import { getLogger } from '../../../shared/telemetry/logger.js';
 import { computeWaveform, convertImageToWebp, normalizeAudio, probeMedia, sniffMedia, WAVEFORM_SAMPLE_RATE, type FfmpegConfig, type ProbeResult, type SniffResult } from './ffmpeg.js';
+import { inspectSvg, looksLikeSvg, MAX_SVG_BYTES } from './svg.js';
 import {
   MAX_AUDIO_DURATION_MS,
   MAX_IMAGE_PIXELS,
@@ -49,6 +50,8 @@ async function sha256File(p: string): Promise<string> {
  * Xử lý media (job `media.process`, ADR-0025): tải bản gốc → nhận dạng chữ ký → ffprobe →
  * audio: MP3 48 kbps mono + duration + waveform 200 đỉnh · ảnh: WebP + thumbnail 320 px (bỏ EXIF) →
  * cập nhật catalog.media_assets processing → ready | failed (+ metadata). Idempotent: asset đã ready thì bỏ qua.
+ * SVG nội dung (Sprint 4): không qua ffmpeg – kiểm tra an toàn (`inspectSvg`) rồi phát nguyên bản `image.svg`; SVG trong tải lên của
+ * người học / bucket recordings bị từ chối.
  */
 @Injectable()
 export class MediaProcessorService {
@@ -105,6 +108,14 @@ export class MediaProcessorService {
       await fh.read(headBuf, 0, 64, 0);
       await fh.close();
       const sniff = sniffMedia(headBuf);
+      if (!sniff && looksLikeSvg(headBuf)) {
+        if (asset.kind !== 'image') throw new MediaPermanentError('kind_mismatch', `File is image, asset is ${asset.kind}`);
+        if (bucket !== 'media' || meta.origin === 'learner_upload') throw new MediaPermanentError('unsupported_media', 'SVG is only accepted for content images');
+        if (head.size > MAX_SVG_BYTES) throw new MediaPermanentError('too_large', `SVG exceeds ${MAX_SVG_BYTES} bytes`);
+        await this.processSvg(asset, meta, { bucket, dir: path.posix.dirname(originalKey), inPath, originalKey, size: head.size, started });
+        this.logger.info({ media_asset_id: id, kind: 'image', format: 'svg', ms: Date.now() - started }, 'media processed');
+        return { mediaAssetId: id, status: 'ready' };
+      }
       if (!sniff) throw new MediaPermanentError('unsupported_media', 'Unrecognised file signature');
       if (sniff.kind !== asset.kind) throw new MediaPermanentError('kind_mismatch', `File is ${sniff.kind}, asset is ${asset.kind}`);
       let probe: ProbeResult;
@@ -157,6 +168,34 @@ export class MediaProcessorService {
         original: ctx.original,
         variants: { ...(meta.variants ?? {}), mp3_48k: { key, mime_type: 'audio/mpeg', size_bytes: size, bitrate_kbps: 48 } },
         waveform: { count: peaks.length, sample_rate: WAVEFORM_SAMPLE_RATE, peaks },
+        processed_at: new Date().toISOString(),
+        processing_ms: Date.now() - ctx.started,
+        error: null,
+      },
+    });
+  }
+
+  /** SVG nội dung: kiểm tra an toàn, giữ nguyên tệp (vector, không cần thumbnail), Content-Type image/svg+xml */
+  private async processSvg(asset: MediaAssetRow, meta: MediaMetadata, ctx: { bucket: Bucket; dir: string; inPath: string; originalKey: string; size: number; started: number }): Promise<void> {
+    const body = await fsp.readFile(ctx.inPath);
+    const check = inspectSvg(body);
+    if (!check.ok) throw new MediaPermanentError('unsupported_media', check.reason ?? 'Unsafe SVG');
+    const key = `${ctx.dir}/image.svg`;
+    await this.storage.putObject(ctx.bucket, key, body, { contentType: 'image/svg+xml', cacheControl: 'public, max-age=31536000, immutable' });
+    await this.update(asset.id, {
+      status: 'ready',
+      storageKey: key,
+      mimeType: 'image/svg+xml',
+      sizeBytes: body.length,
+      width: check.width,
+      height: check.height,
+      checksum: createHash('sha256').update(body).digest('hex'),
+      metadata: {
+        ...meta,
+        bucket: ctx.bucket,
+        original: { key: ctx.originalKey, mime_type: 'image/svg+xml', size_bytes: ctx.size, container: 'svg', duration_ms: null },
+        variants: { ...(meta.variants ?? {}), svg: { key, mime_type: 'image/svg+xml', size_bytes: body.length, width: check.width, height: check.height } },
+        thumbnail_key: null,
         processed_at: new Date().toISOString(),
         processing_ms: Date.now() - ctx.started,
         error: null,
