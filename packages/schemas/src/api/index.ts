@@ -4,6 +4,7 @@ import { answerInputSchema } from '../question/answer.js';
 
 export * from './attempt.js';
 export * from './media.js';
+export * from './learning-tools.js';
 
 // ----------------------------------------------------------------------------- Auth / Me
 export const registerInputSchema = z.object({
@@ -278,26 +279,53 @@ export const quotaExceededDetailsSchema = z.object({
 });
 export type QuotaExceededDetails = z.infer<typeof quotaExceededDetailsSchema>;
 
+/** Độ dài tối đa một tin nhắn gia sư (ký tự) – S6 */
+export const TUTOR_MESSAGE_MAX_CHARS = 2000;
+/** Loại ngữ cảnh hội thoại (v1.1 – S6): suy ra từ attempt_id / question_version_id; không có → free */
+export const THREAD_CONTEXT_KINDS = ['attempt', 'question', 'free'] as const;
+export type ThreadContextKind = (typeof THREAD_CONTEXT_KINDS)[number];
+
 export const threadContextSchema = z.object({
   attempt_id: uuidSchema.optional(),
   submission_id: uuidSchema.optional(),
   lesson_id: uuidSchema.optional(),
   question_version_id: uuidSchema.optional(),
   mode: z.enum(['text', 'voice']).default('text'),
+  /** v1.1 – S6: server trả loại ngữ cảnh; client có thể gửi `free` để tạo hội thoại tự do (bỏ qua id khác) */
+  kind: z.enum(THREAD_CONTEXT_KINDS).optional(),
 });
-export const threadCreateSchema = z.object({ program: programCodeSchema.optional(), context: threadContextSchema.optional() });
+export type ThreadContext = z.infer<typeof threadContextSchema>;
+export const threadCreateSchema = z.object({ program: programCodeSchema.optional(), context: threadContextSchema.optional(), title: z.string().trim().min(1).max(120).optional() });
 export const threadSchema = z.object({
   id: uuidSchema,
   program: z.string().nullable(),
   title: z.string().nullable(),
   context: threadContextSchema.nullable(),
   updated_at: z.string(),
+  /** v1.1 – S6 */
+  created_at: z.string().optional(),
+  /** Lượt người học đã gửi / giới hạn lượt của thread theo gói (billing.quotas `ai_tutor_thread_turns`; null = không giới hạn) – v1.1 S6 */
+  turns: z.object({ used: z.number().int(), limit: z.number().int().nullable(), remaining: z.number().int().nullable() }).optional(),
 });
+export type Thread = z.infer<typeof threadSchema>;
 export const messageCreateSchema = z.object({
-  text: z.string().min(1).max(2000).optional(),
+  text: z.string().min(1).max(TUTOR_MESSAGE_MAX_CHARS).optional(),
   recording_id: uuidSchema.optional(),
   want_audio: z.boolean().default(false),
 });
+/** Mã từ chối của guard (v1.1 – S6) – web dịch theo i18n `tutor.refusal.<code>` */
+export const REFUSAL_CODES = ['injection', 'off_topic', 'answer_leak', 'unsafe'] as const;
+export type RefusalCode = (typeof REFUSAL_CODES)[number];
+/** Trích dẫn trong câu trả lời gia sư (v1.1 – S6): câu hỏi đang xem để UI hiển thị khối trích */
+export const tutorCitationSchema = z.object({
+  type: z.literal('question'),
+  question_version_id: uuidSchema,
+  section_code: z.string().nullable(),
+  /** Trích đề ≤ 160 ký tự (không đáp án) */
+  excerpt: z.string(),
+});
+export type TutorCitation = z.infer<typeof tutorCitationSchema>;
+export const tutorActionSchema = z.object({ type: z.enum(['open_page', 'start_task', 'show_question']), target: z.string(), label: z.string() });
 export const messageSchema = z.object({
   id: uuidSchema,
   role: z.enum(['user', 'assistant', 'system']),
@@ -306,7 +334,33 @@ export const messageSchema = z.object({
   actions: z.array(z.record(z.string(), z.unknown())),
   ai_task_id: uuidSchema.nullable(),
   created_at: z.string(),
+  /** v1.1 – S6: tin trả lời bị guard từ chối (text rỗng – web hiển thị theo refusal_code) */
+  refused: z.boolean().optional(),
+  refusal_code: z.enum(REFUSAL_CODES).nullable().optional(),
+  suggested_followups: z.array(z.string()).optional(),
+  citations: z.array(tutorCitationSchema).optional(),
 });
+export type Message = z.infer<typeof messageSchema>;
+/** GET /ai/threads/{id} (v1.1 – S6): thread + tin nhắn mới nhất (cũ → mới), `next_cursor` để tải tin cũ hơn */
+export const threadDetailSchema = threadSchema.extend({ messages: z.array(messageSchema), next_cursor: z.string().nullable() });
+export type ThreadDetail = z.infer<typeof threadDetailSchema>;
+/**
+ * `data` của sự kiện SSE `result` khi gửi tin nhắn (v1.1 – S6). `delta.text` là các mảnh của `reply_markdown` (văn bản thuần,
+ * không phải JSON) – khi có `result`, web thay toàn bộ văn bản stream bằng `reply_markdown` (repair/fallback có thể khác bản stream).
+ */
+export const tutorReplySchema = z.object({
+  message_id: uuidSchema,
+  user_message_id: uuidSchema,
+  reply_markdown: z.string(),
+  actions: z.array(tutorActionSchema),
+  suggested_followups: z.array(z.string()),
+  grounded_on: z.array(z.string()),
+  citations: z.array(tutorCitationSchema),
+  refused: z.boolean(),
+  refusal_code: z.enum(REFUSAL_CODES).nullable(),
+  turns: z.object({ used: z.number().int(), limit: z.number().int().nullable(), remaining: z.number().int().nullable() }),
+});
+export type TutorReply = z.infer<typeof tutorReplySchema>;
 export const aiFeedbackInputSchema = z.object({
   ai_task_id: uuidSchema,
   rating: z.enum(['helpful', 'not_helpful', 'wrong']),

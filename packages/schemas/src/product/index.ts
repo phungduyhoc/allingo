@@ -12,6 +12,8 @@ export const FEATURE_CODES = {
   PART_DRILL: 'part_drill',
   AI_EXPLAIN: 'ai_explain',
   AI_TUTOR: 'ai_tutor',
+  /** Số lượt người học gửi trong MỘT hội thoại gia sư (S6) – period `lifetime` = cả đời thread, đếm từ learn.chat_messages */
+  AI_TUTOR_THREAD_TURNS: 'ai_tutor_thread_turns',
   AI_DIAGNOSE: 'ai_diagnose',
   GRADE_WRITING: 'grade_writing',
   GRADE_SPEAKING: 'grade_speaking',
@@ -22,6 +24,12 @@ export const FEATURE_CODES = {
   STREAK_FREEZE: 'streak_freeze',
 } as const;
 export type FeatureCode = (typeof FEATURE_CODES)[keyof typeof FEATURE_CODES];
+
+/**
+ * Quota theo PHẠM VI (không theo người dùng × kỳ): giới hạn đọc từ billing.quotas nhưng đếm ở bảng nghiệp vụ
+ * (vd lượt/thread đếm trong learn.chat_messages) – QuotaService không đếm Redis và /me/entitlements không liệt kê.
+ */
+export const SCOPED_QUOTA_FEATURES: readonly FeatureCode[] = ['ai_tutor_thread_turns'];
 
 /** Tính năng chỉ Pro (không có quota Free) – nguồn sự thật là billing.quotas/entitlements, đây là mặc định seed */
 export const PRO_ONLY_FEATURES: readonly FeatureCode[] = ['grade_writing', 'grade_speaking', 'ai_diagnose', 'streak_freeze'];
@@ -36,18 +44,23 @@ export const DEFAULT_QUOTAS: ReadonlyArray<{ plan_kind: 'free' | 'monthly' | 'ye
   { plan_kind: 'free', feature: 'part_drill', period: 'day', limit: 5 },
   { plan_kind: 'free', feature: 'ai_explain', period: 'day', limit: 10 },
   { plan_kind: 'free', feature: 'ai_tutor', period: 'day', limit: 20 },
+  { plan_kind: 'free', feature: 'ai_tutor_thread_turns', period: 'lifetime', limit: 20 },
   { plan_kind: 'free', feature: 'dictionary_ai', period: 'day', limit: 30 },
   { plan_kind: 'free', feature: 'srs_new_cards', period: 'day', limit: 10 },
   { plan_kind: 'monthly', feature: 'ai_explain', period: 'day', limit: 300 },
+  { plan_kind: 'monthly', feature: 'ai_tutor_thread_turns', period: 'lifetime', limit: 200 },
   { plan_kind: 'monthly', feature: 'ai_tutor', period: 'day', limit: 200 },
   { plan_kind: 'monthly', feature: 'srs_new_cards', period: 'day', limit: 30 },
   { plan_kind: 'yearly', feature: 'ai_explain', period: 'day', limit: 300 },
+  { plan_kind: 'yearly', feature: 'ai_tutor_thread_turns', period: 'lifetime', limit: 200 },
   { plan_kind: 'yearly', feature: 'ai_tutor', period: 'day', limit: 200 },
   { plan_kind: 'yearly', feature: 'srs_new_cards', period: 'day', limit: 30 },
   { plan_kind: 'lifetime', feature: 'ai_explain', period: 'day', limit: 300 },
+  { plan_kind: 'lifetime', feature: 'ai_tutor_thread_turns', period: 'lifetime', limit: 200 },
   { plan_kind: 'lifetime', feature: 'ai_tutor', period: 'day', limit: 200 },
   { plan_kind: 'lifetime', feature: 'srs_new_cards', period: 'day', limit: 30 },
   { plan_kind: 'combo', feature: 'ai_explain', period: 'day', limit: 500 },
+  { plan_kind: 'combo', feature: 'ai_tutor_thread_turns', period: 'lifetime', limit: 200 },
   { plan_kind: 'combo', feature: 'ai_tutor', period: 'day', limit: 300 },
   { plan_kind: 'combo', feature: 'srs_new_cards', period: 'day', limit: 40 },
 ];

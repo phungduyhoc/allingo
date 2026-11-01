@@ -461,10 +461,13 @@ CREATE TABLE catalog.vocab_items (
   frequency_rank  integer,
   source          catalog.content_source NOT NULL DEFAULT 'human',
   status          catalog.content_status NOT NULL DEFAULT 'published',
-  created_at      timestamptz NOT NULL DEFAULT now()
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  forms           text[] NOT NULL DEFAULT '{}',         -- v1.1 – Sprint 6: headword + dạng biến đổi đã chuẩn hoá (tra ngược invoices → invoice)
+  topics          text[] NOT NULL DEFAULT '{}'          -- v1.1 – Sprint 6: chủ đề (office, finance…) từ dữ liệu từ điển
 );
 CREATE INDEX ix_vocab_items_program_headword ON catalog.vocab_items(program_code, headword);
 CREATE INDEX ix_vocab_items_headword_trgm ON catalog.vocab_items USING gin (headword gin_trgm_ops);
+CREATE INDEX ix_vocab_items_forms ON catalog.vocab_items USING gin (forms);   -- v1.1 – Sprint 6: GET /dictionary/lookup theo dạng từ
 
 CREATE TABLE catalog.vocab_lists (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1291,6 +1294,24 @@ CREATE TABLE ops.notification_preferences (
   reminder_times text[] NOT NULL DEFAULT '{"20:00"}',
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
+
+-- v1.1 – Sprint 6 (migration 0004): đăng ký Web Push (VAPID) theo thiết bị; endpoint duy nhất toàn hệ thống
+CREATE TABLE ops.push_subscriptions (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         uuid NOT NULL REFERENCES iam.users(id) ON DELETE CASCADE,
+  endpoint        text NOT NULL UNIQUE,                 -- URL push service (bí mật theo thiết bị – không trả ra API)
+  p256dh          text NOT NULL,                        -- khoá công khai ECDH của trình duyệt (base64url)
+  auth            text NOT NULL,                        -- secret xác thực (base64url)
+  expires_at      timestamptz,                          -- PushSubscription.expirationTime
+  user_agent      text,
+  locale          text,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  last_success_at timestamptz,
+  failure_count   smallint NOT NULL DEFAULT 0
+);
+CREATE INDEX ix_push_subscriptions_user ON ops.push_subscriptions(user_id);
+CREATE TRIGGER trg_push_subscriptions_updated BEFORE UPDATE ON ops.push_subscriptions FOR EACH ROW EXECUTE FUNCTION ops.set_updated_at();
 
 CREATE TABLE ops.feedback (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),

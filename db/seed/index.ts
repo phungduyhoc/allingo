@@ -12,3 +12,4 @@ export {
   type ScriptSegment,
 } from './demo/toeic-listening-01.js';
 export { READING_FULL_01, READING_DRILLS } from './demo/toeic-reading-01.js';
+export { importDictionary, seedDictionary, loadDictionaryModule, dictionaryAttribution, formatAttribution, toVocabRow, normalizePos, type DictEntry, type DictionaryModule, type DictionaryImportResult } from './dictionary.js';

@@ -633,9 +633,13 @@ export const catalogVocabItems = catalog.table(
     source: catalogContentSource().default('human').notNull(),
     status: catalogContentStatus().default('published').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    // v1.1 – Sprint 6 (migration 0004): headword + dạng biến đổi đã chuẩn hoá (tra ngược), chủ đề từ điển
+    forms: text().array().default([]).notNull(),
+    topics: text().array().default([]).notNull(),
   },
   (table) => [
     index('ix_vocab_items_headword_trgm').using('gin', table.headword.asc().nullsLast().op('gin_trgm_ops')),
+    index('ix_vocab_items_forms').using('gin', table.forms.asc().nullsLast().op('array_ops')),
     index('ix_vocab_items_program_headword').using(
       'btree',
       table.programCode.asc().nullsLast().op('text_ops'),

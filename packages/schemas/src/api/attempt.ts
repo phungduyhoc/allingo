@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { localizedTextSchema, programCodeSchema, uuidSchema } from '../common.js';
 import { answerInputSchema } from '../question/answer.js';
 import { questionTypeCodeSchema } from '../question/content.js';
+import { noteSchema } from './learning-tools.js';
 
 export const ATTEMPT_MODES = ['exam', 'practice', 'diagnostic', 'drill', 'timed_drill'] as const;
 export const attemptModeSchema = z.enum(ATTEMPT_MODES);
@@ -260,6 +261,8 @@ export const reviewItemSchema = z.object({
   community_avg_time_ms: z.number().int().nullable().optional(),
   /** Số lần người học đã bắt đầu phát audio của câu trong attempt (sự kiện audio_started) – v1.1 */
   audio_plays: z.number().int().optional(),
+  /** Ghi chú mới nhất của người học cho câu (v1.1 – S6) */
+  note: noteSchema.nullable().optional(),
 });
 export const attemptReviewSchema = z.object({ attempt_id: uuidSchema, items: z.array(reviewItemSchema) });
 export type AttemptReview = z.infer<typeof attemptReviewSchema>;

@@ -1,0 +1,268 @@
+import { z } from 'zod';
+import { localeSchema, programCodeSchema, uuidSchema } from '../common.js';
+
+/**
+ * Hợp đồng Sprint 6 (v1.1): tra từ & TTS, thẻ SRS từ vựng, ghi chú người học, tuỳ chọn thông báo + Web Push.
+ * Bám docs/spec/allingo-openapi.yaml (DictionaryEntry, SrsCard, Note, NotificationPreferences, PushSubscription…).
+ */
+
+// ----------------------------------------------------------------------------- Tra từ
+/**
+ * Chuẩn hoá từ/cụm để tra (headword/form, khoá cache dịch): NFKC, chữ thường, nháy cong → thẳng, các loại gạch → '-',
+ * gộp khoảng trắng, bỏ ký tự không phải chữ/số ở đầu/cuối (giữ `o'clock`, `e-mail`, `follow-up`).
+ * Trùng khớp `normalizeTerm()` của dữ liệu từ điển (db/seed/dictionary/toeic-core-en-vi.ts) – test db kiểm chứng.
+ */
+export function normalizeLookupTerm(input: string): string {
+  return input
+    .normalize('NFKC')
+    .replace(/[\u2018\u2019\u02bc\u2032]/g, "'")
+    .replace(/[\u2010-\u2015]/g, '-')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+}
+
+/** Số từ của chuỗi đã chuẩn hoá (cụm ≥ 2 từ = "câu/cụm", tra AI cả cụm) */
+export const lookupWordCount = (normalized: string): number => (normalized ? normalized.split(' ').length : 0);
+
+export const DICTIONARY_QUERY_MAX = 500;
+export const DICTIONARY_CONTEXT_MAX = 300;
+
+/**
+ * GET /dictionary/lookup – `q` (spec) hoặc bí danh `term` (S6); `program` mặc định toeic; `locale` mặc định explain_locale của người học.
+ * `ai`: auto (mặc định: không có trong từ điển và không có gợi ý gần → dịch AI) | always (luôn dịch AI khi không có trong từ điển) | never.
+ */
+export const dictionaryLookupQuerySchema = z
+  .object({
+    q: z.string().trim().min(1).max(DICTIONARY_QUERY_MAX).optional(),
+    term: z.string().trim().min(1).max(DICTIONARY_QUERY_MAX).optional(),
+    program: programCodeSchema.default('toeic'),
+    context: z.string().trim().max(DICTIONARY_CONTEXT_MAX).optional(),
+    locale: localeSchema.optional(),
+    ai: z.enum(['auto', 'always', 'never']).default('auto'),
+  })
+  .refine((v) => !!(v.q ?? v.term), { message: 'q (or term) is required', path: ['q'] });
+export type DictionaryLookupQuery = z.infer<typeof dictionaryLookupQuerySchema>;
+
+export const dictionaryMeaningSchema = z.object({ en: z.string().nullable(), local: z.string().nullable(), pos: z.string().nullable().optional() });
+export const dictionaryExampleSchema = z.object({ text: z.string(), translation: z.string().nullable() });
+
+export const DICTIONARY_SOURCES = ['dictionary', 'ai', 'none'] as const;
+export const DICTIONARY_MATCHES = ['headword', 'form', 'none'] as const;
+
+export const dictionaryEntrySchema = z.object({
+  /** Chuỗi người học tra (đã cắt khoảng trắng) */
+  query: z.string(),
+  /** Headword khớp (từ điển) hoặc chính chuỗi tra (AI/none) */
+  headword: z.string(),
+  pos: z.string().nullable(),
+  /** IPA ưu tiên giọng Mỹ (tương thích spec) */
+  ipa: z.string().nullable(),
+  ipa_us: z.string().nullable(),
+  ipa_uk: z.string().nullable(),
+  /** URL ký (10 phút) của audio TTS đã cache; null khi chưa sinh → gọi GET /tts?text=<headword> (server đã bắt đầu sinh nền) */
+  audio_url: z.string().nullable(),
+  audio_expires_at: z.string().nullable(),
+  meaning_en: z.string().nullable(),
+  /** Nghĩa theo `locale` (fallback vi → en) */
+  meaning_local: z.string().nullable(),
+  example: z.string().nullable(),
+  meanings: z.array(dictionaryMeaningSchema),
+  examples: z.array(dictionaryExampleSchema),
+  collocations: z.array(z.string()),
+  forms: z.array(z.string()),
+  level: z.string().nullable(),
+  topics: z.array(z.string()),
+  vocab_item_id: uuidSchema.nullable(),
+  /** Đã có thẻ SRS (learn.srs_cards kind vocab) cho mục này */
+  saved: z.boolean(),
+  srs_card_id: uuidSchema.nullable(),
+  source: z.enum(DICTIONARY_SOURCES),
+  matched: z.enum(DICTIONARY_MATCHES),
+  /** Kết quả dịch AI (segment_translate) khi không có trong từ điển */
+  translation: z.object({ text: z.string(), needs_review: z.boolean(), ai_task_id: uuidSchema.nullable() }).nullable(),
+  /** true khi bản dịch lấy từ ai.translation_cache (không gọi model, không tính quota) */
+  cached: z.boolean(),
+  /** Gợi ý pg_trgm khi gõ sai / không khớp (≤ 5) */
+  suggestions: z.array(z.object({ headword: z.string(), similarity: z.number() })),
+  locale: z.string(),
+  /** Ghi nguồn dữ liệu từ điển (giấy phép) – hiển thị nhỏ dưới popover */
+  attribution: z.string().nullable(),
+});
+export type DictionaryEntry = z.infer<typeof dictionaryEntrySchema>;
+
+/** GET /tts – văn bản ≤ 500 ký tự; voice mặc định en-US */
+export const ttsQuerySchema = z.object({ text: z.string().trim().min(1).max(500), voice: z.string().max(64).optional() });
+export const ttsResultSchema = z.object({ url: z.string(), duration_ms: z.number().int(), expires_at: z.string().nullable(), cached: z.boolean(), voice: z.string() });
+export type TtsResult = z.infer<typeof ttsResultSchema>;
+
+// ----------------------------------------------------------------------------- SRS (thẻ từ vựng – FSRS lịch ở S10)
+export const SRS_CARD_TYPES = ['vocab', 'error', 'grammar', 'phoneme', 'sentence'] as const;
+export const srsCardCreateSchema = z
+  .object({
+    program: programCodeSchema,
+    card_type: z.enum(SRS_CARD_TYPES),
+    ref_id: uuidSchema.optional(),
+    headword: z.string().trim().min(1).max(100).optional(),
+    /** passage | dictionary | review | manual | feedback | lesson */
+    source_type: z.string().max(32).optional(),
+    source_id: uuidSchema.optional(),
+    /** Câu chứa từ (lưu vào payload để ôn theo ngữ cảnh), ≤ 300 ký tự */
+    context: z.string().trim().max(300).optional(),
+  })
+  .refine((v) => !!(v.ref_id ?? v.headword), { message: 'ref_id or headword is required', path: ['ref_id'] });
+export type SrsCardCreate = z.infer<typeof srsCardCreateSchema>;
+
+export const srsCardSchema = z.object({
+  id: uuidSchema,
+  card_type: z.string(),
+  ref_id: uuidSchema,
+  state: z.enum(['new', 'learning', 'review', 'relearning']),
+  due_at: z.string(),
+  stability: z.number().nullable(),
+  difficulty: z.number().nullable(),
+  reps: z.number().int(),
+  lapses: z.number().int(),
+  payload: z.record(z.string(), z.unknown()),
+  /** v1.1 – S6: false khi thẻ đã tồn tại (POST idempotent theo user × card_type × ref_id) */
+  created: z.boolean().optional(),
+});
+export type SrsCard = z.infer<typeof srsCardSchema>;
+
+// ----------------------------------------------------------------------------- Ghi chú
+export const NOTE_BODY_MAX = 2000;
+
+/**
+ * Làm sạch Markdown ngắn của ghi chú: bỏ thẻ/comment HTML, vô hiệu liên kết javascript:/data:/vbscript:, bỏ ký tự điều khiển,
+ * chuẩn hoá xuống dòng (tối đa 2 dòng trống). Không render HTML – client hiển thị Markdown an toàn.
+ */
+export function sanitizeNoteMarkdown(input: string): string {
+  return input
+    .replace(/\r\n?/g, '\n')
+    .replace(/<!--[\s\S]*?(-->|$)/g, '')
+    .replace(/<\/?[a-zA-Z][^<>]*>/g, '')
+    .replace(/\]\(\s*(?:javascript|data|vbscript):(?:[^()]|\([^()]*\))*\)/gi, ']()')
+    .replace(/(?:javascript|vbscript):/gi, '')
+    // eslint-disable-next-line no-control-regex -- loại ký tự điều khiển (trừ \n, \t)
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+export const noteCreateSchema = z
+  .object({
+    body: z.string().max(NOTE_BODY_MAX * 2),
+    question_version_id: uuidSchema.optional(),
+    attempt_id: uuidSchema.optional(),
+    question_id: uuidSchema.optional(),
+    test_set_id: uuidSchema.optional(),
+  });
+export type NoteCreate = z.infer<typeof noteCreateSchema>;
+export const noteUpdateSchema = z.object({ body: z.string().max(NOTE_BODY_MAX * 2) });
+/** PUT /notes (spec v1.0, tương thích): ghi đè ghi chú mới nhất theo câu (question_id) hoặc đề (test_set_id) */
+export const notePutSchema = z.object({ body: z.string().max(NOTE_BODY_MAX * 2), test_set_id: uuidSchema.optional(), question_id: uuidSchema.optional(), question_version_id: uuidSchema.optional(), attempt_id: uuidSchema.optional() });
+export const notesListQuerySchema = z.object({
+  q: z.string().trim().min(1).max(100).optional(),
+  question_version_id: uuidSchema.optional(),
+  question_id: uuidSchema.optional(),
+  attempt_id: uuidSchema.optional(),
+  test_set_id: uuidSchema.optional(),
+  cursor: z.string().max(512).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+export const noteSchema = z.object({
+  id: uuidSchema,
+  body: z.string(),
+  question_id: uuidSchema.nullable(),
+  question_version_id: uuidSchema.nullable(),
+  attempt_id: uuidSchema.nullable(),
+  test_set_id: uuidSchema.nullable(),
+  created_at: z.string().nullable(),
+  updated_at: z.string(),
+});
+export type Note = z.infer<typeof noteSchema>;
+
+// ----------------------------------------------------------------------------- Thông báo & Web Push
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'HH:MM');
+export const NOTIFICATION_CHANNELS = ['email', 'push', 'zalo', 'sms', 'inapp'] as const;
+export const notificationPreferencesSchema = z.object({
+  channels: z.partialRecord(z.enum(NOTIFICATION_CHANNELS), z.boolean()),
+  quiet_hours: z.object({ start: hhmm, end: hhmm }),
+  reminder_times: z.array(hhmm).max(5),
+  /** v1.1 – S6 */
+  updated_at: z.string().optional(),
+  /** v1.1 – S6: số thiết bị đã đăng ký Web Push */
+  push_subscriptions: z.number().int().optional(),
+});
+export type NotificationPreferences = z.infer<typeof notificationPreferencesSchema>;
+export const notificationPreferencesPatchSchema = z.object({
+  channels: z.partialRecord(z.enum(NOTIFICATION_CHANNELS), z.boolean()).optional(),
+  quiet_hours: z.object({ start: hhmm, end: hhmm }).optional(),
+  reminder_times: z.array(hhmm).max(5).optional(),
+});
+export type NotificationPreferencesPatch = z.infer<typeof notificationPreferencesPatchSchema>;
+
+const base64url = z.string().regex(/^[A-Za-z0-9_-]+=*$/, 'base64url');
+/** Body `PushSubscription.toJSON()` của trình duyệt (+ user_agent/locale tuỳ chọn) */
+export const pushSubscriptionInputSchema = z.object({
+  endpoint: z.url({ protocol: /^https$/ }).max(2048),
+  expirationTime: z.number().int().nullable().optional(),
+  keys: z.object({ p256dh: base64url.min(80).max(120), auth: base64url.min(16).max(40) }),
+  user_agent: z.string().max(300).optional(),
+  locale: localeSchema.optional(),
+});
+export type PushSubscriptionInput = z.infer<typeof pushSubscriptionInputSchema>;
+export const pushSubscriptionSchema = z.object({
+  id: uuidSchema,
+  /** Chỉ origin của endpoint (không lộ token thiết bị) */
+  endpoint_origin: z.string(),
+  user_agent: z.string().nullable(),
+  locale: z.string().nullable(),
+  created_at: z.string(),
+  last_success_at: z.string().nullable(),
+  expires_at: z.string().nullable(),
+  /** POST: false khi endpoint đã đăng ký (cập nhật khoá) */
+  created: z.boolean().optional(),
+});
+export type PushSubscriptionView = z.infer<typeof pushSubscriptionSchema>;
+export const vapidPublicKeySchema = z.object({ public_key: z.string().nullable(), enabled: z.boolean() });
+
+/** Mẫu thông báo đẩy – web/service worker dịch theo i18n `push.<template_code>.title|body` khi title/body = null */
+export const PUSH_TEMPLATES = ['study_reminder', 'test'] as const;
+export const pushPayloadSchema = z.object({
+  v: z.literal(1),
+  notification_id: uuidSchema,
+  template_code: z.enum(PUSH_TEMPLATES),
+  title: z.string().nullable(),
+  body: z.string().nullable(),
+  /** Đường dẫn tương đối trong web (mở khi bấm) */
+  url: z.string(),
+  tag: z.string(),
+  locale: z.string(),
+  sent_at: z.string(),
+});
+export type PushPayload = z.infer<typeof pushPayloadSchema>;
+
+export const adminTestNotificationInputSchema = z.object({
+  /** Mặc định: chính admin gọi */
+  user_id: uuidSchema.optional(),
+  template_code: z.enum(PUSH_TEMPLATES).default('study_reminder'),
+  title: z.string().trim().min(1).max(80).optional(),
+  body: z.string().trim().min(1).max(200).optional(),
+  url: z.string().regex(/^\/(?!\/)[\w\-./?=&%#]*$/, 'relative path').max(200).default('/'),
+  /** Bỏ qua tuỳ chọn channels.push = false của người nhận */
+  force: z.boolean().default(false),
+});
+export type AdminTestNotificationInput = z.infer<typeof adminTestNotificationInputSchema>;
+export const adminTestNotificationResultSchema = z.object({
+  notification_id: uuidSchema.nullable(),
+  user_id: uuidSchema,
+  status: z.enum(['sent', 'failed', 'skipped']),
+  reason: z.string().nullable(),
+  sent: z.number().int(),
+  failed: z.number().int(),
+  removed: z.number().int(),
+  results: z.array(z.object({ subscription_id: uuidSchema, ok: z.boolean(), status_code: z.number().int().nullable(), removed: z.boolean() })),
+});
+export type AdminTestNotificationResult = z.infer<typeof adminTestNotificationResultSchema>;

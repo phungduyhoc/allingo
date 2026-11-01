@@ -1,7 +1,7 @@
 // ⚠️ Tệp sinh tự động bởi db/scripts/organize-schema.ts từ drizzle-kit pull. Không sửa tay —
 // thay đổi schema = migration SQL mới trong db/drizzle/migrations + cập nhật docs/spec/allingo-schema.sql, rồi chạy pnpm schema:refresh.
 
-import { uuid, text, smallint, timestamp, index, foreignKey, jsonb } from 'drizzle-orm/pg-core';
+import { unique, uuid, text, smallint, timestamp, index, foreignKey, jsonb } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { ops } from './_common.js';
 import { iamUsers } from './iam.js';
@@ -55,6 +55,34 @@ export const opsNotificationPreferences = ops.table(
       foreignColumns: [iamUsers.id],
       name: 'notification_preferences_user_id_fkey',
     }).onDelete('cascade'),
+  ],
+);
+
+// v1.1 – Sprint 6 (migration 0004): đăng ký Web Push (VAPID) theo thiết bị
+export const opsPushSubscriptions = ops.table(
+  'push_subscriptions',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    userId: uuid('user_id').notNull(),
+    endpoint: text().notNull(),
+    p256Dh: text('p256dh').notNull(),
+    auth: text().notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }),
+    userAgent: text('user_agent'),
+    locale: text(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    lastSuccessAt: timestamp('last_success_at', { withTimezone: true, mode: 'date' }),
+    failureCount: smallint('failure_count').default(0).notNull(),
+  },
+  (table) => [
+    index('ix_push_subscriptions_user').using('btree', table.userId.asc().nullsLast().op('uuid_ops')),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [iamUsers.id],
+      name: 'push_subscriptions_user_id_fkey',
+    }).onDelete('cascade'),
+    unique('push_subscriptions_endpoint_key').on(table.endpoint),
   ],
 );
 

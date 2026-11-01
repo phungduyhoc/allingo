@@ -22,6 +22,10 @@
     "./seed": {
       "types": "./dist/seed/index.d.ts",
       "default": "./dist/seed/index.js"
+    },
+    "./dictionary": {
+      "types": "./dist/seed/dictionary.d.ts",
+      "default": "./dist/seed/dictionary.js"
     }
   },
   "scripts": {
