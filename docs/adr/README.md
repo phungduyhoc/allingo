@@ -25,3 +25,5 @@ Mẫu Context – Decision – Consequences; thay đổi ADR cần Tech Lead duy
 - [ADR-0021](./0021-versions-pinning.md) — Ghim TypeScript 5.9.x, ESLint 9.x, Vitest 4.x (không lấy TypeScript 7 / ESLint 10 / Vitest 5 dù đã phát hành) cho tới khi NestJS CLI, drizzle-kit, Payload và typescript-eslint công bố hỗ trợ đầy đủ
 - [ADR-0022](./0022-auth-oauth-otp-native.md) — OAuth (Google/Apple/Facebook) + OTP tự triển khai trong `iam` bằng `jose`, không dùng Better Auth; liên kết tài khoản cần xác nhận; thu hồi phiên tức thời
 - [ADR-0023](./0023-infra-azure-container-apps.md) — (Proposed, chốt tại GATE-1) Phương án B: Azure Container Apps Southeast Asia + PostgreSQL Flexible/Redis/Key Vault, Cloudflare R2 + DNS/WAF, GitHub Actions OIDC
+- [ADR-0024](./0024-catalog-content-lifecycle.md) — Catalog là nguồn sự thật vòng đời nội dung + lịch sử duyệt; CMS đồng bộ mọi lần lưu; máy trạng thái dùng chung; tìm kiếm Meilisearch/PG; trùng lặp pg_trgm
+- [ADR-0025](./0025-media-pipeline-tts.md) — Pipeline media (presign → PUT trực tiếp → job `media.process` ffmpeg: mp3/webp, waveform, thumbnail), driver lưu trữ `fs` cho dev/test, TTS qua `SpeechProvider` có cache theo script

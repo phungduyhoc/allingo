@@ -1,4 +1,4 @@
-# Giả định (Sprint 0)
+# Giả định (Sprint 0 → Sprint 3)
 
 | # | Giả định | Lý do | Ảnh hưởng / việc cần xác nhận |
 | --- | --- | --- | --- |
@@ -24,3 +24,19 @@
 | A20 | Phát hiện tái sử dụng refresh token lưu hash token trước trong `iam.sessions.device->>'_prev_rt'` | DDL không có cột riêng | SPEC-ISSUES S12; `/me/sessions` lọc khoá nội bộ |
 | A21 | Đồng ý điều khoản: `accept_terms` thiếu (client cũ/mobile) được coi là đã hiển thị văn bản đồng ý; `false` → 400. OAuth/OTP tạo tài khoản ghi terms+privacy theo `POLICY_VERSION` | Tương thích client Sprint 0 | Văn bản Điều khoản/Chính sách là bản dự thảo – pháp chế duyệt trước GATE-3 |
 | A22 | Xoá tài khoản: giữ hàng `iam.users` đã ẩn danh hoá (email `deleted+<id>@anonymized.invalid`) vì `billing.credit_ledger/orders` tham chiếu và phải lưu theo luật; xoá identities/sessions/consents/notes/chat/recordings (cả tệp S3); giữ attempts dưới id ẩn danh | PDPL + nghĩa vụ kế toán | Xuất dữ liệu (`export_url`) làm ở S8 |
+| A23 | Duyệt vòng 2 chỉ vai trò `admin` (giáo viên cấp cao được cấp `admin` theo chương trình); nguyên tắc 4 mắt so người duyệt vòng 1 | Hệ vai trò không có `teacher_senior` | Thêm vai trò riêng nếu cần ở S12 |
+| A24 | Trạng thái duyệt của phiên bản chờ duyệt và mốc phát hành lưu trong `question_versions.metadata` | DDL không có cột | SPEC-ISSUES S17 |
+| A25 | Môi trường phiên không chạy được Meilisearch (không có binary/Docker) → test dùng `SEARCH_PROVIDER=pg`; adapter Meilisearch chỉ typecheck + chạy trên máy dev qua `pnpm docker:up` | Giới hạn môi trường | Chạy `pnpm --filter @allingo/api search:reindex` sau khi bật Meilisearch |
+| A26 | Test set builder dùng trường mảng có kéo thả sẵn của Payload; kiểm tra cấu trúc chạy ở API khi phát hành và qua `/internal/content/test-sets/validate` | Custom view kéo thả theo passage tốn công, chưa cần cho GĐ0 | Custom view ở S3 khi làm đề full Reading |
+| A27 | Ảnh người học tải lên (bài viết tay, biểu đồ) lưu bucket `recordings` (dữ liệu cá nhân), `metadata.origin = learner_upload`, xoá EXIF khi chuyển WebP | CLAUDE.md §9 | Ảnh JPEG điện thoại có thể xoay sai (ffmpeg không áp EXIF orientation) – xử lý ở S6 |
+| A28 | Hạn lưu ghi âm/ảnh: Pro (bất kỳ chương trình) 365 ngày; khách/Free 90 ngày (`learn.recordings.expires_at`) | CLAUDE.md §9 "90/365 ngày" | Job xoá ghi âm hết hạn + lifecycle bucket ở S8 |
+| A29 | Sau `media.process`, `media_assets.storage_key` trỏ bản phát được (mp3/webp); bản gốc giữ trong `metadata.original`; catalog chỉ phát URL cho asset `status = ready` | ADR-0025 | Client không bao giờ nhận URL tệp gốc chưa xử lý |
+| A30 | Cache TTS theo `provider + locale + voice + hash(script)`; cùng script → dùng lại cùng media asset; endpoint TTS nội bộ chạy đồng bộ | Tiết kiệm chi phí Azure | Script dài (> 1 phút) chuyển sang job `media.tts` khi CMS cần |
+| A31 | Redis mất kết nối → API xử lý media đồng bộ trong process (có cảnh báo) thay vì kẹt `processing` | Độ bền khi degrade | Theo dõi log `media inline fallback` trên staging |
+| A32 | Xoá tài khoản: dữ liệu cá nhân do module khác sở hữu đăng ký purger qua `PersonalDataRegistry` (shared); ảnh người học bị xoá mọi tệp, hàng `media_assets` giữ lại (có thể bị `attachment_id` tham chiếu) với `storage_key = NULL`, `status = failed`, `metadata.purged_at` | Ranh giới module §5.1 + FK | Outbox không có retry nên không dùng cho purge (SPEC-ISSUES S26) |
+| A33 | Đề TOEIC Reading đầy đủ: đồng hồ chung 75 phút cho Part 5–7 (`test_sets.duration_sec = 4500`, section `duration_sec = NULL`); bộ luyện theo Part ước tính 40 s/câu Part 5, 60 s/câu Part 6–7 | Định dạng TOEIC L&R | Đề L&R 200 câu (S4) dùng 2 đồng hồ Listening 45′ / Reading 75′ |
+| A34 | Đề Reading 01 và 3 bộ luyện `is_free = true` (Free bị chặn bởi hạn mức 2 đề full/tháng, 3 đề mini/ngày) | Dùng để demo/kiểm thử GĐ0 | Đề full từ đề 02 trở đi có thể chỉ cho Pro – quyết định của sản phẩm |
+| A35 | Bộ đôi/bộ ba Part 7 gộp thành một `catalog.passages` (mỗi văn bản mở đầu bằng nhãn `[Tiêu đề]`), câu trỏ passage theo `group_key` | `questions.passage_id` chỉ trỏ một đoạn | SPEC-ISSUES S24 |
+| A36 | Practice/drill: phản hồi đúng/sai + đáp án + giải thích tác giả hiện ngay sau khi lưu câu (trong `GET /attempts/{id}.feedback`); exam/diagnostic/timed_drill không bao giờ có | Sprint S3 "practice hiện đáp án ngay" | Exam Mode §5.8 giữ nguyên |
+| A37 | Chẩn đoán theo quy tắc (`diagnoseAttempt`): vùng yếu khi độ chính xác < 60% và ≥ 2 câu; câu chậm khi > 2× trung vị thời gian của Part; cờ `time_pressure` khi hết giờ còn câu trống; gợi ý ≤ 3 bộ luyện | Chưa có dữ liệu để học ngưỡng | Hiệu chỉnh ngưỡng khi có ≥ 1.000 lượt làm (S9 – lộ trình thích ứng) |
+| A38 | Đo tải trong phiên (2 CPU dùng chung, API + Postgres + Redis cùng máy) chỉ để so sánh tương đối; mục tiêu 1.000 VU p95 < 150 ms đo trên staging bằng `tests/load/attempt-flow.js` (k6) | Giới hạn môi trường | Chạy k6 trên staging trước GATE-2 |

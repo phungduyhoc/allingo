@@ -495,7 +495,7 @@ paths:
     get:
       tags: [Attempts]
       summary: "Xem lại từng câu: đáp án, giải thích (cache), transcript/đoạn văn tô sáng, paraphrase"
-      parameters: [ { $ref: '#/components/parameters/AttemptId' }, { name: only_wrong, in: query, schema: { type: boolean } } ]
+      parameters: [ { $ref: '#/components/parameters/AttemptId' }, { name: only_wrong, in: query, schema: { type: boolean } }, { name: flagged, in: query, schema: { type: boolean }, description: 'Chỉ câu đã đánh dấu (v1.1)' }, { name: section, in: query, schema: { type: string }, description: 'Lọc theo Part (v1.1)' } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AttemptReview' } } } }
   /attempts/{attemptId}/diagnosis:
@@ -509,7 +509,7 @@ paths:
     get:
       tags: [Attempts]
       summary: Lịch sử bài làm
-      parameters: [ { $ref: '#/components/parameters/ProgramQuery' }, { name: mode, in: query, schema: { type: string } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' }, { name: mode, in: query, schema: { type: string } }, { name: status, in: query, schema: { type: string } }, { name: from, in: query, schema: { type: string, format: date } }, { name: to, in: query, schema: { type: string, format: date } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/AttemptSummary' } }, next_cursor: { type: [string, 'null'] } } } } } }
   /practice/questions:
@@ -524,6 +524,7 @@ paths:
         - { name: subskill, in: query, schema: { type: string } }
         - { name: count, in: query, schema: { type: integer, default: 10, maximum: 50 } }
         - { name: timed, in: query, schema: { type: boolean } }
+        - { name: q, in: query, schema: { type: string }, description: 'Từ khoá (tìm qua Meilisearch/PG; chỉ câu đã phát hành) – v1.1' }
       responses:
         '201': { description: Tạo attempt mode=drill và trả câu hỏi, content: { application/json: { schema: { $ref: '#/components/schemas/Attempt' } } } }
   /notes:
@@ -1020,7 +1021,7 @@ paths:
     get:
       tags: [Admin]
       summary: Tìm câu hỏi theo trạng thái/Part/dạng/nguồn
-      parameters: [ { $ref: '#/components/parameters/ProgramQuery' }, { name: status, in: query, schema: { type: string } }, { name: section, in: query, schema: { type: string } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' }, { name: status, in: query, schema: { type: string } }, { name: section, in: query, schema: { type: string } }, { name: q, in: query, schema: { type: string }, description: 'Tìm trong đề bài (v1.1)' }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses: { '200': { description: OK } }
     post:
       tags: [Admin]
@@ -1028,6 +1029,11 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminQuestionInput' } } } }
       responses: { '201': { description: OK } }
   /admin/questions/{questionId}/versions:
+    get:
+      tags: [Admin]
+      summary: Lịch sử phiên bản câu hỏi (v1.1 – Sprint 2)
+      parameters: [ { name: questionId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses: { '200': { description: OK } }
     post:
       tags: [Admin]
       summary: Tạo phiên bản mới cho câu hỏi
@@ -1041,8 +1047,14 @@ paths:
       parameters:
         - { name: entityType, in: path, required: true, schema: { type: string, enum: [question, passage, lesson, exercise, video, vocab_item] } }
         - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [stage, decision], properties: { stage: { type: string, enum: [ai_check, review1, review2] }, decision: { type: string, enum: [approve, reject, needs_change] }, notes: { type: string } } } } } }
-      responses: { '200': { description: OK } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [stage, decision], properties: { stage: { type: string, enum: [ai_check, review1, review2] }, decision: { type: string, enum: [approve, reject, needs_change, submit, retire, reopen], description: 'approve/reject/needs_change ghi content_reviews; submit/retire/reopen là mốc chuyển trạng thái (v1.1)' }, notes: { type: string } } } } } }
+      responses: { '200': { description: OK }, '403': { $ref: '#/components/responses/Error' }, '409': { $ref: '#/components/responses/Error' } }
+  /admin/questions/{questionId}/ai-check:
+    post:
+      tags: [Admin]
+      summary: Chạy AI kiểm tra (check_question) cho bản đang soạn và ghi review stage ai_check (v1.1 – Sprint 2)
+      parameters: [ { name: questionId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses: { '200': { description: OK }, '409': { $ref: '#/components/responses/Error' } }
   /admin/generate/questions:
     post:
       tags: [Admin]
@@ -1300,6 +1312,7 @@ components:
         draft_answers: { type: array, items: { $ref: '#/components/schemas/AttemptAnswerInput' } }
         started_at: { type: string, format: date-time }
         server_time: { type: string, format: date-time }
+        feedback: { type: object, additionalProperties: { type: object, properties: { is_correct: { type: [boolean, 'null'] }, correct_answer: {}, explanation: { type: [object, 'null'] } } }, description: 'Chỉ mode practice/drill – đáp án của câu đã trả lời (v1.1)' }
     AttemptAnswerInput:
       type: object
       required: [question_id, answer]
