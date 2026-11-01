@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://allingo.vn/eval/poc/pronunciation/manifest.schema.json",
+  "title": "PoC-P – một dòng JSONL của manifest ghi âm (GATE-1)",
+  "description": "Mỗi dòng = một ghi âm đọc câu tham chiếu. Ghi âm là dữ liệu cá nhân: chỉ dùng mẫu có đồng ý voice_processing, lưu ngoài repo, speaker_id ẩn danh. Mục tiêu GATE-1: ≥ 100 ghi âm, ≥ 10 người, mức A2–C1, có band Pronunciation giáo viên.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "speaker_id", "audio_path", "reference_text", "locale", "band_source"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{2,63}$" },
+    "speaker_id": { "type": "string", "description": "Mã người nói ẩn danh (không họ tên/email/số điện thoại)" },
+    "audio_path": { "type": "string", "description": "Đường dẫn tệp WAV/OGG/MP3/WEBM/M4A, tương đối với thư mục chứa manifest hoặc tuyệt đối. Thiếu tệp + mock → script sinh tệp tổng hợp (sine) để chạy thử." },
+    "reference_text": { "type": "string", "minLength": 2, "maxLength": 1000, "description": "Câu/đoạn tham chiếu người học đọc (≤ 30 s audio mỗi đoạn với REST short-audio)" },
+    "locale": { "type": "string", "pattern": "^[a-z]{2}-[A-Z]{2}$", "default": "en-US" },
+    "cefr_level": { "type": ["string", "null"], "enum": ["A1", "A2", "B1", "B2", "C1", "C2", null] },
+    "band_source": { "type": "string", "enum": ["teacher", "assumed", "none"], "description": "assumed = giả định để chạy thử, KHÔNG dùng để kết luận GATE-1; none = chưa có band giáo viên" },
+    "teacher_pron_bands": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rater", "band"],
+        "properties": { "rater": { "type": "string" }, "band": { "type": "number", "minimum": 0, "maximum": 9, "multipleOf": 0.5 } }
+      }
+    },
+    "notes": { "type": "string", "maxLength": 500 }
+  }
+}

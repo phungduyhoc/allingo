@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://allingo.vn/eval/poc/writing/dataset.schema.json",
+  "title": "PoC-W – một dòng JSONL của bộ dữ liệu IELTS Writing (GATE-1)",
+  "description": "Mỗi dòng = một bài viết. Nguồn: tự biên soạn hoặc bài người học nội bộ ĐÃ ẨN DANH (không tên, email, số điện thoại). Band thật do 2 giáo viên chấm độc lập (band_source = teacher). Không dùng đề/bài mẫu sao chép từ Cambridge/IDP/BC.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "task_type", "prompt_text", "essay_text", "source", "band_source", "teacher_bands"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{2,63}$" },
+    "task_type": { "type": "string", "enum": ["task2", "task1_academic", "task1_general"] },
+    "prompt_text": { "type": "string", "minLength": 20, "maxLength": 2000 },
+    "image_description": { "type": ["string", "null"], "maxLength": 3000, "description": "Bắt buộc với task1_academic: mô tả biểu đồ/bảng là nguồn số liệu duy nhất cho model" },
+    "essay_text": { "type": "string", "minLength": 20, "maxLength": 12000 },
+    "target_band": { "type": "number", "minimum": 4, "maximum": 9, "multipleOf": 0.5, "default": 7 },
+    "source": { "type": "string", "enum": ["human", "ai", "learner_anonymized"] },
+    "band_source": { "type": "string", "enum": ["teacher", "assumed"], "description": "assumed = giả định để chạy thử harness, KHÔNG dùng để kết luận GATE-1" },
+    "teacher_bands": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rater", "overall", "task", "coherence_cohesion", "lexical_resource", "grammatical_range_accuracy"],
+        "properties": {
+          "rater": { "type": "string", "description": "Mã giáo viên ẩn danh (A, B…)" },
+          "overall": { "$ref": "#/$defs/band" },
+          "task": { "$ref": "#/$defs/band" },
+          "coherence_cohesion": { "$ref": "#/$defs/band" },
+          "lexical_resource": { "$ref": "#/$defs/band" },
+          "grammatical_range_accuracy": { "$ref": "#/$defs/band" }
+        }
+      }
+    },
+    "notes": { "type": "string", "maxLength": 500 }
+  },
+  "allOf": [{ "if": { "properties": { "task_type": { "const": "task1_academic" } } }, "then": { "required": ["image_description"] } }],
+  "$defs": { "band": { "type": "number", "minimum": 0, "maximum": 9, "multipleOf": 0.5 } }
+}
