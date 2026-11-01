@@ -32,6 +32,7 @@ import {
 } from '../../drizzle/schema/index.js';
 import { questionContentSchema } from '@allingo/schemas';
 import { DEMO_LESSON, DEMO_PART2, DEMO_PART5, DEMO_VOCAB, type DemoQuestion } from './content.js';
+import { seedReadingFull01 } from './reading-01.seed.js';
 
 export const DEMO_PASSWORD = 'Allingo@2026';
 
@@ -377,6 +378,9 @@ export async function seedDemo(db: Db, opts: { webPublicUrl?: string } = {}): Pr
     240,
   );
 
+  // ---------------------------------------------------------------- Đề TOEIC Reading đầy đủ 01 + 3 bộ luyện (Sprint 3)
+  const reading = await seedReadingFull01(db, { adminId, sectionId, subskillId, topicId });
+
   // ---------------------------------------------------------------- Từ vựng
   const vocabIds: string[] = [];
   for (const v of DEMO_VOCAB) {
@@ -477,6 +481,6 @@ export async function seedDemo(db: Db, opts: { webPublicUrl?: string } = {}): Pr
   );
 
   console.log(
-    `[seed:demo] users=${DEMO_USERS.length} questions=${questionIdByKey.size} vocab=${vocabIds.length} org=1 class=1 lesson=1 test_sets=2`,
+    `[seed:demo] users=${DEMO_USERS.length} questions=${questionIdByKey.size} vocab=${vocabIds.length} org=1 class=1 lesson=1 test_sets=${2 + Object.keys(reading.testSetIds).length}`,
   );
 }

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import { toeicLr, TOEIC_PART_SKILL, SCALE_INFO, ieltsLrBand } from '@allingo/scoring';
+import { diagnoseAttempt, toeicLr, TOEIC_PART_SKILL, SCALE_INFO, ieltsLrBand, type DiagnosisQuestion } from '@allingo/scoring';
 import {
   ATTEMPT_GRACE_SECONDS,
   DOMAIN_EVENTS,
@@ -33,7 +33,7 @@ import { IdempotencyService } from '../../shared/http/idempotency.js';
 import { Conflict, Forbidden, NotFound, ValidationFailed } from '../../shared/http/errors.js';
 import { encodeCursor, decodeCursor } from '../../shared/http/cursor.js';
 import { getLogger } from '../../shared/telemetry/logger.js';
-import { CatalogQueryService, type LoadedQuestion } from '../catalog/index.js';
+import { CatalogQueryService, SearchService, type LoadedQuestion } from '../catalog/index.js';
 import { EntitlementService, QuotaService } from '../billing/index.js';
 import { EXAM_LOCK_KEY, ExplanationCacheService } from '../ai-gateway/index.js';
 import { EnrollmentsService, UsersService } from '../iam/index.js';
@@ -45,6 +45,9 @@ type AttemptRow = typeof learnAttempts.$inferSelect;
  * Test Engine (master prompt §4.1 D): attempt có snapshot question_version, nháp idempotent, nộp idempotent, chấm bằng
  * packages/schemas.grade(), quy đổi điểm bằng packages/scoring, outbox attempt.graded, XP cho learning.
  */
+/** Chế độ được xem đáp án ngay sau khi trả lời */
+const FEEDBACK_MODES: ReadonlySet<string> = new Set(['practice', 'drill']);
+
 @Injectable()
 export class AttemptsService {
   private readonly logger = getLogger({ component: 'test-engine' });
@@ -55,6 +58,7 @@ export class AttemptsService {
     private readonly outbox: OutboxService,
     private readonly idem: IdempotencyService,
     private readonly catalog: CatalogQueryService,
+    private readonly search: SearchService,
     private readonly entitlements: EntitlementService,
     private readonly quotas: QuotaService,
     private readonly explanationCache: ExplanationCacheService,
@@ -180,7 +184,26 @@ export class AttemptsService {
       expires_at: draft.expires_at,
       server_time: now.toISOString(),
       ui_state: draft.ui_state,
+      ...(FEEDBACK_MODES.has(row.mode) ? { feedback: this.practiceFeedback(questions, answers) } : {}),
     };
+  }
+
+  /**
+   * Practice/drill: đáp án + đúng/sai cho câu ĐÃ trả lời để hiện ngay (Sprint 3). Exam/timed/diagnostic không bao giờ có.
+   * Giải thích tác giả (explanation seed) theo vi/en nếu có; giải thích AI ở Review (S5).
+   */
+  private practiceFeedback(questions: LoadedQuestion[], answers: Array<typeof learnAttemptAnswers.$inferSelect>) {
+    const byQ = new Map(questions.map((q) => [q.question_id, q]));
+    const out: NonNullable<Attempt['feedback']> = {};
+    for (const a of answers) {
+      const q = byQ.get(a.questionId);
+      const answer = (a.answer) ?? null;
+      if (!q || !isAnswered(answer)) continue;
+      const g = grade(q.content, answer);
+      const expl = (q.content as { explanation?: Record<string, string> }).explanation ?? null;
+      out[a.questionId] = { is_correct: g.is_correct, correct_answer: correctAnswerOf(q.content), explanation: expl };
+    }
+    return out;
   }
 
   // ------------------------------------------------------------------ lưu nháp
@@ -189,34 +212,53 @@ export class AttemptsService {
     if (draft.expires_at && Date.now() > new Date(draft.expires_at).getTime() + ATTEMPT_GRACE_SECONDS * 1000) throw new Conflict('Attempt has expired', { expires_at: draft.expires_at });
   }
 
+  /**
+   * Lưu nháp lô ≤ 100 câu, idempotent (cùng nội dung ghi đè). Tối ưu cho tải cao (Sprint 3): khoá dòng attempt,
+   * 1 truy vấn kiểu câu (cache trong tiến trình), 1 truy vấn câu đã có, cập nhật từng câu đổi + 1 lệnh insert gộp, đếm bằng COUNT.
+   */
   async saveAnswers(userId: string, attemptId: string, input: AttemptAnswersPut): Promise<void> {
     await this.dbs.db.transaction(async (tx) => {
       const row = await this.ownedAttempt(userId, attemptId, tx, true);
       const draft = this.draftOf(row);
       this.assertOpen(row, draft);
       const order = new Map(draft.question_order.map((q) => [q.question_id, q]));
-      const versions = await this.catalog.loadByVersionIds([...new Set(input.answers.map((a) => order.get(a.question_id)?.question_version_id).filter((x): x is string => !!x))], tx);
+      for (const a of input.answers) if (!order.has(a.question_id)) throw new ValidationFailed({ issues: [{ path: 'answers', message: `question ${a.question_id} not in attempt` }] });
+      const types = await this.catalog.questionTypesByVersion([...new Set(input.answers.map((a) => order.get(a.question_id)!.question_version_id))], tx);
       for (const a of input.answers) {
-        const o = order.get(a.question_id);
-        if (!o) throw new ValidationFailed({ issues: [{ path: 'answers', message: `question ${a.question_id} not in attempt` }] });
-        const q = versions.get(o.question_version_id);
-        if (q && q.question_type !== a.answer.type) throw new ValidationFailed({ issues: [{ path: 'answers', message: `answer type ${a.answer.type} does not match question type ${q.question_type}` }] });
-        const [existing] = await tx.select({ id: learnAttemptAnswers.id }).from(learnAttemptAnswers).where(and(eq(learnAttemptAnswers.attemptId, attemptId), eq(learnAttemptAnswers.questionId, a.question_id))).limit(1);
-        if (existing) {
+        const t = types.get(order.get(a.question_id)!.question_version_id);
+        if (t && t !== a.answer.type) throw new ValidationFailed({ issues: [{ path: 'answers', message: `answer type ${a.answer.type} does not match question type ${t}` }] });
+      }
+      // Lô có thể chứa cùng một câu nhiều lần → giữ bản cuối
+      const latest = new Map(input.answers.map((a) => [a.question_id, a]));
+      const existing = latest.size
+        ? await tx
+            .select({ id: learnAttemptAnswers.id, questionId: learnAttemptAnswers.questionId })
+            .from(learnAttemptAnswers)
+            .where(and(eq(learnAttemptAnswers.attemptId, attemptId), inArray(learnAttemptAnswers.questionId, [...latest.keys()])))
+        : [];
+      const existingByQ = new Map(existing.map((e) => [e.questionId, e.id]));
+      const inserts: Array<typeof learnAttemptAnswers.$inferInsert> = [];
+      for (const a of latest.values()) {
+        const id = existingByQ.get(a.question_id);
+        if (id) {
           await tx
             .update(learnAttemptAnswers)
             .set({ answer: a.answer, timeSpentMs: a.time_spent_ms ?? undefined, flagged: a.flagged ?? undefined })
-            .where(eq(learnAttemptAnswers.id, existing.id));
+            .where(eq(learnAttemptAnswers.id, id));
         } else {
-          await tx.insert(learnAttemptAnswers).values({ attemptId, questionId: a.question_id, questionVersionId: o.question_version_id, answer: a.answer, timeSpentMs: a.time_spent_ms ?? null, flagged: a.flagged ?? false });
+          inserts.push({ attemptId, questionId: a.question_id, questionVersionId: order.get(a.question_id)!.question_version_id, answer: a.answer, timeSpentMs: a.time_spent_ms ?? null, flagged: a.flagged ?? false });
         }
       }
-      const answered = await tx.select({ answer: learnAttemptAnswers.answer }).from(learnAttemptAnswers).where(eq(learnAttemptAnswers.attemptId, attemptId));
+      if (inserts.length) await tx.insert(learnAttemptAnswers).values(inserts);
+      const [cnt] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(learnAttemptAnswers)
+        .where(and(eq(learnAttemptAnswers.attemptId, attemptId), sql`${learnAttemptAnswers.answer} is not null`));
       const next: AttemptDraftState = {
         ...draft,
         section_elapsed_sec: { ...draft.section_elapsed_sec, ...(input.section_elapsed_sec ?? {}) },
         ui_state: { ...draft.ui_state, ...(input.ui_state ?? {}) },
-        answered_count: answered.filter((x) => isAnswered(x.answer)).length,
+        answered_count: cnt?.n ?? 0,
         last_saved_at: new Date().toISOString(),
       };
       await tx.update(learnAttempts).set({ draftState: next }).where(eq(learnAttempts.id, attemptId));
@@ -255,6 +297,7 @@ export class AttemptsService {
       let unanswered = 0;
       let correctCount = 0;
       const statUpdates: Array<{ question_id: string; correct: boolean; time_ms: number | null }> = [];
+      const diagInput: DiagnosisQuestion[] = [];
       const sectionTimes: Record<string, number[]> = {};
 
       for (const o of draft.question_order) {
@@ -287,11 +330,13 @@ export class AttemptsService {
         for (const s of q.subskill_codes) bump(bySub, s);
         if (q.topic_code) bump(byTopic, q.topic_code);
         if (g.is_correct !== null) statUpdates.push({ question_id: q.question_id, correct: g.is_correct, time_ms: a?.timeSpentMs ?? null });
+        diagInput.push({ question_id: o.question_id, section_code: o.section_code, subskill_codes: q.subskill_codes, topic_code: q.topic_code ?? null, answered: isAnswered(answer), is_correct: g.is_correct, time_ms: a?.timeSpentMs ?? null });
       }
       for (const [code, times] of Object.entries(sectionTimes)) bySection[code]!.avg_time_ms = Math.round(times.reduce((x, y) => x + y, 0) / times.length);
 
       const scaled = this.scale(row.programCode, bySection);
-      const breakdown: ScoreBreakdown = { by_section: bySection, by_question_type: byType, by_subskill: bySub, by_topic: byTopic, unanswered, scale: scaled.scale, timeout_wrong: 0 };
+      const diagnosis = diagnoseAttempt(diagInput, { autoSubmitted: !!opts.auto });
+      const breakdown: ScoreBreakdown = { by_section: bySection, by_question_type: byType, by_subskill: bySub, by_topic: byTopic, unanswered, scale: scaled.scale, timeout_wrong: diagnosis.timeout_wrong, diagnosis: diagnosis as unknown as Record<string, unknown>, auto_submitted: !!opts.auto };
       const timeSpent = Math.max(0, Math.round((Date.now() - row.startedAt.getTime()) / 1000));
       const xp = (row.mode === 'exam' && draft.question_order.length >= 100 ? XP_RULES.attempt_full_test_submitted : XP_RULES.attempt_submitted) + correctCount * XP_RULES.question_correct;
 
@@ -323,7 +368,7 @@ export class AttemptsService {
         by_question_type: result.breakdown.by_question_type,
         by_subskill: result.breakdown.by_subskill,
         compared_to_previous: result.previous,
-        diagnosis: null,
+        diagnosis: result.breakdown.diagnosis ?? null,
         xp_earned: result.xp,
       };
     }
@@ -376,7 +421,7 @@ export class AttemptsService {
   private async resultFromRow(row: AttemptRow, tx: DbOrTx): Promise<AttemptResult> {
     const b = (row.scoreBreakdown) ?? { by_section: {}, by_question_type: {}, by_subskill: {}, by_topic: {}, unanswered: 0, scale: {}, timeout_wrong: 0 };
     const previous = await this.previousScaled(tx, row.userId, row.programCode, row.id, row.testSetId, row.scaledScore !== null ? Number(row.scaledScore) : null);
-    return { attempt_id: row.id, raw_score: Number(row.rawScore ?? 0), scaled_score: row.scaledScore !== null ? Number(row.scaledScore) : null, scale: b.scale, by_section: b.by_section, by_question_type: b.by_question_type, by_subskill: b.by_subskill, compared_to_previous: previous, diagnosis: null, xp_earned: 0 };
+    return { attempt_id: row.id, raw_score: Number(row.rawScore ?? 0), scaled_score: row.scaledScore !== null ? Number(row.scaledScore) : null, scale: b.scale, by_section: b.by_section, by_question_type: b.by_question_type, by_subskill: b.by_subskill, compared_to_previous: previous, diagnosis: b.diagnosis ?? null, xp_earned: 0 };
   }
 
   async result(userId: string, attemptId: string): Promise<AttemptResult> {
@@ -386,7 +431,8 @@ export class AttemptsService {
   }
 
   // ------------------------------------------------------------------ review
-  async review(userId: string, attemptId: string, onlyWrong = false): Promise<AttemptReview> {
+  async review(userId: string, attemptId: string, filter: { only_wrong?: boolean; flagged?: boolean; section?: string } = {}): Promise<AttemptReview> {
+    const onlyWrong = filter.only_wrong === true;
     const row = await this.ownedAttempt(userId, attemptId);
     if (row.status !== 'graded') throw new Conflict('Attempt is not graded yet', { status: row.status });
     const draft = this.draftOf(row);
@@ -404,6 +450,8 @@ export class AttemptsService {
       const answer = (a?.answer as AnswerInput | null) ?? null;
       const g = grade(q.content, answer);
       if (onlyWrong && g.is_correct !== false) continue;
+      if (filter.flagged && !a?.flagged) continue;
+      if (filter.section && o.section_code !== filter.section) continue;
       const chosen = answer && answer.type === 'mcq_single' ? answer.selected : null;
       const explanation = await this.explanationCache.get(q.question_version_id, chosen, locale);
       items.push({
@@ -425,7 +473,7 @@ export class AttemptsService {
   }
 
   // ------------------------------------------------------------------ danh sách
-  async listMine(userId: string, q: { program?: string; mode?: string; cursor?: string; limit: number }): Promise<{ data: AttemptSummary[]; next_cursor: string | null }> {
+  async listMine(userId: string, q: { program?: string; mode?: string; status?: string; from?: string; to?: string; cursor?: string; limit: number }): Promise<{ data: AttemptSummary[]; next_cursor: string | null }> {
     const c = decodeCursor<{ started_at: string; id: string }>(q.cursor);
     const rows = await this.dbs.db
       .select({ a: learnAttempts, title: catalogTestSets.title })
@@ -436,6 +484,9 @@ export class AttemptsService {
           eq(learnAttempts.userId, userId),
           q.program ? eq(learnAttempts.programCode, q.program) : sql`true`,
           q.mode ? eq(learnAttempts.mode, q.mode as never) : sql`true`,
+          q.status ? eq(learnAttempts.status, q.status as never) : sql`true`,
+          q.from ? sql`${learnAttempts.startedAt} >= ${`${q.from}T00:00:00Z`}::timestamptz` : sql`true`,
+          q.to ? sql`${learnAttempts.startedAt} < (${`${q.to}T00:00:00Z`}::timestamptz + interval '1 day')` : sql`true`,
           c ? sql`(${learnAttempts.startedAt}, ${learnAttempts.id}) < (${new Date(c.started_at)}, ${c.id}::uuid)` : sql`true`,
         ),
       )
@@ -449,8 +500,10 @@ export class AttemptsService {
   }
 
   /** Practice: tạo attempt drill từ câu ngẫu nhiên */
-  async practice(userId: string, q: { program: ProgramCode; section?: string; question_type?: string; topic?: string; subskill?: string; count: number; timed: boolean }): Promise<Attempt> {
-    const questions = await this.catalog.randomQuestions(q.program, { section_code: q.section, question_type: q.question_type, topic: q.topic, subskill: q.subskill, count: q.count });
+  async practice(userId: string, q: { program: ProgramCode; section?: string; question_type?: string; topic?: string; subskill?: string; count: number; timed: boolean; q?: string }): Promise<Attempt> {
+    // Từ khoá → tập câu khớp (Meilisearch/PG, chỉ câu đã phát hành); bộ lọc khác vẫn áp ở DB
+    const onlyQuestionIds = q.q ? (await this.search.searchQuestions(q.q, { program: q.program, section_code: q.section, question_type: q.question_type, topic: q.topic }, 200)).map((h) => h.id) : undefined;
+    const questions = await this.catalog.randomQuestions(q.program, { section_code: q.section, question_type: q.question_type, topic: q.topic, subskill: q.subskill, count: q.count, onlyQuestionIds });
     if (questions.length === 0) throw new NotFound('questions');
     const ctx = await this.entitlements.getContext(userId, q.program);
     await this.quotas.consume(userId, ctx.planKind, FEATURE_CODES.PART_DRILL);

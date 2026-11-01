@@ -1,14 +1,13 @@
 import { Controller, Get, Headers, HttpCode, Post, Put } from '@nestjs/common';
 import { ApiHeader, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { attemptAnswersPutSchema, attemptCreateSchema, attemptEventSchema, attemptResultSchema, attemptReviewSchema, attemptSchema, attemptSummarySchema, myAttemptsQuerySchema, pageSchema, practiceQuestionsQuerySchema, type AttemptAnswersPut, type AttemptCreate, type AttemptEvent } from '@allingo/schemas';
+import { attemptAnswersPutSchema, attemptCreateSchema, attemptEventSchema, attemptResultSchema, attemptReviewQuerySchema, attemptReviewSchema, type AttemptReviewQuery, attemptSchema, attemptSummarySchema, myAttemptsQuerySchema, pageSchema, practiceQuestionsQuerySchema, type AttemptAnswersPut, type AttemptCreate, type AttemptEvent } from '@allingo/schemas';
 import { CurrentUser, type AuthUser } from '../../shared/auth/auth.guard.js';
 import { ApiZod, ZodBody, ZodParams, ZodQuery } from '../../shared/http/zod.js';
 import { AttemptsService } from './attempts.service.js';
 
 const attemptParam = z.object({ attemptId: z.uuid() });
 // Query string: 'false'/'0' phải là false (z.coerce.boolean coi mọi chuỗi khác rỗng là true)
-const reviewQuery = z.object({ only_wrong: z.stringbool().default(false) });
 
 @ApiTags('Attempts')
 @Controller()
@@ -58,9 +57,9 @@ export class AttemptsController {
   }
 
   @Get('attempts/:attemptId/review')
-  @ApiZod({ query: reviewQuery, responses: { 200: attemptReviewSchema } })
-  review(@CurrentUser() user: AuthUser, @ZodParams(attemptParam) p: z.infer<typeof attemptParam>, @ZodQuery(reviewQuery) q: z.infer<typeof reviewQuery>) {
-    return this.attempts.review(user.id, p.attemptId, q.only_wrong);
+  @ApiZod({ query: attemptReviewQuerySchema, responses: { 200: attemptReviewSchema } })
+  review(@CurrentUser() user: AuthUser, @ZodParams(attemptParam) p: z.infer<typeof attemptParam>, @ZodQuery(attemptReviewQuerySchema) q: AttemptReviewQuery) {
+    return this.attempts.review(user.id, p.attemptId, q);
   }
 
   @Get('me/attempts')
