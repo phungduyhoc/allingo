@@ -118,7 +118,8 @@ export const reviewItemSchema = z.object({
   your_answer: z.unknown(),
   correct_answer: z.unknown(),
   is_correct: z.boolean().nullable(),
-  score: z.number(),
+  /** 0–1; null khi câu không chấm tự động (essay/speaking/handwriting) */
+  score: z.number().nullable(),
   time_spent_ms: z.number().int().nullable(),
   flagged: z.boolean(),
   details: z.record(z.string(), z.boolean()).nullable(),

@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://allingo.vn/schemas/question/essay.json",
+  "title": "Allingo question content: Essay",
+  "description": "Nội dung câu hỏi dạng \"essay\" lưu trong catalog.question_versions.content (JSONB). Sinh tự động từ packages/schemas/src/question/content.ts – không sửa tay.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "essay"
+    },
+    "stem": {
+      "default": "",
+      "type": "string",
+      "maxLength": 8000
+    },
+    "stem_i18n": {
+      "type": "object",
+      "properties": {
+        "vi": {
+          "type": "string"
+        },
+        "en": {
+          "type": "string"
+        },
+        "ja": {
+          "type": "string"
+        },
+        "ko": {
+          "type": "string"
+        },
+        "th": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "media": {
+      "type": "object",
+      "properties": {
+        "audio_asset_id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "image_asset_id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "listen_policy": {
+          "default": "free",
+          "type": "string",
+          "enum": [
+            "once",
+            "free"
+          ]
+        },
+        "pause_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        }
+      }
+    },
+    "explanation": {
+      "type": "object",
+      "properties": {
+        "vi": {
+          "type": "string"
+        },
+        "en": {
+          "type": "string"
+        },
+        "ja": {
+          "type": "string"
+        },
+        "ko": {
+          "type": "string"
+        },
+        "th": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "evidence": {
+      "type": "string",
+      "maxLength": 4000
+    },
+    "tags": {
+      "default": [],
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 64
+      }
+    },
+    "task_type": {
+      "type": "string",
+      "maxLength": 40
+    },
+    "word_limit": {
+      "default": {
+        "min": 0
+      },
+      "type": "object",
+      "properties": {
+        "min": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "max": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "min"
+      ]
+    },
+    "time_limit_sec": {
+      "type": "integer",
+      "minimum": 60,
+      "maximum": 7200
+    },
+    "rubric_code": {
+      "type": "string",
+      "maxLength": 60
+    },
+    "image_asset_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "answer_key": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "model_answer": {
+          "type": "string",
+          "maxLength": 6000
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      }
+    }
+  },
+  "required": [
+    "type",
+    "task_type",
+    "rubric_code"
+  ]
+}

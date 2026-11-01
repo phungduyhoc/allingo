@@ -43,7 +43,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "gen-ai": "tsx scripts/gen-ai.ts"
+    "gen-ai": "tsx scripts/gen-ai.ts",
+    "gen:question": "tsx scripts/gen-question-schemas.ts"
   },
   "dependencies": {
     "zod": "^4.6.7"

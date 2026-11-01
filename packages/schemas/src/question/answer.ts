@@ -40,6 +40,22 @@ export const answerInputSchema = z.discriminatedUnion('type', [
 export type AnswerInput = z.infer<typeof answerInputSchema>;
 export type AnswerInputOf<T extends AnswerInput['type']> = Extract<AnswerInput, { type: T }>;
 
+/** Bản đồ type → answer schema, dùng trong grade() để validate câu trả lời theo content.type */
+export const answerInputSchemasByType = {
+  mcq_single: mcqSingleAnswerSchema,
+  mcq_multi: mcqMultiAnswerSchema,
+  fill_blank: fillBlankAnswerSchema,
+  matching: matchingAnswerSchema,
+  drag_drop: dragDropAnswerSchema,
+  map_label: mapLabelAnswerSchema,
+  tfng: tfngAnswerSchema,
+  ordering: orderingAnswerSchema,
+  dictation: dictationAnswerSchema,
+  essay: essayAnswerSchema,
+  speaking: speakingAnswerSchema,
+  handwriting: handwritingAnswerSchema,
+} as const satisfies Record<AnswerInput['type'], z.ZodTypeAny>;
+
 /** Câu trả lời "trống" (chưa làm) – dùng khi auto-submit lúc hết giờ */
 export function emptyAnswer(type: AnswerInput['type']): AnswerInput {
   switch (type) {

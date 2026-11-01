@@ -39,6 +39,17 @@ export const AUTO_GRADABLE_TYPES: ReadonlySet<QuestionTypeCode> = new Set([
 
 const keySchema = z.string().min(1).max(32);
 
+/**
+ * Chính sách điểm cho dạng nhiều phần (blank/pair/slot/label/statement):
+ * - partial (mặc định khi bỏ trống): score = tỷ lệ phần đúng, is_correct chỉ khi đúng toàn bộ
+ * - all_or_nothing: score = 1 khi đúng toàn bộ, ngược lại 0
+ * Để optional (không .default) nhằm giữ tương thích kiểu với content đã viết tay ở apps/*; grade() coi undefined = partial.
+ */
+export const PARTIAL_SCORING_MODES = ['partial', 'all_or_nothing'] as const;
+export type PartialScoringMode = (typeof PARTIAL_SCORING_MODES)[number];
+export const DEFAULT_PARTIAL_SCORING: PartialScoringMode = 'partial';
+const partialScoringSchema = z.enum(PARTIAL_SCORING_MODES).optional();
+
 /** Tham chiếu media đính kèm câu hỏi (audio Listening, ảnh Part 1, biểu đồ...) */
 export const questionMediaSchema = z.object({
   audio_asset_id: uuidSchema.optional(),
@@ -88,8 +99,10 @@ export const mcqMultiContentSchema = z.object({
   options: z.array(optionSchema).min(2).max(10),
   answer_key: z.object({
     correct: z.array(keySchema).min(1),
-    /** all_or_nothing: đúng hết mới được điểm; partial: điểm theo tỷ lệ, chọn sai bị trừ */
+    /** all_or_nothing: đúng hết mới được điểm; partial: điểm theo tỷ lệ lựa chọn đúng */
     scoring: z.enum(['all_or_nothing', 'partial']).default('all_or_nothing'),
+    /** Chỉ áp dụng khi scoring = partial: chọn thừa một lựa chọn sai → 0 điểm (IELTS "choose TWO"); mặc định true. false → chỉ đếm lựa chọn đúng */
+    penalize_extra: z.boolean().optional(),
   }),
 });
 
@@ -104,6 +117,8 @@ export const fillBlankContentSchema = z.object({
         /** Các đáp án chấp nhận (đã chuẩn hoá khi chấm: trim, gộp khoảng trắng, so không phân biệt hoa thường trừ khi case_sensitive) */
         accepted: z.array(z.string().min(1).max(200)).min(1),
         case_sensitive: z.boolean().default(false),
+        /** Bỏ qua dấu câu/ký hiệu khi so khớp ("U.S.A." = "u s a"); mặc định false */
+        ignore_punctuation: z.boolean().optional(),
         /** Giới hạn số từ (IELTS "NO MORE THAN TWO WORDS") */
         max_words: z.number().int().min(1).max(10).optional(),
         /** Tuỳ chọn hiện gợi ý chữ cái đầu / số ký tự */
@@ -112,7 +127,13 @@ export const fillBlankContentSchema = z.object({
     )
     .min(1)
     .max(20),
-  answer_key: z.object({ ordered: z.boolean().default(true) }).default({ ordered: true }),
+  answer_key: z
+    .object({
+      /** false: các ô có thể điền theo thứ tự bất kỳ (IELTS "in any order") */
+      ordered: z.boolean().default(true),
+      scoring: partialScoringSchema,
+    })
+    .default({ ordered: true }),
 });
 
 export const matchingContentSchema = z.object({
@@ -122,7 +143,7 @@ export const matchingContentSchema = z.object({
   right: z.array(itemSchema).min(2).max(15),
   /** Một mục bên phải có thể được dùng nhiều lần (IELTS matching headings/features) */
   allow_reuse: z.boolean().default(false),
-  answer_key: z.object({ pairs: z.record(keySchema, keySchema) }),
+  answer_key: z.object({ pairs: z.record(keySchema, keySchema), scoring: partialScoringSchema }),
 });
 
 export const dragDropContentSchema = z.object({
@@ -130,7 +151,7 @@ export const dragDropContentSchema = z.object({
   ...baseFields,
   items: z.array(itemSchema).min(2).max(20),
   slots: z.array(z.object({ key: keySchema, label: z.string().max(300) })).min(1).max(20),
-  answer_key: z.object({ placements: z.record(keySchema, keySchema) }),
+  answer_key: z.object({ placements: z.record(keySchema, keySchema), scoring: partialScoringSchema }),
 });
 
 export const mapLabelContentSchema = z.object({
@@ -140,7 +161,7 @@ export const mapLabelContentSchema = z.object({
   labels: z.array(itemSchema).min(2).max(15),
   /** Vị trí trên ảnh (toạ độ % 0–100) */
   positions: z.array(z.object({ key: keySchema, x: z.number().min(0).max(100), y: z.number().min(0).max(100) })).min(1).max(15),
-  answer_key: z.object({ positions: z.record(keySchema, keySchema) }),
+  answer_key: z.object({ positions: z.record(keySchema, keySchema), scoring: partialScoringSchema }),
 });
 
 export const tfngContentSchema = z.object({
@@ -149,7 +170,7 @@ export const tfngContentSchema = z.object({
   /** tfng = True/False/Not Given; ynng = Yes/No/Not Given */
   variant: z.enum(['tfng', 'ynng']).default('tfng'),
   statements: z.array(itemSchema).min(1).max(15),
-  answer_key: z.object({ values: z.record(keySchema, z.enum(['true', 'false', 'not_given'])) }),
+  answer_key: z.object({ values: z.record(keySchema, z.enum(['true', 'false', 'not_given'])), scoring: partialScoringSchema }),
 });
 
 export const orderingContentSchema = z.object({
@@ -158,8 +179,8 @@ export const orderingContentSchema = z.object({
   items: z.array(itemSchema).min(2).max(15),
   answer_key: z.object({
     order: z.array(keySchema).min(2),
-    /** exact: đúng toàn bộ; adjacent_pairs: điểm theo tỷ lệ cặp kề đúng */
-    scoring: z.enum(['exact', 'adjacent_pairs']).default('exact'),
+    /** exact: đúng toàn bộ; partial: tỷ lệ phần tử đúng vị trí; adjacent_pairs: tỷ lệ cặp kề đúng */
+    scoring: z.enum(['exact', 'partial', 'adjacent_pairs']).default('exact'),
   }),
 });
 
@@ -169,10 +190,10 @@ export const dictationContentSchema = z.object({
   media: questionMediaSchema,
   answer_key: z.object({
     text: z.string().min(1).max(2000),
-    /** Số ký tự sai cho phép mỗi token (Levenshtein) */
+    /** Dung sai: số ký tự sai cho phép mỗi token (Levenshtein) */
     max_edit_distance_per_token: z.number().int().min(0).max(3).default(1),
     ignore_punctuation: z.boolean().default(true),
-    /** Tỷ lệ token đúng tối thiểu để tính là đúng */
+    /** Ngưỡng đạt: tỷ lệ token đúng tối thiểu để is_correct = true (score luôn là tỷ lệ) */
     pass_ratio: z.number().min(0).max(1).default(0.9),
   }),
 });
@@ -231,6 +252,8 @@ export const questionContentSchema = z.discriminatedUnion('type', [
   handwritingContentSchema,
 ]);
 export type QuestionContent = z.infer<typeof questionContentSchema>;
+/** Dạng đầu vào (trước khi áp default) – dùng khi soạn JSON ở CMS/seed/fixture */
+export type QuestionContentInput = z.input<typeof questionContentSchema>;
 export type QuestionContentOf<T extends QuestionTypeCode> = Extract<QuestionContent, { type: T }>;
 
 export const questionContentSchemasByType = {

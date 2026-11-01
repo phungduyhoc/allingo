@@ -11,8 +11,12 @@ export const registerInputSchema = z.object({
   display_name: z.string().min(1).max(80),
   /** Token phiên khách để ghép tiến độ */
   guest_token: z.string().max(512).optional(),
+  referral_code: z.string().max(32).optional(),
   ui_locale: localeSchema.optional(),
   turnstile_token: z.string().max(2048).optional(),
+  /** Đồng ý điều khoản + chính sách (bắt buộc theo PDPL); false → 400. Thiếu = client cũ, coi như đã hiển thị văn bản đồng ý khi đăng ký */
+  accept_terms: z.boolean().optional(),
+  marketing_opt_in: z.boolean().optional(),
 });
 export type RegisterInput = z.infer<typeof registerInputSchema>;
 
@@ -26,15 +30,66 @@ export type LoginInput = z.infer<typeof loginInputSchema>;
 
 export const refreshInputSchema = z.object({ refresh_token: z.string().max(1024).optional() });
 
-export const otpRequestInputSchema = z.object({
-  phone: z.string().regex(/^\+?[0-9]{9,15}$/),
-  channel: z.enum(['zalo', 'sms']).default('zalo'),
+export const PHONE_REGEX = /^\+?[0-9]{9,15}$/;
+export const OTP_CHANNELS = ['zalo', 'sms', 'email'] as const;
+export type OtpChannel = (typeof OTP_CHANNELS)[number];
+
+/** Hợp đồng gốc chỉ có phone (zalo/sms); mở rộng tương thích thêm email (SPEC-ISSUES S11). Phải có đúng một trong phone | email. */
+export const otpRequestInputSchema = z
+  .object({
+    phone: z.string().regex(PHONE_REGEX).optional(),
+    email: z.email().max(254).optional(),
+    channel: z.enum(OTP_CHANNELS).optional(),
+    turnstile_token: z.string().max(2048).optional(),
+  })
+  .refine((v) => !!v.phone !== !!v.email, { message: 'Provide exactly one of phone or email', path: ['phone'] })
+  .transform((v) => ({ ...v, channel: v.channel ?? (v.email ? ('email' as const) : ('zalo' as const)) }))
+  .refine((v) => (v.channel === 'email') === !!v.email, { message: 'channel must match identifier type', path: ['channel'] });
+export type OtpRequestInput = z.infer<typeof otpRequestInputSchema>;
+
+export const otpVerifyInputSchema = z
+  .object({
+    phone: z.string().regex(PHONE_REGEX).optional(),
+    email: z.email().max(254).optional(),
+    otp: z.string().length(6),
+    guest_token: z.string().max(512).optional(),
+    display_name: z.string().min(1).max(80).optional(),
+    ui_locale: localeSchema.optional(),
+    referral_code: z.string().max(32).optional(),
+  })
+  .refine((v) => !!v.phone !== !!v.email, { message: 'Provide exactly one of phone or email', path: ['phone'] });
+export type OtpVerifyInput = z.infer<typeof otpVerifyInputSchema>;
+
+export const otpRequestResultSchema = z.object({ status: z.literal('sent'), channel: z.enum(OTP_CHANNELS), retry_after: z.number().int(), expires_in: z.number().int() });
+
+export const OAUTH_PROVIDERS = ['google', 'apple', 'facebook'] as const;
+export type OAuthProviderCode = (typeof OAUTH_PROVIDERS)[number];
+export const oauthInputSchema = z
+  .object({
+    id_token: z.string().max(8192).optional(),
+    code: z.string().max(2048).optional(),
+    redirect_uri: z.string().max(2048).optional(),
+    nonce: z.string().max(256).optional(),
+    guest_token: z.string().max(512).optional(),
+    referral_code: z.string().max(32).optional(),
+    ui_locale: localeSchema.optional(),
+    /** Khi email đã có tài khoản mật khẩu: gửi lại kèm mật khẩu để xác nhận liên kết (không auto-merge) */
+    link_password: z.string().max(128).optional(),
+    link_confirm: z.boolean().optional(),
+    /** Apple chỉ gửi tên ở lần đăng nhập đầu, client chuyển tiếp */
+    display_name: z.string().min(1).max(80).optional(),
+  })
+  .refine((v) => !!v.id_token || !!v.code, { message: 'id_token or code is required', path: ['id_token'] });
+export type OAuthInput = z.infer<typeof oauthInputSchema>;
+
+export const deletionRequestResultSchema = z.object({ status: z.literal('scheduled'), due_at: z.string(), request_id: uuidSchema });
+
+export const roleGrantInputSchema = z.object({
+  role_code: z.enum(['learner', 'teacher', 'editor', 'admin', 'org_admin', 'service']),
+  program_code: programCodeSchema.optional(),
+  action: z.enum(['grant', 'revoke']).default('grant'),
 });
-export const otpVerifyInputSchema = z.object({
-  phone: z.string().regex(/^\+?[0-9]{9,15}$/),
-  otp: z.string().length(6),
-  guest_token: z.string().max(512).optional(),
-});
+export type RoleGrantInput = z.infer<typeof roleGrantInputSchema>;
 
 export const userSchema = z.object({
   id: uuidSchema,

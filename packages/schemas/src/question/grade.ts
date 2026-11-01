@@ -1,24 +1,43 @@
-import type { AnswerInput } from './answer.js';
-import { AUTO_GRADABLE_TYPES, type QuestionContent } from './content.js';
+import { answerInputSchemasByType, type AnswerInput, type AnswerInputOf } from './answer.js';
+import { AUTO_GRADABLE_TYPES, DEFAULT_PARTIAL_SCORING, type PartialScoringMode, type QuestionContent, type QuestionContentOf } from './content.js';
 
-/** Kết quả chấm một câu: score ∈ [0, 1] × points do test_set_items.points quyết định */
+/** Lý do chấm 0 điểm mà không phải do trả lời sai */
+export type GradeError = 'answer_type_mismatch';
+
+/**
+ * Kết quả chấm một câu: score ∈ [0, 1] × points do test_set_items.points quyết định.
+ * - Dạng tự chấm (AUTO_GRADABLE_TYPES): auto = true, is_correct/score luôn là giá trị.
+ * - essay/speaking/handwriting: auto = false, needs_manual = true, is_correct = score = null
+ *   (điểm do AI/giáo viên chấm ở module grading, không phải ở đây).
+ */
 export interface GradeResult {
   /** null khi dạng câu không chấm tự động (essay/speaking/handwriting) */
   is_correct: boolean | null;
-  /** 0–1 */
-  score: number;
+  /** 0–1; null khi không chấm tự động */
+  score: number | null;
+  /** true khi dạng câu được chấm tự động bởi hàm này */
+  auto: boolean;
+  /** true khi cần AI/giáo viên chấm (essay/speaking/handwriting) */
+  needs_manual: boolean;
   /** Chi tiết theo phần (từng blank/pair/statement) để Review tô màu */
   details?: Record<string, boolean>;
   /** Đáp án đúng đã chuẩn hoá để trả trong Review (không dùng trước khi nộp) */
   correct_answer: unknown;
+  /** Có khi câu trả lời không khớp dạng câu hỏi (score = 0) */
+  error?: GradeError;
 }
 
-const normalizeText = (s: string, caseSensitive = false): string => {
-  const t = s.normalize('NFC').replace(/\s+/g, ' ').trim();
+// ---------------------------------------------------------------------------
+// Tiện ích chuẩn hoá văn bản
+
+const PUNCT_RE = /[\p{P}\p{S}]/gu;
+
+/** Trim, gộp nhiều khoảng trắng thành một, NFC; hạ chữ thường trừ khi caseSensitive */
+export const normalizeText = (s: string, caseSensitive = false, ignorePunctuation = false): string => {
+  const base = ignorePunctuation ? s.replace(PUNCT_RE, ' ') : s;
+  const t = base.normalize('NFC').replace(/\s+/g, ' ').trim();
   return caseSensitive ? t : t.toLocaleLowerCase();
 };
-
-const stripPunct = (s: string) => s.replace(/[\p{P}\p{S}]/gu, ' ');
 
 /** Khoảng cách Levenshtein đơn giản cho token ngắn */
 export function levenshtein(a: string, b: string): number {
@@ -37,151 +56,266 @@ export function levenshtein(a: string, b: string): number {
   return prev[b.length] ?? 0;
 }
 
+/** Tỷ lệ làm tròn 3 chữ số; total = 0 → 0 */
 const ratio = (correct: number, total: number) => (total === 0 ? 0 : Math.round((correct / total) * 1000) / 1000);
 
-const mapResult = (expected: Record<string, string>, given: Record<string, string>): GradeResult => {
+/** Áp chính sách partial/all_or_nothing lên số phần đúng */
+const partialScore = (correct: number, total: number, mode: PartialScoringMode): number => {
+  if (mode === 'all_or_nothing') return correct === total && total > 0 ? 1 : 0;
+  return ratio(correct, total);
+};
+
+const AUTO: Pick<GradeResult, 'auto' | 'needs_manual'> = { auto: true, needs_manual: false };
+const MANUAL: Pick<GradeResult, 'auto' | 'needs_manual'> = { auto: false, needs_manual: true };
+
+/**
+ * So khớp key → value (matching/drag_drop/map_label/tfng).
+ * `invalidValues`: giá trị bị coi là sai dù trùng đáp án (vd. mục bên phải dùng lặp khi không cho phép).
+ */
+function gradeMap(
+  expected: Record<string, string>,
+  given: Record<string, string>,
+  mode: PartialScoringMode | undefined,
+  invalidValues: ReadonlySet<string> = new Set(),
+): Omit<GradeResult, 'auto' | 'needs_manual'> {
   const keys = Object.keys(expected);
   const details: Record<string, boolean> = {};
   let correct = 0;
   for (const k of keys) {
-    const ok = given[k] !== undefined && given[k] === expected[k];
+    const g = given[k];
+    const ok = g !== undefined && g === expected[k] && !invalidValues.has(g);
     details[k] = ok;
     if (ok) correct++;
   }
-  const score = ratio(correct, keys.length);
-  return { is_correct: correct === keys.length, score, details, correct_answer: expected };
-};
+  return { is_correct: correct === keys.length, score: partialScore(correct, keys.length, mode ?? DEFAULT_PARTIAL_SCORING), details, correct_answer: expected };
+}
 
-/**
- * Chấm tự động theo nội dung câu hỏi. Câu trả lời sai kiểu (type không khớp) → 0 điểm.
- * Hàm thuần, không I/O – dùng ở API (submit) và có thể tái dùng ở CMS để kiểm tra đáp án mẫu.
- */
-export function grade(content: QuestionContent, answer: AnswerInput | null | undefined): GradeResult {
-  if (!AUTO_GRADABLE_TYPES.has(content.type)) {
-    return { is_correct: null, score: 0, correct_answer: null };
+/** Các giá trị xuất hiện nhiều hơn một lần trong bản đồ */
+function duplicatedValues(map: Record<string, string>): Set<string> {
+  const seen = new Set<string>();
+  const dup = new Set<string>();
+  for (const v of Object.values(map)) {
+    if (seen.has(v)) dup.add(v);
+    seen.add(v);
   }
-  if (!answer || answer.type !== content.type) {
-    return { ...gradeEmpty(content), score: 0 };
-  }
+  return dup;
+}
 
-  switch (content.type) {
-    case 'mcq_single': {
-      const a = answer as Extract<AnswerInput, { type: 'mcq_single' }>;
-      const ok = a.selected === content.answer_key.correct;
-      return { is_correct: ok, score: ok ? 1 : 0, correct_answer: content.answer_key.correct };
+// ---------------------------------------------------------------------------
+// Chấm từng dạng
+
+type Partial9 = Omit<GradeResult, 'auto' | 'needs_manual'>;
+
+function gradeMcqSingle(c: QuestionContentOf<'mcq_single'>, a: AnswerInputOf<'mcq_single'>): Partial9 {
+  const ok = a.selected === c.answer_key.correct;
+  return { is_correct: ok, score: ok ? 1 : 0, correct_answer: c.answer_key.correct };
+}
+
+function gradeMcqMulti(c: QuestionContentOf<'mcq_multi'>, a: AnswerInputOf<'mcq_multi'>): Partial9 {
+  const key = c.answer_key;
+  const correctSet = new Set(key.correct);
+  const selected = new Set(a.selected);
+  const details: Record<string, boolean> = {};
+  for (const k of key.correct) details[k] = selected.has(k);
+  const hits = key.correct.filter((k) => selected.has(k)).length;
+  const extra = selected.size - hits;
+  const allCorrect = hits === correctSet.size && extra === 0;
+  if (key.scoring === 'all_or_nothing') {
+    return { is_correct: allCorrect, score: allCorrect ? 1 : 0, details, correct_answer: key.correct };
+  }
+  // partial: chọn thừa lựa chọn sai → 0 nếu penalize_extra, ngược lại chỉ đếm lựa chọn đúng
+  const score = extra > 0 && (key.penalize_extra ?? true) ? 0 : ratio(hits, correctSet.size);
+  return { is_correct: allCorrect, score, details, correct_answer: key.correct };
+}
+
+function gradeFillBlank(c: QuestionContentOf<'fill_blank'>, a: AnswerInputOf<'fill_blank'>): Partial9 {
+  const details: Record<string, boolean> = {};
+  const matches = (blank: QuestionContentOf<'fill_blank'>['blanks'][number], raw: string): boolean => {
+    const g = normalizeText(raw, blank.case_sensitive, blank.ignore_punctuation ?? false);
+    if (!g) return false;
+    if (blank.max_words !== undefined && g.split(' ').length > blank.max_words) return false;
+    return blank.accepted.some((acc) => normalizeText(acc, blank.case_sensitive, blank.ignore_punctuation ?? false) === g);
+  };
+  let correct = 0;
+  if (c.answer_key.ordered) {
+    for (const blank of c.blanks) {
+      const ok = matches(blank, a.blanks[blank.id] ?? '');
+      details[blank.id] = ok;
+      if (ok) correct++;
     }
-    case 'mcq_multi': {
-      const a = answer as Extract<AnswerInput, { type: 'mcq_multi' }>;
-      const correctSet = new Set(content.answer_key.correct);
-      const selected = new Set(a.selected);
-      const hits = [...selected].filter((k) => correctSet.has(k)).length;
-      const wrong = selected.size - hits;
-      const allCorrect = hits === correctSet.size && wrong === 0;
-      if (content.answer_key.scoring === 'all_or_nothing') {
-        return { is_correct: allCorrect, score: allCorrect ? 1 : 0, correct_answer: content.answer_key.correct };
+  } else {
+    // "in any order": mỗi giá trị người học điền khớp với một ô chưa dùng bất kỳ
+    const remaining = [...c.blanks];
+    for (const blank of c.blanks) {
+      const raw = a.blanks[blank.id] ?? '';
+      const idx = remaining.findIndex((b) => matches(b, raw));
+      const ok = idx >= 0;
+      if (ok) {
+        remaining.splice(idx, 1);
+        correct++;
       }
-      const score = Math.max(0, ratio(hits - wrong, correctSet.size));
-      return { is_correct: allCorrect, score, correct_answer: content.answer_key.correct };
+      details[blank.id] = ok;
     }
-    case 'fill_blank': {
-      const a = answer as Extract<AnswerInput, { type: 'fill_blank' }>;
+  }
+  return {
+    is_correct: correct === c.blanks.length,
+    score: partialScore(correct, c.blanks.length, c.answer_key.scoring ?? DEFAULT_PARTIAL_SCORING),
+    details,
+    correct_answer: fillBlankKey(c),
+  };
+}
+
+const fillBlankKey = (c: QuestionContentOf<'fill_blank'>) => Object.fromEntries(c.blanks.map((b) => [b.id, b.accepted]));
+
+function gradeMatching(c: QuestionContentOf<'matching'>, a: AnswerInputOf<'matching'>): Partial9 {
+  // Không cho dùng lặp mục bên phải → các cặp dùng cùng một mục đều sai
+  const invalid = c.allow_reuse ? new Set<string>() : duplicatedValues(a.pairs);
+  return gradeMap(c.answer_key.pairs, a.pairs, c.answer_key.scoring, invalid);
+}
+
+function gradeDragDrop(c: QuestionContentOf<'drag_drop'>, a: AnswerInputOf<'drag_drop'>): Partial9 {
+  return gradeMap(c.answer_key.placements, a.placements, c.answer_key.scoring);
+}
+
+function gradeMapLabel(c: QuestionContentOf<'map_label'>, a: AnswerInputOf<'map_label'>): Partial9 {
+  return gradeMap(c.answer_key.positions, a.positions, c.answer_key.scoring);
+}
+
+function gradeTfng(c: QuestionContentOf<'tfng'>, a: AnswerInputOf<'tfng'>): Partial9 {
+  return gradeMap(c.answer_key.values, a.values, c.answer_key.scoring);
+}
+
+function gradeOrdering(c: QuestionContentOf<'ordering'>, a: AnswerInputOf<'ordering'>): Partial9 {
+  const expected = c.answer_key.order;
+  const exact = expected.length === a.order.length && expected.every((k, i) => a.order[i] === k);
+  const base = { is_correct: exact, correct_answer: expected };
+  switch (c.answer_key.scoring) {
+    case 'exact':
+      return { ...base, score: exact ? 1 : 0 };
+    case 'partial': {
+      // Tỷ lệ phần tử đúng vị trí
       const details: Record<string, boolean> = {};
-      let correct = 0;
-      for (const blank of content.blanks) {
-        const given = a.blanks[blank.id] ?? '';
-        const g = normalizeText(given, blank.case_sensitive);
-        const wordsOk = blank.max_words ? g.split(' ').filter(Boolean).length <= blank.max_words : true;
-        const ok = wordsOk && blank.accepted.some((acc) => normalizeText(acc, blank.case_sensitive) === g);
-        details[blank.id] = ok;
-        if (ok) correct++;
-      }
-      return {
-        is_correct: correct === content.blanks.length,
-        score: ratio(correct, content.blanks.length),
-        details,
-        correct_answer: Object.fromEntries(content.blanks.map((b) => [b.id, b.accepted])),
-      };
+      let hits = 0;
+      expected.forEach((k, i) => {
+        const ok = a.order[i] === k;
+        details[k] = ok;
+        if (ok) hits++;
+      });
+      return { ...base, score: ratio(hits, expected.length), details };
     }
-    case 'matching': {
-      const a = answer as Extract<AnswerInput, { type: 'matching' }>;
-      return mapResult(content.answer_key.pairs, a.pairs);
-    }
-    case 'drag_drop': {
-      const a = answer as Extract<AnswerInput, { type: 'drag_drop' }>;
-      return mapResult(content.answer_key.placements, a.placements);
-    }
-    case 'map_label': {
-      const a = answer as Extract<AnswerInput, { type: 'map_label' }>;
-      return mapResult(content.answer_key.positions, a.positions);
-    }
-    case 'tfng': {
-      const a = answer as Extract<AnswerInput, { type: 'tfng' }>;
-      return mapResult(content.answer_key.values, a.values);
-    }
-    case 'ordering': {
-      const a = answer as Extract<AnswerInput, { type: 'ordering' }>;
-      const expected = content.answer_key.order;
-      const exact = expected.length === a.order.length && expected.every((k, i) => a.order[i] === k);
-      if (content.answer_key.scoring === 'exact') {
-        return { is_correct: exact, score: exact ? 1 : 0, correct_answer: expected };
-      }
+    case 'adjacent_pairs': {
+      // Tỷ lệ cặp kề (k_i, k_{i+1}) xuất hiện kề nhau đúng thứ tự trong câu trả lời
       let pairs = 0;
       for (let i = 0; i < expected.length - 1; i++) {
         const idx = a.order.indexOf(expected[i]!);
         if (idx >= 0 && a.order[idx + 1] === expected[i + 1]) pairs++;
       }
-      return { is_correct: exact, score: ratio(pairs, expected.length - 1), correct_answer: expected };
+      return { ...base, score: ratio(pairs, expected.length - 1) };
     }
-    case 'dictation': {
-      const a = answer as Extract<AnswerInput, { type: 'dictation' }>;
-      const key = content.answer_key;
-      const prep = (s: string) => normalizeText(key.ignore_punctuation ? stripPunct(s) : s).split(' ').filter(Boolean);
-      const expected = prep(key.text);
-      const given = prep(a.text);
-      const details: Record<string, boolean> = {};
-      let correct = 0;
-      // So khớp theo vị trí với cửa sổ ±1 để chịu được thiếu/thừa một từ
-      for (let i = 0; i < expected.length; i++) {
-        const exp = expected[i]!;
-        const candidates = [given[i], given[i - 1], given[i + 1]].filter((x): x is string => typeof x === 'string');
-        const ok = candidates.some((c) => levenshtein(c, exp) <= key.max_edit_distance_per_token);
-        details[String(i)] = ok;
-        if (ok) correct++;
-      }
-      const score = ratio(correct, expected.length);
-      return { is_correct: score >= key.pass_ratio, score, details, correct_answer: key.text };
-    }
-    default:
-      return { is_correct: null, score: 0, correct_answer: null };
   }
 }
 
-function gradeEmpty(content: QuestionContent): GradeResult {
+function gradeDictation(c: QuestionContentOf<'dictation'>, a: AnswerInputOf<'dictation'>): Partial9 {
+  const key = c.answer_key;
+  const tokens = (s: string) => normalizeText(s, false, key.ignore_punctuation).split(' ').filter(Boolean);
+  const expected = tokens(key.text);
+  const given = tokens(a.text);
+  const details: Record<string, boolean> = {};
+  let correct = 0;
+  // So khớp theo vị trí với cửa sổ ±1 để chịu được thiếu/thừa một từ; mỗi token người học chỉ dùng một lần
+  const used = new Set<number>();
+  for (let i = 0; i < expected.length; i++) {
+    const exp = expected[i]!;
+    const hit = [i, i - 1, i + 1].find((j) => {
+      const g = given[j];
+      return j >= 0 && g !== undefined && !used.has(j) && levenshtein(g, exp) <= key.max_edit_distance_per_token;
+    });
+    const ok = hit !== undefined;
+    if (ok) {
+      used.add(hit);
+      correct++;
+    }
+    details[String(i)] = ok;
+  }
+  const score = ratio(correct, expected.length);
+  return { is_correct: score >= key.pass_ratio, score, details, correct_answer: key.text };
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * Chấm tự động theo nội dung câu hỏi. Hàm thuần, không I/O – dùng ở API (submit/review) và CMS (kiểm tra đáp án mẫu).
+ *
+ * Quy tắc:
+ * - `answer` null/undefined (chưa làm): dạng tự chấm → is_correct = false, score = 0; dạng thủ công → null/null.
+ * - `answer.type` ≠ `content.type` → { is_correct: false, score: 0, error: 'answer_type_mismatch' } (không ném).
+ * - `answer.type` đúng nhưng payload sai schema → ném ZodError (dữ liệu hỏng, caller phải xử lý).
+ * - essay/speaking/handwriting: không chấm, trả needs_manual = true sau khi validate answer.
+ */
+export function grade(content: QuestionContent, answer: AnswerInput | null | undefined): GradeResult {
+  const meta = AUTO_GRADABLE_TYPES.has(content.type) ? AUTO : MANUAL;
+  const correct_answer = correctAnswerOf(content);
+
+  if (answer === null || answer === undefined) {
+    return meta.auto ? { ...meta, is_correct: false, score: 0, correct_answer } : { ...meta, is_correct: null, score: null, correct_answer };
+  }
+  if (answer.type !== content.type) {
+    return { ...meta, is_correct: false, score: 0, correct_answer, error: 'answer_type_mismatch' };
+  }
+  const parsed: AnswerInput = answerInputSchemasByType[content.type].parse(answer);
+
   switch (content.type) {
     case 'mcq_single':
-      return { is_correct: false, score: 0, correct_answer: content.answer_key.correct };
+      return { ...AUTO, ...gradeMcqSingle(content, parsed as AnswerInputOf<'mcq_single'>) };
     case 'mcq_multi':
-      return { is_correct: false, score: 0, correct_answer: content.answer_key.correct };
+      return { ...AUTO, ...gradeMcqMulti(content, parsed as AnswerInputOf<'mcq_multi'>) };
     case 'fill_blank':
-      return { is_correct: false, score: 0, correct_answer: Object.fromEntries(content.blanks.map((b) => [b.id, b.accepted])) };
+      return { ...AUTO, ...gradeFillBlank(content, parsed as AnswerInputOf<'fill_blank'>) };
     case 'matching':
-      return { is_correct: false, score: 0, correct_answer: content.answer_key.pairs };
+      return { ...AUTO, ...gradeMatching(content, parsed as AnswerInputOf<'matching'>) };
     case 'drag_drop':
-      return { is_correct: false, score: 0, correct_answer: content.answer_key.placements };
+      return { ...AUTO, ...gradeDragDrop(content, parsed as AnswerInputOf<'drag_drop'>) };
     case 'map_label':
-      return { is_correct: false, score: 0, correct_answer: content.answer_key.positions };
+      return { ...AUTO, ...gradeMapLabel(content, parsed as AnswerInputOf<'map_label'>) };
     case 'tfng':
-      return { is_correct: false, score: 0, correct_answer: content.answer_key.values };
+      return { ...AUTO, ...gradeTfng(content, parsed as AnswerInputOf<'tfng'>) };
     case 'ordering':
-      return { is_correct: false, score: 0, correct_answer: content.answer_key.order };
+      return { ...AUTO, ...gradeOrdering(content, parsed as AnswerInputOf<'ordering'>) };
     case 'dictation':
-      return { is_correct: false, score: 0, correct_answer: content.answer_key.text };
-    default:
-      return { is_correct: null, score: 0, correct_answer: null };
+      return { ...AUTO, ...gradeDictation(content, parsed as AnswerInputOf<'dictation'>) };
+    case 'essay':
+    case 'speaking':
+    case 'handwriting':
+      return { ...MANUAL, is_correct: null, score: null, correct_answer };
   }
 }
 
-/** Đáp án đúng (để Review hiển thị) mà không cần câu trả lời */
+/** Đáp án đúng (để Review hiển thị) mà không cần câu trả lời – đủ 12 dạng */
 export function correctAnswerOf(content: QuestionContent): unknown {
-  return gradeEmpty(content).correct_answer;
+  switch (content.type) {
+    case 'mcq_single':
+      return content.answer_key.correct;
+    case 'mcq_multi':
+      return content.answer_key.correct;
+    case 'fill_blank':
+      return fillBlankKey(content);
+    case 'matching':
+      return content.answer_key.pairs;
+    case 'drag_drop':
+      return content.answer_key.placements;
+    case 'map_label':
+      return content.answer_key.positions;
+    case 'tfng':
+      return content.answer_key.values;
+    case 'ordering':
+      return content.answer_key.order;
+    case 'dictation':
+      return content.answer_key.text;
+    case 'essay':
+    case 'speaking':
+      // Bài mẫu (nếu tác giả cung cấp) – không phải đáp án duy nhất
+      return content.answer_key.model_answer ?? null;
+    case 'handwriting':
+      return { target: content.target, stroke_count: content.answer_key.stroke_count ?? null };
+  }
 }

@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://allingo.vn/schemas/question/fill_blank.json",
+  "title": "Allingo question content: Fill Blank",
+  "description": "Nội dung câu hỏi dạng \"fill_blank\" lưu trong catalog.question_versions.content (JSONB). Sinh tự động từ packages/schemas/src/question/content.ts – không sửa tay.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "fill_blank"
+    },
+    "stem": {
+      "default": "",
+      "type": "string",
+      "maxLength": 8000
+    },
+    "stem_i18n": {
+      "type": "object",
+      "properties": {
+        "vi": {
+          "type": "string"
+        },
+        "en": {
+          "type": "string"
+        },
+        "ja": {
+          "type": "string"
+        },
+        "ko": {
+          "type": "string"
+        },
+        "th": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "media": {
+      "type": "object",
+      "properties": {
+        "audio_asset_id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "image_asset_id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "listen_policy": {
+          "default": "free",
+          "type": "string",
+          "enum": [
+            "once",
+            "free"
+          ]
+        },
+        "pause_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        }
+      }
+    },
+    "explanation": {
+      "type": "object",
+      "properties": {
+        "vi": {
+          "type": "string"
+        },
+        "en": {
+          "type": "string"
+        },
+        "ja": {
+          "type": "string"
+        },
+        "ko": {
+          "type": "string"
+        },
+        "th": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "evidence": {
+      "type": "string",
+      "maxLength": 4000
+    },
+    "tags": {
+      "default": [],
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 64
+      }
+    },
+    "blanks": {
+      "minItems": 1,
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "accepted": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          "case_sensitive": {
+            "default": false,
+            "type": "boolean"
+          },
+          "ignore_punctuation": {
+            "type": "boolean"
+          },
+          "max_words": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "hint": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "id",
+          "accepted"
+        ]
+      }
+    },
+    "answer_key": {
+      "default": {
+        "ordered": true
+      },
+      "type": "object",
+      "properties": {
+        "ordered": {
+          "default": true,
+          "type": "boolean"
+        },
+        "scoring": {
+          "type": "string",
+          "enum": [
+            "partial",
+            "all_or_nothing"
+          ]
+        }
+      }
+    }
+  },
+  "required": [
+    "type",
+    "blanks"
+  ]
+}

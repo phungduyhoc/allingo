@@ -265,7 +265,7 @@ export class AttemptsService {
         if (!isAnswered(answer)) unanswered++;
         const g = grade(q.content, answer);
         const points = q.points || 1;
-        const earned = g.score * points;
+        const earned = (g.score ?? 0) * points;
         rawScore += earned;
         maxScore += points;
         if (g.is_correct) correctCount++;
