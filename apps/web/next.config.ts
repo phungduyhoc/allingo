@@ -10,6 +10,8 @@ const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
  */
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Đóng gói container (apps/web/Dockerfile): server.js + node_modules tối thiểu trong .next/standalone
+  output: 'standalone',
   // Không sinh AGENTS.md tự động trong apps/web (quy tắc repo nằm ở CLAUDE.md gốc)
   agentRules: false,
   transpilePackages: ['@allingo/ui', '@allingo/i18n'],

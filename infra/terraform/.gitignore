@@ -1,0 +1,13 @@
+# Terraform: giá trị thật & sản phẩm trung gian không commit (bổ sung cho .gitignore gốc)
+*.tfvars
+!*.tfvars.example
+*.tfplan
+tfplan
+plan.txt
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+# .terraform.lock.hcl CẦN commit (ghim phiên bản provider)

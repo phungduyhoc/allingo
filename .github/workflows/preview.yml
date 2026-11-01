@@ -1,13 +1,81 @@
+# Kiểm chứng trên PR (chưa có môi trường preview – Sprint 11):
+#   - docker-build: build (KHÔNG push) image api/web/cms từ apps/*/Dockerfile để bắt lỗi Dockerfile sớm
+#   - terraform-validate: fmt + validate mọi envs (infra/terraform/scripts/validate.sh), không cần credentials
+# Hai job đều continue-on-error (chưa chặn merge – Sprint 1). Push lên main chỉ để làm ấm cache gha: cache tạo trên
+# tag (deploy-staging.yml) không dùng chung được cho run khác, còn cache của nhánh mặc định thì PR và tag đều đọc được.
 name: Preview
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+concurrency:
+  group: preview-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  preview:
-    name: Preview deploy (TODO Sprint 11)
+  docker-build:
+    name: Docker build (${{ matrix.app }})
     runs-on: ubuntu-latest
-    if: false # TODO(Sprint 11): build image apps/web + api ephemeral, deploy preview theo phương án hạ tầng GATE-1
+    timeout-minutes: 45
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, web, cms]
+    services:
+      # next build của cms (Payload) cần Postgres có schema cms; giá trị khớp mặc định build-arg trong apps/cms/Dockerfile
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: allingo
+          POSTGRES_PASSWORD: allingo
+          POSTGRES_DB: allingo
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U allingo -d allingo"
+          --health-interval 5s --health-timeout 3s --health-retries 20
     steps:
-      - run: echo "preview placeholder"
+      - uses: actions/checkout@v4
+
+      - name: Schema cms cho next build (Payload)
+        if: matrix.app == 'cms'
+        run: psql "postgres://allingo:allingo@127.0.0.1:5432/allingo" -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA IF NOT EXISTS cms'
+
+      - uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+          buildkitd-flags: --allow-insecure-entitlement network.host
+
+      # Không truyền build-arg: web dùng URL mặc định (localhost) của Dockerfile, cms dùng DATABASE_URL mặc định
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          push: false
+          tags: allingo-${{ matrix.app }}:ci-${{ github.event.pull_request.number || github.run_number }}
+          network: host
+          allow: network.host
+          cache-from: type=gha,scope=${{ matrix.app }}
+          # Chỉ ghi cache từ main (PR ghi cache sẽ chiếm quota 10 GB và đẩy cache của main ra)
+          cache-to: ${{ github.event_name == 'push' && format('type=gha,mode=max,scope={0}', matrix.app) || '' }}
+
+  terraform-validate:
+    name: Terraform fmt + validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.13.0'
+          terraform_wrapper: false
+
+      - run: bash infra/terraform/scripts/validate.sh

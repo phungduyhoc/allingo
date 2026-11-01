@@ -1,0 +1,193 @@
+# Chạy thử 3 image production (api, worker, web, cms) + postgres/redis/meilisearch/minio cục bộ,
+# mô phỏng staging (không có Cloudflare/Key Vault). Dùng để kiểm chứng Dockerfile trước khi đẩy GHCR.
+#
+#   docker compose -f infra/docker/compose.staging-like.yml build
+#   docker compose -f infra/docker/compose.staging-like.yml up -d
+#   docker compose -f infra/docker/compose.staging-like.yml run --rm migrate
+#   docker compose -f infra/docker/compose.staging-like.yml down -v
+#
+# Secret trong tệp này chỉ dành cho máy dev; staging thật lấy từ Key Vault (docs/runbooks/secrets.md).
+name: allingo-staging-like
+
+x-api-env: &api-env
+  APP_ENV: staging
+  LOG_LEVEL: info
+  DATABASE_URL: postgres://allingo:allingo@postgres:5432/allingo
+  REDIS_URL: redis://redis:6379
+  QUEUE_PREFIX: allingo
+  S3_ENDPOINT: http://minio:9000
+  S3_REGION: auto
+  S3_ACCESS_KEY_ID: minioadmin
+  S3_SECRET_ACCESS_KEY: minioadmin
+  S3_BUCKET_MEDIA: allingo-media
+  S3_BUCKET_RECORDINGS: allingo-recordings
+  S3_FORCE_PATH_STYLE: 'true'
+  MEILISEARCH_HOST: http://meilisearch:7700
+  MEILISEARCH_API_KEY: masterKey-staging-like
+  API_PUBLIC_URL: http://localhost:4000
+  WEB_PUBLIC_URL: http://localhost:3000
+  CMS_PUBLIC_URL: http://localhost:3001
+  CORS_ORIGINS: http://localhost:3000,http://localhost:3001
+  TRUST_PROXY: 'true'
+  AUTH_SECRET: staging-like-only-secret-at-least-32-characters-long
+  AUTH_BASE_URL: http://localhost:4000/v1/auth
+  COOKIE_DOMAIN: localhost
+  COOKIE_SECURE: 'false'
+  INTERNAL_API_TOKEN: staging-like-internal-token
+  AI_PROVIDER: mock
+  SPEECH_PROVIDER: mock
+  PAYMENT_PROVIDERS: mock
+  OTEL_ENABLED: 'false'
+  SMTP_HOST: mailpit
+  SMTP_PORT: '1025'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: allingo
+      POSTGRES_PASSWORD: allingo
+      POSTGRES_DB: allingo
+    # 5433 để không đụng compose.dev (5432); cms build qua network host dùng cổng này
+    ports:
+      - '5433:5432'
+    volumes:
+      - ./init/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U allingo -d allingo']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: valkey/valkey:8-alpine
+    # BullMQ yêu cầu noeviction
+    command: ['valkey-server', '--save', '', '--appendonly', 'no', '--maxmemory-policy', 'noeviction']
+    healthcheck:
+      test: ['CMD', 'valkey-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.15
+    environment:
+      MEILI_MASTER_KEY: masterKey-staging-like
+      MEILI_ENV: production
+      MEILI_NO_ANALYTICS: 'true'
+    volumes:
+      - meili:/meili_data
+
+  minio:
+    image: minio/minio:latest
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb -p local/allingo-media local/allingo-recordings && echo 'buckets ready'"
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - '8025:8025'
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    image: allingo-api:staging-like
+    profiles: ['tools']
+    environment:
+      DATABASE_URL_MIGRATE: postgres://allingo:allingo@postgres:5432/allingo
+    command: ['node', 'migrate.mjs']
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    image: allingo-api:staging-like
+    environment:
+      <<: *api-env
+      OTEL_SERVICE_NAME: allingo-api
+    ports:
+      - '4000:4000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: allingo-api:staging-like
+    command: ['node', 'dist/worker.js']
+    environment:
+      <<: *api-env
+      OTEL_SERVICE_NAME: allingo-worker
+      APP_ENTRY: dist/worker.js
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:4000/v1
+        NEXT_PUBLIC_APP_URL: http://localhost:3000
+    image: allingo-web:staging-like
+    ports:
+      - '3000:3000'
+    depends_on:
+      - api
+
+  cms:
+    build:
+      context: ../..
+      dockerfile: apps/cms/Dockerfile
+      # next build của Payload cần Postgres: chạy `docker compose up -d postgres` trước và build với network host
+      network: host
+      args:
+        DATABASE_URL: postgres://allingo:allingo@127.0.0.1:5433/allingo
+        PAYLOAD_SECRET: staging-like-payload-secret-32-characters
+    image: allingo-cms:staging-like
+    environment:
+      DATABASE_URL: postgres://allingo:allingo@postgres:5432/allingo
+      CMS_DATABASE_SCHEMA: cms
+      PAYLOAD_SECRET: staging-like-payload-secret-32-characters
+      CMS_PUBLIC_URL: http://localhost:3001
+      INTERNAL_API_URL: http://api:4000/v1
+      INTERNAL_API_TOKEN: staging-like-internal-token
+    volumes:
+      - cms-media:/app/media
+    ports:
+      - '3001:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  meili:
+  minio:
+  cms-media:

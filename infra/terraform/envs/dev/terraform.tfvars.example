@@ -1,0 +1,33 @@
+# Sao chép thành terraform.tfvars (đã gitignore). Secret qua TF_VAR_* hoặc biến môi trường provider:
+#   CLOUDFLARE_API_TOKEN (hoặc TF_VAR_cloudflare_api_token), TF_VAR_ghcr_pull_token
+# Dev: SKU nhỏ nhất, api/web/cms scale-to-zero, worker 1 replica, không OTel collector, không Cloudflare edge
+# (truy cập qua FQDN *.azurecontainerapps.io). R2 vẫn dùng tài khoản Cloudflare.
+
+# subscription_id = "00000000-0000-0000-0000-000000000000"
+environment = "dev"
+location    = "southeastasia"
+
+image_owner = "your-github-org"
+image_tag   = "latest"
+# Image web nhúng NEXT_PUBLIC_API_URL lúc build → cần bản build riêng cho dev, tag <tag>-dev
+# (build tay theo hướng dẫn trong apps/web/Dockerfile với URL = output public_urls của env dev).
+web_image_tag_suffix = "-dev"
+# ghcr_username = "allingo-bot"
+
+cloudflare_account_id = "0123456789abcdef0123456789abcdef"
+enable_cloudflare     = false
+
+# Bật edge cho dev (dùng chung zone với staging): đặt enable_cloudflare = true, zone id/name, dns_name_suffix = "-dev",
+# GIỮ cloudflare_manage_zone_settings/cloudflare_manage_waf = false và thêm host dev vào cloudflare_waf_extra_hosts
+# của staging (một zone chỉ một entrypoint ruleset mỗi phase).
+# cloudflare_zone_id   = "fedcba9876543210fedcba9876543210"
+# cloudflare_zone_name = "allingo.vn"
+
+ai_provider     = "mock"
+speech_provider = "mock"
+
+api_extra_env = {
+  OTP_DEV_FIXED_CODE = "123456" # chỉ dev; KHÔNG đặt ở staging/prod
+}
+
+external_secret_env = {}

@@ -23,3 +23,5 @@ Mẫu Context – Decision – Consequences; thay đổi ADR cần Tech Lead duy
 - [ADR-0019](./0019-payload-cms-sync.md) — Payload CMS giữ dữ liệu soạn thảo trong schema `cms` (bảng do Payload quản lý) và đồng bộ sang `catalog`/`ai` qua hook + job `content.sync` khi phát hành
 - [ADR-0020](./0020-auth-core-sprint0.md) — Sprint 0 triển khai lõi xác thực trong module `iam` (Argon2id, JWT HS256 access 15 phút, refresh xoay vòng băm trong `iam.sessions`, phiên khách) khớp DDL
 - [ADR-0021](./0021-versions-pinning.md) — Ghim TypeScript 5.9.x, ESLint 9.x, Vitest 4.x (không lấy TypeScript 7 / ESLint 10 / Vitest 5 dù đã phát hành) cho tới khi NestJS CLI, drizzle-kit, Payload và typescript-eslint công bố hỗ trợ đầy đủ
+- [ADR-0022](./0022-auth-oauth-otp-native.md) — OAuth (Google/Apple/Facebook) + OTP tự triển khai trong `iam` bằng `jose`, không dùng Better Auth; liên kết tài khoản cần xác nhận; thu hồi phiên tức thời
+- [ADR-0023](./0023-infra-azure-container-apps.md) — (Proposed, chốt tại GATE-1) Phương án B: Azure Container Apps Southeast Asia + PostgreSQL Flexible/Redis/Key Vault, Cloudflare R2 + DNS/WAF, GitHub Actions OIDC

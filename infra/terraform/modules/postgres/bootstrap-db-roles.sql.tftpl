@@ -1,0 +1,39 @@
+-- Tạo vai trò runtime cho API/worker (CLAUDE.md §5.10: không BYPASSRLS, không superuser).
+-- Chạy bằng vai trò admin một lần sau migration đầu tiên (Container Apps Job `dbtools`, xem docs/runbooks/deploy-staging.md).
+-- Idempotent: chạy lại chỉ cập nhật mật khẩu/grant.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${app_role}') THEN
+    CREATE ROLE "${app_role}" LOGIN NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE;
+  END IF;
+END
+$$;
+ALTER ROLE "${app_role}" WITH LOGIN PASSWORD '${app_password}' NOBYPASSRLS;
+GRANT CONNECT ON DATABASE "${database}" TO "${app_role}";
+-- Schema `cms` không nằm trong migration 0001 (Payload quản lý bảng – ADR-0019); tạo sẵn bằng vai trò admin
+-- để vai trò app (không có CREATE trên database) vẫn tạo được bảng Payload trong schema này.
+CREATE SCHEMA IF NOT EXISTS cms;
+-- Quyền trên các schema nghiệp vụ (bảng đã/sẽ tạo bởi vai trò migrate)
+DO $$
+DECLARE s text;
+BEGIN
+  FOREACH s IN ARRAY ARRAY['iam','catalog','learn','ai','billing','ops','cms']
+  LOOP
+    IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = s) THEN
+      EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I', s, '${app_role}');
+      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA %I TO %I', s, '${app_role}');
+      EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA %I TO %I', s, '${app_role}');
+      EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I', s, '${app_role}');
+      EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT USAGE, SELECT ON SEQUENCES TO %I', s, '${app_role}');
+    END IF;
+  END LOOP;
+END
+$$;
+-- Payload CMS (schema cms) cần tạo bảng khi chạy `payload migrate`: cấp CREATE trên schema cms cho vai trò app
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'cms') THEN
+    EXECUTE format('GRANT CREATE ON SCHEMA cms TO %I', '${app_role}');
+  END IF;
+END
+$$;

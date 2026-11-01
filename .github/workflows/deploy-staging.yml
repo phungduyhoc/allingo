@@ -1,0 +1,437 @@
+# =============================================================================
+# Deploy staging – phương án B (ADR-0023): Azure Container Apps (Southeast Asia) + Cloudflare. Runbook:
+# docs/runbooks/deploy-staging.md · secret: docs/runbooks/secrets.md
+#
+# Trigger: push tag v* | workflow_dispatch (apply_infra, bootstrap_db_roles)
+#
+#   build (api, web, cms → GHCR) ─┐
+#   terraform-plan ───────────────┴─► terraform-apply* ─► migrate ─► deploy ─► smoke
+#   (* chỉ khi workflow_dispatch với apply_infra = true)
+#
+# ---- Cấu hình cần có trên GitHub (Settings → Environments / Secrets and variables → Actions) ----------------
+# Environments
+#   staging-plan : KHÔNG reviewer; deployment branches & tags: main, v*        (plan – chỉ đọc)
+#   staging      : Required reviewers (Tech Lead/DevOps); deployment: main, v* (apply, migrate, deploy)
+#                  → người duyệt xác nhận 2 lần: trước migration và trước khi chuyển traffic (3 nếu apply_infra)
+# Repository variables (không bí mật)
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+#       App registration/managed identity có federated credential cho
+#       repo:<owner>/<repo>:environment:staging-plan và repo:<owner>/<repo>:environment:staging
+#   TFSTATE_RESOURCE_GROUP, TFSTATE_STORAGE_ACCOUNT, TFSTATE_CONTAINER (mặc định tfstate)
+#   TFVARS_STAGING          nội dung terraform.tfvars của staging (mẫu: infra/terraform/envs/staging/terraform.tfvars.example)
+#   STAGING_RESOURCE_GROUP  (mặc định allingo-staging-rg)  · STAGING_NAME_PREFIX (mặc định allingo-staging)
+#   STAGING_API_ORIGIN      https://api-staging.allingo.vn ┐
+#   STAGING_APP_ORIGIN      https://app-staging.allingo.vn ├ = `terraform output github_variables`
+#   STAGING_CMS_ORIGIN      https://cms-staging.allingo.vn ┘
+#   NEXT_PUBLIC_POSTHOG_KEY, NEXT_PUBLIC_TURNSTILE_SITE_KEY (tuỳ chọn; public, nhúng vào image web)
+# Environment secrets (đặt ở CẢ staging-plan và staging)
+#   CLOUDFLARE_API_TOKEN    token Terraform (DNS, Zone Settings, WAF/Rulesets, SSL, R2, API Tokens)
+#   GHCR_PULL_TOKEN         PAT classic read:packages để Container Apps kéo image private (bỏ nếu package public)
+#   ORIGIN_CERT_PFX_BASE64, ORIGIN_CERT_PASSWORD   chứng chỉ Cloudflare Origin CA cho custom domain
+#   (GITHUB_TOKEN có sẵn – push image lên GHCR)
+#
+# DATABASE_URL_MIGRATE KHÔNG đặt trong GitHub: Postgres chỉ có địa chỉ private trong VNet nên runner GitHub không tới
+# được; migration chạy bằng Container Apps Job `<prefix>-migrate` (image api, node migrate.mjs) đọc secret
+# `database-url-migrate` từ Key Vault (Terraform ghi) qua managed identity.
+# =============================================================================
+name: Deploy staging
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      apply_infra:
+        description: 'terraform apply (sau phê duyệt environment staging)'
+        type: boolean
+        default: false
+      bootstrap_db_roles:
+        description: 'Chạy job dbtools tạo/cập nhật vai trò allingo_app sau migration (lần đầu, hoặc sau khi xoay mật khẩu DB)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false # không huỷ giữa chừng một lần deploy/migration
+
+permissions:
+  contents: read
+
+env:
+  TF_VERSION: '~1.13.0'
+  RESOURCE_GROUP: ${{ vars.STAGING_RESOURCE_GROUP || 'allingo-staging-rg' }}
+  NAME_PREFIX: ${{ vars.STAGING_NAME_PREFIX || 'allingo-staging' }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # (a) Build & push 3 image lên GHCR. Tag: sha-<commit> (bất biến, dùng để deploy), <semver>, <major.minor>, latest.
+  #     Image web nhúng NEXT_PUBLIC_* của staging lúc build → mọi tag của web có hậu tố -staging.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build & push (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: api
+            suffix: ''
+          - app: web
+            suffix: '-staging'
+          - app: cms
+            suffix: ''
+    services:
+      # Chỉ cms cần (next build của Payload nạp payload.config và đọc schema cms); chạy cho mọi matrix cho đơn giản
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: allingo
+          POSTGRES_PASSWORD: allingo
+          POSTGRES_DB: allingo
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U allingo -d allingo"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tên image (GHCR yêu cầu chữ thường)
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/allingo-${{ matrix.app }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build args
+        id: args
+        env:
+          APP: ${{ matrix.app }}
+          API_ORIGIN: ${{ vars.STAGING_API_ORIGIN }}
+          APP_ORIGIN: ${{ vars.STAGING_APP_ORIGIN }}
+          CMS_ORIGIN: ${{ vars.STAGING_CMS_ORIGIN }}
+          POSTHOG_KEY: ${{ vars.NEXT_PUBLIC_POSTHOG_KEY }}
+          TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
+        run: |
+          {
+            echo 'list<<__BUILD_ARGS__'
+            case "$APP" in
+              web)
+                : "${API_ORIGIN:?Thiếu vars.STAGING_API_ORIGIN}" "${APP_ORIGIN:?Thiếu vars.STAGING_APP_ORIGIN}"
+                echo "NEXT_PUBLIC_API_URL=${API_ORIGIN%/}/v1"
+                echo "NEXT_PUBLIC_APP_URL=${APP_ORIGIN%/}"
+                echo "NEXT_PUBLIC_DEFAULT_LOCALE=vi"
+                echo "NEXT_PUBLIC_POSTHOG_KEY=${POSTHOG_KEY}"
+                echo "NEXT_PUBLIC_TURNSTILE_SITE_KEY=${TURNSTILE_SITE_KEY}"
+                echo "SW_BUILD_ID=${GITHUB_SHA}"
+                ;;
+              cms)
+                # Postgres của service container (giá trị CI, không phải secret); PAYLOAD_SECRET build-only lấy mặc định Dockerfile
+                echo "DATABASE_URL=postgres://allingo:allingo@127.0.0.1:5432/allingo"
+                echo "CMS_PUBLIC_URL=${CMS_ORIGIN:-http://localhost:3001}"
+                ;;
+            esac
+            echo '__BUILD_ARGS__'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Schema cms cho next build (Payload)
+        if: matrix.app == 'cms'
+        run: psql "postgres://allingo:allingo@127.0.0.1:5432/allingo" -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA IF NOT EXISTS cms'
+
+      - uses: docker/setup-buildx-action@v3
+        with:
+          # network=host: stage build của cms tới Postgres service qua 127.0.0.1 (apps/cms/Dockerfile ghi chú 2)
+          driver-opts: network=host
+          buildkitd-flags: --allow-insecure-entitlement network.host
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          flavor: |
+            latest=false
+            suffix=${{ matrix.suffix }},onlatest=true
+          tags: |
+            type=sha,format=long
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ steps.args.outputs.list }}
+          network: host
+          allow: network.host
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+          provenance: mode=min
+
+  # ---------------------------------------------------------------------------
+  # (b1) Terraform plan (đọc) – không lưu tfplan làm artifact vì tệp plan chứa giá trị secret
+  # ---------------------------------------------------------------------------
+  terraform-plan:
+    name: Terraform plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging-plan
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: infra/terraform/envs/staging
+    env:
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC: 'true'
+      TF_IN_AUTOMATION: 'true'
+      TF_INPUT: 'false'
+      TF_VAR_image_tag: sha-${{ github.sha }}
+      TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      TF_VAR_ghcr_pull_token: ${{ secrets.GHCR_PULL_TOKEN }}
+      TF_VAR_origin_certificate_pfx_base64: ${{ secrets.ORIGIN_CERT_PFX_BASE64 }}
+      TF_VAR_origin_certificate_password: ${{ secrets.ORIGIN_CERT_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: tfvars từ GitHub Variable
+        env:
+          TFVARS: ${{ vars.TFVARS_STAGING }}
+        run: |
+          if [ -z "$TFVARS" ]; then echo "::error::Thiếu vars.TFVARS_STAGING"; exit 1; fi
+          printf '%s\n' "$TFVARS" > ci.auto.tfvars
+
+      - name: terraform init
+        run: >-
+          terraform init -input=false -no-color
+          -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}"
+          -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+          -backend-config="container_name=${{ vars.TFSTATE_CONTAINER || 'tfstate' }}"
+          -backend-config="use_oidc=true"
+
+      - run: terraform validate -no-color
+
+      - name: terraform plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -input=false -no-color -lock-timeout=5m -detailed-exitcode -out=tfplan > plan.log 2>&1
+          code=$?
+          set -e
+          cat plan.log
+          if [ "$code" -eq 1 ]; then echo "::error::terraform plan lỗi"; exit 1; fi
+          echo "has_changes=$([ "$code" -eq 2 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Tóm tắt plan
+        if: always() && steps.plan.outcome != 'skipped'
+        run: |
+          {
+            echo "### Terraform plan – staging (thay đổi: ${{ steps.plan.outputs.has_changes || 'không rõ' }})"
+            echo '```'
+            if [ -f tfplan ]; then terraform show -no-color tfplan | tail -c 60000; else tail -c 60000 plan.log; fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # (b2) Terraform apply – chỉ khi chạy tay với apply_infra = true; cần phê duyệt environment staging.
+  #      Plan lại trong job này (cùng commit) rồi apply đúng plan đó.
+  # ---------------------------------------------------------------------------
+  terraform-apply:
+    name: Terraform apply
+    needs: [build, terraform-plan]
+    if: github.event_name == 'workflow_dispatch' && inputs.apply_infra
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: infra/terraform/envs/staging
+    env:
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC: 'true'
+      TF_IN_AUTOMATION: 'true'
+      TF_INPUT: 'false'
+      TF_VAR_image_tag: sha-${{ github.sha }}
+      TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      TF_VAR_ghcr_pull_token: ${{ secrets.GHCR_PULL_TOKEN }}
+      TF_VAR_origin_certificate_pfx_base64: ${{ secrets.ORIGIN_CERT_PFX_BASE64 }}
+      TF_VAR_origin_certificate_password: ${{ secrets.ORIGIN_CERT_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: tfvars từ GitHub Variable
+        env:
+          TFVARS: ${{ vars.TFVARS_STAGING }}
+        run: printf '%s\n' "$TFVARS" > ci.auto.tfvars
+
+      - name: terraform init
+        run: >-
+          terraform init -input=false -no-color
+          -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}"
+          -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+          -backend-config="container_name=${{ vars.TFSTATE_CONTAINER || 'tfstate' }}"
+          -backend-config="use_oidc=true"
+
+      - name: terraform apply
+        run: |
+          terraform plan -input=false -no-color -lock-timeout=5m -out=tfplan
+          terraform apply -input=false -no-color -lock-timeout=10m tfplan
+
+  # ---------------------------------------------------------------------------
+  # (c) Migration: Container Apps Job trong VNet, image api của commit này, đọc database-url-migrate từ Key Vault.
+  #     Migration phải tương thích ngược (expand → contract) vì revision cũ còn chạy tới khi deploy xong.
+  # ---------------------------------------------------------------------------
+  migrate:
+    name: Migrate DB
+    needs: [build, terraform-plan, terraform-apply]
+    if: >-
+      always() &&
+      needs.build.result == 'success' &&
+      needs.terraform-plan.result == 'success' &&
+      (needs.terraform-apply.result == 'success' || needs.terraform-apply.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: az containerapp extension
+        run: az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Chạy job migrate
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/allingo-api:sha-${GITHUB_SHA}"
+          bash infra/scripts/aca.sh job-run "$RESOURCE_GROUP" "${NAME_PREFIX}-migrate" "$image"
+
+      - name: Tạo/cập nhật vai trò allingo_app (dbtools)
+        if: github.event_name == 'workflow_dispatch' && inputs.bootstrap_db_roles
+        run: bash infra/scripts/aca.sh job-run "$RESOURCE_GROUP" "${NAME_PREFIX}-dbtools"
+
+  # ---------------------------------------------------------------------------
+  # (d) Deploy 4 app: revision mới (suffix theo run) → chờ healthy → 100% traffic → tắt revision cũ.
+  #     Thứ tự api → worker → web → cms. Revision cũ ghi vào summary để rollback (runbook).
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy (api, worker, web, cms)
+    needs: [migrate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_APP_ORIGIN }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: az containerapp extension
+        run: az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: az containerapp update
+        run: |
+          set -euo pipefail
+          prefix="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/allingo"
+          tag="sha-${GITHUB_SHA}"
+          suffix="r${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA::7}"
+          declare -A image=(
+            [api]="${prefix}-api:${tag}"
+            [worker]="${prefix}-api:${tag}"
+            [web]="${prefix}-web:${tag}-staging"
+            [cms]="${prefix}-cms:${tag}"
+          )
+          {
+            echo "### Deploy staging – \`${GITHUB_SHA::7}\` (revision suffix \`${suffix}\`)"
+            echo "| app | revision mới | revision trước (rollback) |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for app in api worker web cms; do
+            name="${NAME_PREFIX}-${app}"
+            prev="$(bash infra/scripts/aca.sh app-deploy "$RESOURCE_GROUP" "$name" "${image[$app]}" "$suffix")"
+            echo "| ${app} | \`${name}--${suffix}\` | \`${prev}\` |" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$app" != "worker" ]; then
+              bash infra/scripts/aca.sh deactivate-old "$RESOURCE_GROUP" "$name" "${name}--${suffix}"
+            fi
+          done
+          {
+            echo ""
+            echo "Rollback: \`infra/scripts/aca.sh rollback $RESOURCE_GROUP <app> <revision trước>\` (docs/runbooks/deploy-staging.md)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # (e) Smoke test qua hostname công khai (Cloudflare → Container Apps)
+  # ---------------------------------------------------------------------------
+  smoke:
+    name: Smoke test
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    env:
+      API_ORIGIN: ${{ vars.STAGING_API_ORIGIN }}
+      APP_ORIGIN: ${{ vars.STAGING_APP_ORIGIN }}
+      CMS_ORIGIN: ${{ vars.STAGING_CMS_ORIGIN }}
+    steps:
+      - name: API /v1/health/ready
+        run: |
+          set -euo pipefail
+          url="${API_ORIGIN%/}/v1/health/ready"
+          for i in $(seq 1 20); do
+            if body="$(curl -fsS --max-time 10 "$url")"; then
+              echo "$body"
+              if echo "$body" | jq -e '.status == "ok" and .checks.db == true and .checks.redis == true' > /dev/null; then
+                echo "✓ API ready"; exit 0
+              fi
+            fi
+            echo "[$i/20] chưa sẵn sàng – thử lại sau 6s"; sleep 6
+          done
+          echo "::error::Smoke test thất bại ($url) – xem log app và rollback theo docs/runbooks/deploy-staging.md"
+          exit 1
+
+      - name: Web & CMS
+        run: |
+          set -euo pipefail
+          curl -fsS -o /dev/null -w "web /vi → %{http_code}\n" --max-time 20 --retry 5 --retry-all-errors --retry-delay 5 "${APP_ORIGIN%/}/vi"
+          curl -fsS -o /dev/null -w "cms /admin/login → %{http_code}\n" --max-time 30 --retry 5 --retry-all-errors --retry-delay 5 "${CMS_ORIGIN%/}/admin/login"

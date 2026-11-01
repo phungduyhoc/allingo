@@ -1,0 +1,43 @@
+# Build context cho apps/*/Dockerfile (context = gốc repo). Giữ context nhỏ để cache layer ổn định.
+**/node_modules
+**/.pnpm-store
+**/dist
+**/.next
+**/out
+**/coverage
+**/.turbo
+**/*.tsbuildinfo
+**/playwright-report
+**/test-results
+**/eval
+.git
+.github
+.vscode
+.idea
+.DS_Store
+*.log
+logs
+
+# env & secrets – KHÔNG bao giờ vào image
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Tài liệu không cần cho build (giữ docs/spec vì api-client gen + schemas gen-ai đọc từ đó)
+docs/adr
+docs/runbooks
+docs/poc
+docs/prompts
+docs/*.md
+README.md
+
+# Hạ tầng (giữ infra/docker/migrate.mjs – apps/api/Dockerfile copy vào image)
+infra/terraform
+infra/scripts
+infra/docker/compose.*.yml
+apps/cms/media
+apps/web/e2e
+db/test
+apps/*/test

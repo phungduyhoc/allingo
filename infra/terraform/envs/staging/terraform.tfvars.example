@@ -1,0 +1,64 @@
+# Sao chép thành terraform.tfvars (đã gitignore) cho máy dev; trên CI nội dung tương đương nằm trong
+# GitHub Variable TFVARS_STAGING (không chứa secret). Secret truyền qua biến môi trường TF_VAR_*:
+#   TF_VAR_cloudflare_api_token, TF_VAR_ghcr_pull_token,
+#   TF_VAR_origin_certificate_pfx_base64, TF_VAR_origin_certificate_password
+# Không đặt giá trị bí mật trong tệp này.
+
+# subscription_id     = "00000000-0000-0000-0000-000000000000" # hoặc ARM_SUBSCRIPTION_ID
+environment = "staging"
+location    = "southeastasia"
+
+# --- Image (GHCR) ---------------------------------------------------------------------------
+image_owner = "your-github-org" # ghcr.io/<owner>/allingo-{api,web,cms}
+image_tag   = "latest"          # CI ghi đè: sha-<commit>; chỉ dùng khi tạo app lần đầu
+# ghcr_username = "allingo-bot"  # bỏ trống nếu package public
+
+# --- Cloudflare -----------------------------------------------------------------------------
+cloudflare_account_id = "0123456789abcdef0123456789abcdef"
+enable_cloudflare     = true
+cloudflare_zone_id    = "fedcba9876543210fedcba9876543210"
+cloudflare_zone_name  = "allingo.vn"
+dns_name_suffix       = "-staging" # app-staging / api-staging / cms-staging / media-staging .allingo.vn
+cloudflare_proxied    = true       # false cho lần apply đầu nếu Azure không xác minh được custom domain
+
+# Zone dùng chung với môi trường khác: chỉ một state quản lý zone settings + WAF
+cloudflare_manage_zone_settings = true
+cloudflare_manage_waf           = true
+# cloudflare_waf_extra_hosts    = { api = ["api-dev.allingo.vn"], web = ["app-dev.allingo.vn"], cms = ["cms-dev.allingo.vn"] }
+# admin_allowed_ips             = ["203.0.113.10/32"] # VPN/văn phòng được vào /admin khi ở ngoài VN
+restrict_ingress_to_cloudflare = true
+
+# --- Ứng dụng -------------------------------------------------------------------------------
+ai_provider     = "mock" # "live" sau khi nạp khoá AI vào Key Vault
+speech_provider = "mock"
+smtp_host       = "smtp.example.com"
+smtp_port       = 587
+smtp_user       = "no-reply@allingo.vn"
+
+# Env không bí mật bổ sung (OAuth client id, Langfuse public key, ...)
+api_extra_env = {
+  # GOOGLE_CLIENT_ID    = "xxxx.apps.googleusercontent.com"
+  # LANGFUSE_PUBLIC_KEY = "pk-lf-..."
+  # LANGFUSE_BASE_URL   = "https://cloud.langfuse.com"
+}
+
+# Secret bên thứ ba ĐÃ tạo tay trong Key Vault (docs/runbooks/secrets.md): ENV → tên secret
+external_secret_env = {
+  # SMTP_PASS                    = "smtp-pass"
+  # GOOGLE_CLIENT_SECRET         = "google-client-secret"
+  # GOOGLE_GENERATIVE_AI_API_KEY = "google-generative-ai-api-key"
+  # ANTHROPIC_API_KEY            = "anthropic-api-key"
+  # LANGFUSE_SECRET_KEY          = "langfuse-secret-key"
+  # SENTRY_DSN                   = "sentry-dsn"
+}
+
+# --- Kích thước (mặc định staging: min 1 replica, HA tắt) -----------------------------------
+# app_scale = {
+#   api    = { cpu = 0.5,  memory = "1Gi",   min_replicas = 1, max_replicas = 3 }
+#   worker = { cpu = 0.25, memory = "0.5Gi", min_replicas = 1, max_replicas = 1 }
+#   web    = { cpu = 0.5,  memory = "1Gi",   min_replicas = 1, max_replicas = 3 }
+#   cms    = { cpu = 0.5,  memory = "1Gi",   min_replicas = 1, max_replicas = 1 }
+# }
+# postgres_sku_name = "B_Standard_B1ms"
+# redis_sku_name    = "Basic"
+# redis_capacity    = 0
