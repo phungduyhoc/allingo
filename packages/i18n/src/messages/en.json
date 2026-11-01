@@ -113,7 +113,9 @@
     "validation": {
       "email": "Enter a valid email",
       "password": "Password needs at least 8 characters",
-      "displayName": "Enter a display name (1–80 characters)"
+      "displayName": "Enter a display name (1–80 characters)",
+      "acceptTerms": "Please accept the Terms and Privacy Policy",
+      "otp": "Enter all 6 digits"
     },
     "errors": {
       "invalidCredentials": "Email or password is incorrect",
@@ -123,7 +125,31 @@
     "guestBannerDesc": "Sign up to keep your progress and use Allingo on any device.",
     "guestBannerCta": "Sign up to save progress",
     "creatingGuest": "Creating a guest account…",
-    "guestFailed": "Could not create a guest session. Check your connection and try again."
+    "guestFailed": "Could not create a guest session. Check your connection and try again.",
+    "acceptTermsPrefix": "I agree to the",
+    "terms": "Terms of Service",
+    "and": "and",
+    "privacy": "Privacy Policy",
+    "marketingOptIn": "Email me study tips and offers (unsubscribe anytime)",
+    "or": "or",
+    "continueWithGoogle": "Continue with Google",
+    "loginWithCode": "Sign in with an email code",
+    "usePassword": "Sign in with password",
+    "otpEmailLabel": "Email for the code",
+    "otpSend": "Send code",
+    "otpSent": "We sent a 6-digit code to {email}. It expires in {minutes} minutes.",
+    "otpCodeLabel": "Verification code (6 digits)",
+    "otpVerify": "Verify",
+    "otpResend": "Resend code",
+    "otpResendIn": "Resend in {seconds}s",
+    "otpChangeEmail": "Change email",
+    "otpInvalid": "Incorrect code. {left} attempts left.",
+    "otpExpired": "The code expired or was not requested. Send a new one.",
+    "otpLocked": "Too many attempts. Try again in {minutes} minutes.",
+    "linkRequiredTitle": "This email already has an account",
+    "linkRequiredDesc": "Enter that account's password to link Google sign-in.",
+    "linkSubmit": "Link and sign in",
+    "googleFailed": "Google sign-in failed. Try again or use email."
   },
   "dashboard": {
     "title": "TOEIC dashboard",
@@ -410,5 +436,25 @@
     "essay": "Essay",
     "speaking": "Speaking",
     "handwriting": "Handwriting"
+  },
+  "legal": {
+    "draftNotice": "Draft – to be reviewed by legal counsel before public launch.",
+    "updated": "Version {version}",
+    "termsTitle": "Terms of Service",
+    "termsBody": [
+      "Allingo provides test-prep tools and an AI tutor for personal study. Practice tests are written by Allingo and are not official ETS, Cambridge, JF/JEES or Hanban exams.",
+      "You are responsible for keeping your account secure and must not share paid accounts.",
+      "Results and estimated scores are for reference only and do not replace official certificates.",
+      "AI-generated content may contain mistakes; verify with a teacher when needed.",
+      "Paid plans, refunds and AI credits follow the pricing policy published at the time of purchase."
+    ],
+    "privacyTitle": "Privacy Policy",
+    "privacyBody": [
+      "We collect your email/phone, study progress, answers and recordings (when you consent to voice processing) to provide the service.",
+      "Essays and recordings are stored in a private bucket, accessed only via short-lived signed URLs, and deleted after 90 days (Free) or 365 days (Pro).",
+      "Content sent to AI models never includes your name, email or phone number.",
+      "You can request account deletion in Settings; deletion completes within 72 hours, and billing records are retained in anonymized form as required by law.",
+      "We comply with Vietnam's Decree 13/2023/ND-CP on personal data protection."
+    ]
   }
 }

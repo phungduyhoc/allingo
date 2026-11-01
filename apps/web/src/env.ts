@@ -10,6 +10,8 @@ const envSchema = z.object({
   NEXT_PUBLIC_DEFAULT_LOCALE: z.enum(['vi', 'en']).default('vi'),
   /** '1' → dùng fetch giả lập (src/mock) thay cho API thật; mặc định tắt */
   NEXT_PUBLIC_API_MOCK: z.enum(['0', '1']).default('0'),
+  /** Google Identity Services client id – trống thì ẩn nút Google */
+  NEXT_PUBLIC_GOOGLE_CLIENT_ID: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse({
@@ -17,6 +19,7 @@ const parsed = envSchema.safeParse({
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
   NEXT_PUBLIC_DEFAULT_LOCALE: process.env.NEXT_PUBLIC_DEFAULT_LOCALE,
   NEXT_PUBLIC_API_MOCK: process.env.NEXT_PUBLIC_API_MOCK,
+  NEXT_PUBLIC_GOOGLE_CLIENT_ID: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || undefined,
 });
 
 if (!parsed.success) {
@@ -28,4 +31,5 @@ export const env = {
   appUrl: parsed.data.NEXT_PUBLIC_APP_URL.replace(/\/$/, ''),
   defaultLocale: parsed.data.NEXT_PUBLIC_DEFAULT_LOCALE,
   apiMock: parsed.data.NEXT_PUBLIC_API_MOCK === '1',
+  googleClientId: parsed.data.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? null,
 } as const;

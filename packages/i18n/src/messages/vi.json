@@ -113,7 +113,9 @@
     "validation": {
       "email": "Email không hợp lệ",
       "password": "Mật khẩu cần ít nhất 8 ký tự",
-      "displayName": "Nhập tên hiển thị (1–80 ký tự)"
+      "displayName": "Nhập tên hiển thị (1–80 ký tự)",
+      "acceptTerms": "Bạn cần đồng ý Điều khoản và Chính sách bảo mật",
+      "otp": "Nhập đủ 6 chữ số"
     },
     "errors": {
       "invalidCredentials": "Email hoặc mật khẩu không đúng",
@@ -123,7 +125,31 @@
     "guestBannerDesc": "Đăng ký để lưu tiến độ và dùng trên nhiều thiết bị.",
     "guestBannerCta": "Đăng ký để lưu tiến độ",
     "creatingGuest": "Đang tạo tài khoản khách…",
-    "guestFailed": "Không tạo được phiên khách. Kiểm tra kết nối rồi thử lại."
+    "guestFailed": "Không tạo được phiên khách. Kiểm tra kết nối rồi thử lại.",
+    "acceptTermsPrefix": "Tôi đồng ý với",
+    "terms": "Điều khoản sử dụng",
+    "and": "và",
+    "privacy": "Chính sách bảo mật",
+    "marketingOptIn": "Nhận mẹo học và ưu đãi qua email (có thể huỷ bất kỳ lúc nào)",
+    "or": "hoặc",
+    "continueWithGoogle": "Tiếp tục với Google",
+    "loginWithCode": "Đăng nhập bằng mã qua email",
+    "usePassword": "Đăng nhập bằng mật khẩu",
+    "otpEmailLabel": "Email nhận mã",
+    "otpSend": "Gửi mã",
+    "otpSent": "Đã gửi mã 6 số tới {email}. Mã hết hạn sau {minutes} phút.",
+    "otpCodeLabel": "Mã xác minh (6 số)",
+    "otpVerify": "Xác nhận",
+    "otpResend": "Gửi lại mã",
+    "otpResendIn": "Gửi lại sau {seconds} giây",
+    "otpChangeEmail": "Đổi email",
+    "otpInvalid": "Mã không đúng. Còn {left} lần thử.",
+    "otpExpired": "Mã đã hết hạn hoặc chưa được gửi. Hãy gửi lại mã.",
+    "otpLocked": "Bạn đã nhập sai hoặc yêu cầu quá nhiều lần. Thử lại sau {minutes} phút.",
+    "linkRequiredTitle": "Email này đã có tài khoản",
+    "linkRequiredDesc": "Nhập mật khẩu của tài khoản để liên kết đăng nhập Google.",
+    "linkSubmit": "Liên kết và đăng nhập",
+    "googleFailed": "Không đăng nhập được bằng Google. Thử lại hoặc dùng email."
   },
   "dashboard": {
     "title": "Bảng điều khiển TOEIC",
@@ -410,5 +436,25 @@
     "essay": "Viết luận",
     "speaking": "Nói",
     "handwriting": "Viết chữ"
+  },
+  "legal": {
+    "draftNotice": "Bản dự thảo – sẽ được pháp chế rà soát trước khi ra mắt chính thức.",
+    "updated": "Phiên bản {version}",
+    "termsTitle": "Điều khoản sử dụng",
+    "termsBody": [
+      "Allingo cung cấp công cụ luyện thi và gia sư AI cho mục đích học tập cá nhân. Đề luyện do Allingo tự biên soạn, không phải đề thi chính thức của ETS, Cambridge, JF/JEES hay Hanban.",
+      "Bạn chịu trách nhiệm bảo mật tài khoản và không chia sẻ tài khoản trả phí cho người khác.",
+      "Kết quả và điểm ước tính chỉ mang tính tham khảo, không thay thế chứng chỉ chính thức.",
+      "Nội dung do AI tạo có thể sai sót; hãy kiểm tra lại với giáo viên khi cần.",
+      "Gói trả phí, hoàn tiền và credit AI tuân theo chính sách giá công bố tại thời điểm mua."
+    ],
+    "privacyTitle": "Chính sách bảo mật",
+    "privacyBody": [
+      "Chúng tôi thu thập email/số điện thoại, tiến độ học, bài làm, ghi âm (khi bạn đồng ý xử lý giọng nói) để cung cấp dịch vụ.",
+      "Bài viết và ghi âm được lưu trong kho riêng, chỉ truy cập qua đường dẫn ký có thời hạn, tự xoá sau 90 ngày (Free) hoặc 365 ngày (Pro).",
+      "Nội dung gửi tới mô hình AI không kèm họ tên, email hay số điện thoại.",
+      "Bạn có thể tải xuống hoặc yêu cầu xoá tài khoản trong Cài đặt; việc xoá hoàn tất trong 72 giờ, hồ sơ thanh toán được giữ ở dạng ẩn danh theo quy định.",
+      "Chúng tôi tuân thủ Nghị định 13/2023/NĐ-CP về bảo vệ dữ liệu cá nhân."
+    ]
   }
 }

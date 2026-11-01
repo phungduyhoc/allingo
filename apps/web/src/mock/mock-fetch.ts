@@ -288,6 +288,29 @@ export function createMockFetch(): typeof fetch {
       persist();
       return json(200, { access_token: 'mock-access', expires_in: 900, user: publicUser(user) });
     }),
+    // OTP email (mock): mã cố định 123456; sai 5 lần → 429
+    route('POST', '/auth/otp/request', ({ body }) => {
+      const b = body as { email?: string; phone?: string };
+      if (!b.email && !b.phone) return error(400, 'validation_failed', 'Provide exactly one of phone or email');
+      return json(202, { status: 'sent', channel: b.email ? 'email' : 'zalo', retry_after: 60, expires_in: 300 });
+    }),
+    route('POST', '/auth/otp/verify', ({ body }) => {
+      const b = body as { email?: string; otp?: string; display_name?: string; guest_token?: string };
+      if (b.otp !== '123456') return error(401, 'unauthorized', 'Invalid OTP', { reason: 'otp_invalid', attempts_left: 4 });
+      let user = Object.values(state.users).find((u) => u.email?.toLowerCase() === b.email?.toLowerCase());
+      if (!user) {
+        user = makeUser({ is_guest: false, email: b.email ?? null, display_name: b.display_name ?? (b.email ?? 'user').split('@')[0]! });
+        state.users[user.id] = user;
+      }
+      const guest = b.guest_token ? Object.values(state.users).find((u) => u.guest_token === b.guest_token && u.id !== user.id) : undefined;
+      if (guest) {
+        for (const a of Object.values(state.attempts)) if (a.user_id === guest.id) a.user_id = user.id;
+        delete state.users[guest.id];
+      }
+      state.sessionUserId = user.id;
+      persist();
+      return json(200, { access_token: 'mock-access', expires_in: 900, user: publicUser(user) });
+    }),
     route('POST', '/auth/logout', () => {
       state.sessionUserId = null;
       persist();

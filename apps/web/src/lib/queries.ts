@@ -254,6 +254,18 @@ export function useLogin() {
   });
 }
 
+/** Đăng nhập bằng OTP email hoặc Google: cùng hậu xử lý như login */
+export function useSignInWith<TInput>(fn: (input: TInput) => Promise<User>) {
+  const qc = useQueryClient();
+  return useMutation<User, Error, TInput>({
+    mutationFn: fn,
+    onSuccess: (user) => {
+      qc.clear();
+      qc.setQueryData(queryKeys.me, user);
+    },
+  });
+}
+
 export function useLogout() {
   const qc = useQueryClient();
   return useMutation<void, Error, void>({

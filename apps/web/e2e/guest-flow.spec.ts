@@ -111,8 +111,12 @@ test('đăng ký tài khoản ghép tiến độ khách', async ({ page }) => {
   await expect(page.getByText(/phiên khách sẽ được ghép/)).toBeVisible();
   const email = `e2e-${Date.now()}@allingo.test`;
   await page.getByLabel('Tên hiển thị').fill('Học viên E2E');
-  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Mật khẩu').fill('password123');
+  // Bắt buộc đồng ý điều khoản (PDPL) – chưa tick thì báo lỗi, không gửi
+  await page.getByRole('button', { name: 'Đăng ký' }).click();
+  await expect(page.getByText('Bạn cần đồng ý Điều khoản và Chính sách bảo mật')).toBeVisible();
+  await page.getByTestId('accept-terms').check();
   await page.getByRole('button', { name: 'Đăng ký' }).click();
   await expect(page).toHaveURL(/dashboard/);
   await expect(page.getByTestId('guest-banner')).toHaveCount(0);

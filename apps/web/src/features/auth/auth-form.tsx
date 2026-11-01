@@ -10,6 +10,9 @@ import { useLogin, useRegister } from '@/lib/queries';
 import { getErrorCode, getFieldErrors, isApiError } from '@/lib/errors';
 import { getGuestToken } from '@/lib/auth';
 import { useClientValue } from '@/lib/use-mounted';
+import { env } from '@/env';
+import { GoogleButton } from './google-button';
+import { OtpLoginForm } from './otp-login-form';
 
 type Mode = 'login' | 'signup';
 
@@ -23,6 +26,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const pending = login.isPending || signup.isPending;
 
   const [values, setValues] = React.useState({ email: '', password: '', display_name: '' });
+  const [acceptTerms, setAcceptTerms] = React.useState(false);
+  const [marketing, setMarketing] = React.useState(false);
+  const [useOtp, setUseOtp] = React.useState(false);
   const [fieldErrors, setFieldErrors] = React.useState<Record<string, string>>({});
   const [formError, setFormError] = React.useState<string | null>(null);
   const hasGuest = useClientValue(() => !!getGuestToken(), false);
@@ -37,16 +43,24 @@ export function AuthForm({ mode }: { mode: Mode }) {
     [mode, t],
   );
 
+  const afterSignIn = React.useCallback(() => {
+    toast.success(mode === 'login' ? t('submitLogin') : t('submitSignup'));
+    router.push('/toeic/dashboard');
+  }, [mode, router, t]);
+
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setFormError(null);
     const parsed = schema.safeParse(values);
+    const errs: Record<string, string> = {};
     if (!parsed.success) {
-      const errs: Record<string, string> = {};
       for (const issue of parsed.error.issues) {
         const key = String(issue.path[0] ?? 'form');
         errs[key] ??= issue.message;
       }
+    }
+    if (mode === 'signup' && !acceptTerms) errs.accept_terms = t('validation.acceptTerms');
+    if (!parsed.success || Object.keys(errs).length) {
       setFieldErrors(errs);
       return;
     }
@@ -59,12 +73,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
       else if (mode === 'signup' && code === 'conflict') setFormError(t('errors.emailTaken'));
       else setFormError(te(`codes.${code}`));
     };
-    const onSuccess = () => {
-      toast.success(mode === 'login' ? t('submitLogin') : t('submitSignup'));
-      router.push('/toeic/dashboard');
-    };
+    const onSuccess = () => afterSignIn();
     if (mode === 'login') login.mutate({ email: parsed.data.email, password: parsed.data.password }, { onSuccess, onError });
-    else signup.mutate({ email: parsed.data.email, password: parsed.data.password, display_name: parsed.data.display_name ?? '', ui_locale: locale }, { onSuccess, onError });
+    else signup.mutate({ email: parsed.data.email, password: parsed.data.password, display_name: parsed.data.display_name ?? '', ui_locale: locale, accept_terms: true, marketing_opt_in: marketing }, { onSuccess, onError });
   };
 
   const field = (name: keyof typeof values) => ({
@@ -82,7 +93,18 @@ export function AuthForm({ mode }: { mode: Mode }) {
         <CardTitle className="text-2xl font-bold tracking-tight">{mode === 'login' ? t('loginTitle') : t('signupTitle')}</CardTitle>
         <CardDescription>{mode === 'login' ? t('loginSubtitle') : t('signupSubtitle')}</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-5">
+        <GoogleButton mode={mode} onSuccess={afterSignIn} />
+        {env.googleClientId ? (
+          <div className="flex items-center gap-3 text-xs uppercase text-muted-foreground" aria-hidden>
+            <span className="h-px flex-1 bg-border" />
+            {t('or')}
+            <span className="h-px flex-1 bg-border" />
+          </div>
+        ) : null}
+        {mode === 'login' && useOtp ? (
+          <OtpLoginForm onSuccess={afterSignIn} />
+        ) : (
         <form onSubmit={onSubmit} noValidate className="space-y-4" data-testid={`${mode}-form`}>
           {mode === 'signup' ? (
             <div className="space-y-1.5">
@@ -115,6 +137,41 @@ export function AuthForm({ mode }: { mode: Mode }) {
               <p className="text-xs text-muted-foreground">{t('passwordHint')}</p>
             ) : null}
           </div>
+          {mode === 'signup' ? (
+            <div className="space-y-2">
+              <label className="flex items-start gap-2 text-sm" htmlFor="accept_terms">
+                <input
+                  id="accept_terms"
+                  data-testid="accept-terms"
+                  type="checkbox"
+                  className="mt-0.5 size-4 accent-[var(--color-primary)]"
+                  checked={acceptTerms}
+                  aria-invalid={fieldErrors.accept_terms ? true : undefined}
+                  aria-describedby={fieldErrors.accept_terms ? 'accept_terms-error' : undefined}
+                  onChange={(e) => setAcceptTerms(e.target.checked)}
+                />
+                <span>
+                  {t('acceptTermsPrefix')}{' '}
+                  <Link href="/terms" className="font-semibold text-primary underline-offset-4 hover:underline">
+                    {t('terms')}
+                  </Link>{' '}
+                  {t('and')}{' '}
+                  <Link href="/privacy" className="font-semibold text-primary underline-offset-4 hover:underline">
+                    {t('privacy')}
+                  </Link>
+                </span>
+              </label>
+              {fieldErrors.accept_terms ? (
+                <p id="accept_terms-error" className="text-xs text-destructive">
+                  {fieldErrors.accept_terms}
+                </p>
+              ) : null}
+              <label className="flex items-start gap-2 text-sm text-muted-foreground" htmlFor="marketing_opt_in">
+                <input id="marketing_opt_in" type="checkbox" className="mt-0.5 size-4" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} />
+                <span>{t('marketingOptIn')}</span>
+              </label>
+            </div>
+          ) : null}
           {hasGuest ? (
             <Alert variant="gold">
               <AlertDescription>{t('guestMergeNote')}</AlertDescription>
@@ -129,7 +186,13 @@ export function AuthForm({ mode }: { mode: Mode }) {
             {pending ? t('submitting') : mode === 'login' ? t('submitLogin') : t('submitSignup')}
           </Button>
         </form>
-        <p className="mt-5 text-center text-sm text-muted-foreground">
+        )}
+        {mode === 'login' ? (
+          <button type="button" data-testid="toggle-otp" className="w-full text-center text-sm font-semibold text-primary underline-offset-4 hover:underline" onClick={() => setUseOtp((v) => !v)}>
+            {useOtp ? t('usePassword') : t('loginWithCode')}
+          </button>
+        ) : null}
+        <p className="text-center text-sm text-muted-foreground">
           {mode === 'login' ? t('noAccount') : t('haveAccount')}{' '}
           <Link href={mode === 'login' ? '/signup' : '/login'} className="font-semibold text-primary underline-offset-4 hover:underline">
             {mode === 'login' ? t('submitSignup') : t('submitLogin')}
