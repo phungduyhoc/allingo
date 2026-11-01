@@ -112,6 +112,7 @@ export const DOMAIN_EVENTS = {
   AI_TASK_COMPLETED: 'ai_task.completed',
   ORDER_PAID: 'order.paid',
   CONTENT_PUBLISHED: 'content.published',
+  CONTENT_RETIRED: 'content.retired',
 } as const;
 export type DomainEvent = (typeof DOMAIN_EVENTS)[keyof typeof DOMAIN_EVENTS];
 

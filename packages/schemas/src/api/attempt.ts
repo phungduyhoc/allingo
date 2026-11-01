@@ -84,6 +84,8 @@ export const attemptSchema = z.object({
   expires_at: z.string().nullable(),
   server_time: z.string(),
   ui_state: z.record(z.string(), z.unknown()).optional(),
+  /** Chỉ chế độ practice/drill: đáp án + đúng/sai của câu ĐÃ trả lời (hiện đáp án ngay – Sprint 3). Không bao giờ có ở exam/timed. */
+  feedback: z.record(z.string(), z.object({ is_correct: z.boolean().nullable(), correct_answer: z.unknown(), explanation: z.record(z.string(), z.string()).nullable() })).optional(),
 });
 export type Attempt = z.infer<typeof attemptSchema>;
 
@@ -96,6 +98,9 @@ export const scoreBreakdownSchema = z.object({
   unanswered: z.number().int(),
   scale: z.record(z.string(), z.unknown()),
   timeout_wrong: z.number().int().default(0),
+  /** Chẩn đoán theo quy tắc (packages/scoring diagnoseAttempt) – Sprint 3 */
+  diagnosis: z.record(z.string(), z.unknown()).nullable().optional(),
+  auto_submitted: z.boolean().optional(),
 });
 export type ScoreBreakdown = z.infer<typeof scoreBreakdownSchema>;
 
@@ -148,9 +153,21 @@ export type AttemptSummary = z.infer<typeof attemptSummarySchema>;
 export const myAttemptsQuerySchema = z.object({
   mode: attemptModeSchema.optional(),
   program: programCodeSchema.optional(),
+  /** Khoảng ngày bắt đầu (YYYY-MM-DD, theo UTC) – v1.1 */
+  from: z.iso.date().optional(),
+  to: z.iso.date().optional(),
+  status: attemptStatusSchema.optional(),
   cursor: z.string().max(512).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
+
+/** GET /attempts/{id}/review – lọc (v1.1): sai / đánh dấu / theo Part */
+export const attemptReviewQuerySchema = z.object({
+  only_wrong: z.stringbool().default(false),
+  flagged: z.stringbool().default(false),
+  section: z.string().max(32).optional(),
+});
+export type AttemptReviewQuery = z.infer<typeof attemptReviewQuerySchema>;
 
 export const practiceQuestionsQuerySchema = z.object({
   program: programCodeSchema.default('toeic'),
@@ -159,5 +176,8 @@ export const practiceQuestionsQuerySchema = z.object({
   topic: z.string().max(64).optional(),
   subskill: z.string().max(64).optional(),
   count: z.coerce.number().int().min(1).max(50).default(10),
-  timed: z.coerce.boolean().default(false),
+  /** Query string: 'false'/'0' phải là false (z.coerce.boolean coi mọi chuỗi khác rỗng là true) */
+  timed: z.stringbool().default(false),
+  /** Từ khoá – tìm qua SearchProvider (Meilisearch/PG), chỉ câu đã phát hành (v1.1) */
+  q: z.string().trim().min(2).max(100).optional(),
 });

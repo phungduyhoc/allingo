@@ -166,3 +166,4 @@ export function ieltsLrBand(correct: number, total = 40): number {
   for (const [min, band] of table) if (c >= min) return band;
   return 0;
 }
+export * from './diagnosis.js';

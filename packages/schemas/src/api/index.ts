@@ -3,6 +3,7 @@ import { isoDateSchema, localeSchema, localizedTextSchema, programCodeSchema, uu
 import { answerInputSchema } from '../question/answer.js';
 
 export * from './attempt.js';
+export * from './media.js';
 
 // ----------------------------------------------------------------------------- Auth / Me
 export const registerInputSchema = z.object({
