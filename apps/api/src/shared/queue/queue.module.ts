@@ -6,6 +6,14 @@ import { RedisService } from '../cache/redis.module.js';
 import { getLogger } from '../telemetry/logger.js';
 
 /**
+ * jobId idempotent: `<job_name>__<business_id>`. BullMQ ≥ 5 từ chối custom id chứa ':' (dành cho khoá Redis nội bộ),
+ * nên không dùng dạng `grade.speaking:<id>`.
+ */
+export function jobIdFor(jobName: string, businessId: string): string {
+  return `${jobName}__${businessId}`.replaceAll(':', '_');
+}
+
+/**
  * Hàng đợi BullMQ (CLAUDE.md §5.5): tác vụ > 2 giây là job, jobId = id nghiệp vụ để idempotent.
  * Tên job theo `aggregate.action` (vd grade.speaking, attempt.expire).
  */
@@ -35,7 +43,7 @@ export class QueueService implements OnModuleDestroy {
   /** Đưa job vào hàng đợi; jobId = id nghiệp vụ (idempotent). Trả false nếu hàng đợi không sẵn sàng. */
   async enqueue(queue: QueueName, jobName: string, businessId: string, payload: Record<string, unknown>, opts: JobsOptions = {}): Promise<boolean> {
     try {
-      await this.get(queue).add(jobName, payload, { jobId: `${jobName}:${businessId}`, ...opts });
+      await this.get(queue).add(jobName, payload, { jobId: jobIdFor(jobName, businessId), ...opts });
       return true;
     } catch (err) {
       this.logger.warn({ err: (err as Error).message, queue, jobName }, 'enqueue failed');

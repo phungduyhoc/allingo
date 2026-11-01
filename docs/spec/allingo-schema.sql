@@ -163,6 +163,7 @@ CREATE TYPE catalog.content_status AS ENUM ('draft','ai_checked','review1','revi
 CREATE TYPE catalog.content_source AS ENUM ('human','ai','licensed','user_submitted');
 CREATE TYPE catalog.difficulty AS ENUM ('A1','A2','B1','B2','C1','C2','N5','N4','N3','N2','N1','HSK1','HSK2','HSK3','HSK4','HSK5','HSK6','HSK7_9','mixed');
 CREATE TYPE catalog.media_kind AS ENUM ('audio','image','video_ref','document');
+CREATE TYPE catalog.media_status AS ENUM ('uploading','processing','ready','failed');  -- v1.1 – Sprint 2: pipeline media.process
 CREATE TYPE catalog.passage_kind AS ENUM ('reading_passage','audio_script','image_prompt','chart_prompt','dialogue');
 CREATE TYPE catalog.test_set_kind AS ENUM ('full','mini','part_drill','diagnostic','topic_pack');
 CREATE TYPE catalog.lesson_kind AS ENUM ('lesson','grammar','pronunciation','strategy');
@@ -242,8 +243,14 @@ CREATE TABLE catalog.media_assets (
   transcript    jsonb,                                  -- [{start_ms,end_ms,text,speaker}]
   checksum      text,
   created_by    uuid REFERENCES iam.users(id),
-  created_at    timestamptz NOT NULL DEFAULT now()
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  -- v1.1 – Sprint 2 (migration 0002): trạng thái pipeline media.process + kết quả xử lý
+  status        catalog.media_status NOT NULL DEFAULT 'ready',  -- uploading → processing → ready | failed
+  metadata      jsonb NOT NULL DEFAULT '{}',            -- {bucket, original, variants, waveform:{peaks[]}, thumbnail_key, error, tts}
+  updated_at    timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX ix_media_assets_pending ON catalog.media_assets(status) WHERE status IN ('uploading','processing');  -- v1.1 – Sprint 2
+CREATE TRIGGER trg_media_assets_updated BEFORE UPDATE ON catalog.media_assets FOR EACH ROW EXECUTE FUNCTION ops.set_updated_at();  -- v1.1 – Sprint 2
 
 CREATE TABLE catalog.passages (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -46,3 +46,6 @@ infra/terraform/**/*.tfstate*
 
 # redis dump khi chạy redis-server cục bộ
 dump.rdb
+
+# Driver lưu trữ fs (dev/test, ADR-0025)
+.storage/

@@ -79,8 +79,9 @@ ENV NODE_ENV=production \
     API_HOST=0.0.0.0 \
     TZ=Asia/Ho_Chi_Minh \
     NODE_OPTIONS=--enable-source-maps
-# tini: PID 1 chuyển SIGTERM cho node (graceful shutdown của Nest/BullMQ); tzdata cho TZ
-RUN apk add --no-cache tini tzdata libc6-compat
+# tini: PID 1 chuyển SIGTERM cho node (graceful shutdown của Nest/BullMQ); tzdata cho TZ;
+# ffmpeg (+ffprobe): job media.process và TTS mock (ADR-0025) – cùng image cho API và worker
+RUN apk add --no-cache tini tzdata libc6-compat ffmpeg
 WORKDIR /app
 COPY --from=build --chown=node:node /out/package.json ./package.json
 COPY --from=build --chown=node:node /out/node_modules ./node_modules

@@ -10,6 +10,7 @@ import { getLogger } from '../shared/telemetry/logger.js';
 import { QuotaService } from '../modules/billing/index.js';
 import { AttemptsService } from '../modules/test-engine/index.js';
 import { DeletionService } from '../modules/iam/index.js';
+import { MediaProcessorService, mediaJobHandlers } from '../modules/speech/index.js';
 
 type Handler = (job: Job) => Promise<unknown>;
 
@@ -33,6 +34,7 @@ export class WorkerRunner implements OnModuleInit, OnModuleDestroy {
     private readonly quotas: QuotaService,
     private readonly attempts: AttemptsService,
     private readonly deletion: DeletionService,
+    private readonly media: MediaProcessorService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -50,7 +52,8 @@ export class WorkerRunner implements OnModuleInit, OnModuleDestroy {
       },
       grading: {},
       content: {},
-      media: {},
+      // media.process: chuẩn hoá audio/ảnh + waveform/thumbnail (ffmpeg trong image worker, ADR-0025)
+      media: mediaJobHandlers(this.media),
       notify: {},
       analytics: {},
     };

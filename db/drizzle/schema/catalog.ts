@@ -60,6 +60,9 @@ export const catalogLessonKind = catalog.enum('lesson_kind', ['lesson', 'grammar
 
 export const catalogMediaKind = catalog.enum('media_kind', ['audio', 'image', 'video_ref', 'document']);
 
+// v1.1 – Sprint 2 (migration 0002)
+export const catalogMediaStatus = catalog.enum('media_status', ['uploading', 'processing', 'ready', 'failed']);
+
 export const catalogPassageKind = catalog.enum('passage_kind', [
   'reading_passage',
   'audio_script',
@@ -217,8 +220,15 @@ export const catalogMediaAssets = catalog.table(
     checksum: text(),
     createdBy: uuid('created_by'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    // v1.1 – Sprint 2 (migration 0002): pipeline media.process
+    status: catalogMediaStatus().default('ready').notNull(),
+    metadata: jsonb().$type<Record<string, unknown>>().default({}).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
   },
   (table) => [
+    index('ix_media_assets_pending')
+      .using('btree', table.status.asc().nullsLast().op('enum_ops'))
+      .where(sql`(status = ANY (ARRAY['uploading'::catalog.media_status, 'processing'::catalog.media_status]))`),
     foreignKey({
       columns: [table.createdBy],
       foreignColumns: [iamUsers.id],

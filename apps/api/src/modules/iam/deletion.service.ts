@@ -6,6 +6,7 @@ import { ENV, type Env } from '../../config/env.js';
 import { DbService } from '../../shared/db/db.module.js';
 import { AuditService } from '../../shared/events/audit.service.js';
 import { OutboxService } from '../../shared/events/outbox.service.js';
+import { PersonalDataRegistry } from '../../shared/events/personal-data.registry.js';
 import { Conflict } from '../../shared/http/errors.js';
 import { MailerService } from '../../shared/notify/mailer.service.js';
 import { StorageService } from '../../shared/storage/storage.module.js';
@@ -18,7 +19,7 @@ const { iamUsers, iamDeletionRequests, iamSessions, iamAuthIdentities, iamConsen
  * Xoá tài khoản theo PDPL (CLAUDE.md §9): DELETE /me tạo iam.deletion_requests (due = now + PURGE_DELAY_MINUTES, mặc định 72 giờ),
  * thu hồi mọi phiên, trạng thái pending_deletion. Job `iam.purge` (worker) quét yêu cầu đến hạn:
  * ẩn danh hoá iam.users (giữ id vì billing.credit_ledger/orders tham chiếu – lý do pháp lý), xoá auth_identities/sessions/consents,
- * xoá ghi âm S3 + learn.recordings, xoá ghi chú & hội thoại gia sư; giữ attempts/ledger dưới user_id ẩn danh; email xác nhận; outbox user.deleted.
+ * xoá ghi âm S3 + learn.recordings, dữ liệu đăng ký qua PersonalDataRegistry (ảnh người học), xoá ghi chú & hội thoại gia sư; giữ attempts/ledger dưới user_id ẩn danh; email xác nhận; outbox user.deleted.
  */
 @Injectable()
 export class DeletionService {
@@ -28,6 +29,7 @@ export class DeletionService {
     @Inject(ENV) private readonly env: Env,
     private readonly dbs: DbService,
     private readonly storage: StorageService,
+    private readonly personalData: PersonalDataRegistry,
     private readonly mailer: MailerService,
     private readonly outbox: OutboxService,
     private readonly audit: AuditService,
@@ -69,6 +71,8 @@ export class DeletionService {
       const ok = await this.storage.deleteObject('recordings', r.key);
       if (!ok) throw new Error(`cannot delete recording ${r.id}`);
     }
+    // Dữ liệu cá nhân do module khác sở hữu (vd ảnh người học – speech) qua sổ đăng ký; lỗi → thử lại lần quét sau
+    const purged = await this.personalData.purgeAll(userId);
     const [user] = await this.dbs.db.select({ email: iamUsers.email, uiLocale: iamUsers.uiLocale }).from(iamUsers).where(eq(iamUsers.id, userId)).limit(1);
     const email = user?.email ?? null;
 
@@ -95,7 +99,7 @@ export class DeletionService {
         })
         .where(eq(iamUsers.id, userId));
       await tx.update(iamDeletionRequests).set({ completedAt: new Date() }).where(eq(iamDeletionRequests.id, requestId));
-      await this.audit.log({ action: 'user.purged', entityType: 'user', entityId: userId, after: { recordings: recs.length } }, tx);
+      await this.audit.log({ action: 'user.purged', entityType: 'user', entityId: userId, after: { recordings: recs.length, ...purged } }, tx);
       await this.outbox.write(tx, { aggregateType: 'user', aggregateId: userId, eventType: DOMAIN_EVENTS.USER_DELETED, payload: { user_id: userId, request_id: requestId } });
     });
 

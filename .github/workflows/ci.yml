@@ -74,6 +74,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # ffmpeg cho test pipeline media (thiếu → test media tự skip, nên phải cài để không bỏ sót)
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - run: pnpm --filter './packages/*' build
       - run: pnpm db:migrate
       - run: pnpm db:seed --set core,demo
