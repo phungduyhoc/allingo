@@ -10,7 +10,9 @@ import { useAttemptResult, useAttemptReview } from '@/lib/queries';
 import { CardSkeleton, EmptyState, ErrorState } from '@/components/states';
 import { PageHeader } from '@/components/page-header';
 import { useSectionLabel } from '@/features/attempt/section-label';
-import { ReviewItemCard } from './review-item';
+import { ReviewAudioGroup, ReviewItemCard } from './review-item';
+import { useMediaUrls } from '@/features/attempt/use-media-urls';
+import type { ReviewItem } from '@/lib/types';
 import { parseReviewFilters, reviewApiQuery, reviewFiltersReducer, reviewFiltersToSearch, stepWrong, wrongIndices, wrongPosition, type ReviewFilter, type ReviewFilterAction, type ReviewFilters } from './review-filters';
 
 /**
@@ -44,6 +46,22 @@ export function ReviewPage({ attemptId }: { attemptId: string }) {
   }, [filters.section, result.data, review.data]);
 
   const items = React.useMemo(() => review.data?.items ?? [], [review.data]);
+  // Nghe lại sau khi nộp: URL ký 10′ → gia hạn qua GET /attempts/{id}/media (mọi trạng thái)
+  const mediaSource = React.useMemo(() => items.map((i) => i.question), [items]);
+  const media = useMediaUrls(attemptId, mediaSource);
+  // Part 3/4: câu liên tiếp cùng hội thoại/bài nói → một đầu nhóm (nghe lại cả nhóm + transcript) trước câu đầu tiên đang hiển thị
+  const groupHeads = React.useMemo(() => {
+    const keyOf = (i: ReviewItem) => (i.question.passage?.kind === 'audio_script' ? (i.question.group_key ?? i.question.passage.id) : null);
+    const heads = new Map<number, ReviewItem[]>();
+    for (let i = 0; i < items.length; ) {
+      const key = keyOf(items[i]!);
+      let j = i;
+      while (key && j + 1 < items.length && keyOf(items[j + 1]!) === key) j++;
+      if (key) heads.set(i, items.slice(i, j + 1));
+      i = j + 1;
+    }
+    return heads;
+  }, [items]);
   const wrong = React.useMemo(() => wrongIndices(items), [items]);
   const [cursor, setCursor] = React.useState<number | null>(null);
   // Đổi bộ lọc → danh sách khác → bắt đầu lại điều hướng
@@ -113,10 +131,13 @@ export function ReviewPage({ attemptId }: { attemptId: string }) {
             {t('itemsCount', { count: items.length })}
           </p>
           <div className="space-y-4">
-            {items.map((item) => (
-              <div key={item.question.question_id} id={`review-${item.question.question_id}`} tabIndex={-1} className="scroll-mt-20 rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40">
-                <ReviewItemCard item={item} number={item.question.order_no} attemptId={attemptId} />
-              </div>
+            {items.map((item, i) => (
+              <React.Fragment key={item.question.question_id}>
+                {groupHeads.has(i) ? <ReviewAudioGroup items={groupHeads.get(i)!} media={media} /> : null}
+                <div id={`review-${item.question.question_id}`} tabIndex={-1} className="scroll-mt-20 rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40">
+                  <ReviewItemCard item={item} number={item.question.order_no} attemptId={attemptId} media={media} />
+                </div>
+              </React.Fragment>
             ))}
           </div>
         </>

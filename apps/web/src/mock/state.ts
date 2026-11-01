@@ -30,6 +30,8 @@ export interface MockAttemptRecord {
   result: AttemptResult | null;
   /** Lượt luyện (GET /practice/questions): tập câu chọn từ nhiều đề, thay cho toàn bộ câu của test_set_id */
   question_ids?: string[];
+  /** Số lần audio_started theo question_id (Sprint 4) */
+  audio_plays?: Record<string, number>;
 }
 
 export interface MockState {

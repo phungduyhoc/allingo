@@ -324,7 +324,48 @@
     "feedbackLocked": "Answer locked",
     "practiceFeedbackHint": "Practice mode: pick an answer to see right/wrong and the explanation instantly. Checked answers are locked.",
     "closedTitle": "Attempt closed",
-    "closedDesc": "Time is up (including the 30-second grace period) or the attempt was submitted elsewhere. Opening your result…"
+    "closedDesc": "Time is up (including the 30-second grace period) or the attempt was submitted elsewhere. Opening your result…",
+    "listenNow": "Playing",
+    "listenUpcoming": "Not played yet",
+    "directions": {
+      "part1": "Look at the picture and listen to four statements (A–D). Choose the one that best describes it – the statements are not printed.",
+      "part2": "Listen to a question or statement and three responses (A–C). Choose the best response – nothing is printed."
+    },
+    "audioQuestionLabel": "Audio for question {number}",
+    "questionImageAlt": "Picture for question {number}",
+    "audioBack5": "Back 5 seconds (←)",
+    "audioForward5": "Forward 5 seconds (→)",
+    "audioSeek": "Seek audio",
+    "audioSpeed": "Speed",
+    "audioRate": "{rate}×",
+    "audioLoop": "Loop",
+    "audioGroupTitle": "Conversation",
+    "audioGroupExamHint": "Listen to the conversation or talk, then answer the questions below. The transcript is shown in Review after you submit.",
+    "audioGroupRange": "Questions {from}–{to}",
+    "listeningStartTitle": "Start the Listening section",
+    "listeningResumeTitle": "Resume the Listening section",
+    "listeningRuleOnce": "Audio plays continuously ONCE in test order – no pausing, no seeking, no replay.",
+    "listeningRuleAnswer": "You can answer the question being played and earlier ones; questions not reached yet are locked.",
+    "listeningRuleCheck": "Check your speakers/headphones and volume before you start.",
+    "listeningRuleResume": "Audio resumes where you left off – what you already heard is not replayed.",
+    "listeningStart": "Start listening",
+    "listeningResume": "Resume listening",
+    "listeningBuffering": "Loading audio – it will continue automatically…",
+    "listeningOffline": "Connection lost – audio will continue when you are back online.",
+    "listeningLoading": "Preparing audio…",
+    "listeningAnswerTime": "{seconds, plural, =1 {Answer time: 1 second} other {Answer time: # seconds}}",
+    "listeningWaiting": "Waiting to start",
+    "listeningPlaying": "Playing",
+    "listeningJump": "Back to current question",
+    "listeningDone": "The Listening section has ended.",
+    "listeningDoneReading": "The Listening section has ended – moving on to Reading.",
+    "listeningNowGroup": "{title} · Questions {from}–{to}",
+    "listeningNowAnswer": "Question {number}",
+    "listeningNowQuestion": "Question {number}",
+    "listeningQuestionCount": "{count, plural, =1 {1 Listening question} other {# Listening questions}}",
+    "questionTimerLabel": "{seconds, plural, =1 {1 second left for this question} other {# seconds left for this question}}",
+    "questionTimeUp": "Time is up for this question",
+    "questionTimerLeft": "{seconds}s"
   },
   "result": {
     "title": "Result",
@@ -401,7 +442,19 @@
       "health": "Health",
       "education": "Education"
     },
-    "moreItems": "{count, plural, =1 {+1 more} other {+# more}}"
+    "moreItems": "{count, plural, =1 {+1 more} other {+# more}}",
+    "lrTitle": "Listening & Reading scores",
+    "estimatedBadge": "Estimate",
+    "skillListening": "Listening",
+    "skillReading": "Reading",
+    "skillTotal": "Total",
+    "rangeEstimate": "Estimated range {low}–{high}",
+    "totalNeedsBoth": "Both Listening and Reading are needed for a total",
+    "skillNotInAttempt": "Not in this attempt",
+    "skillRaw": "{correct}/{total} correct",
+    "avgTimeVsCommunity": "Avg {mine}s/question · community {community}s",
+    "avgTime": "Avg {mine}s/question",
+    "estimatedNotOfficial": "Scaled scores are Allingo estimates (5–495 per skill, 10–990 total, range ±25), not official ETS scores."
   },
   "review": {
     "title": "Review",
@@ -448,7 +501,17 @@
     "nextWrong": "Next wrong",
     "wrongNav": "Wrong {current}/{total}",
     "wrongNavIdle": "{total, plural, =0 {No wrong answers} =1 {1 wrong answer} other {# wrong answers}}",
-    "itemsCount": "{count, plural, =0 {No questions} =1 {1 question} other {# questions}}"
+    "itemsCount": "{count, plural, =0 {No questions} =1 {1 question} other {# questions}}",
+    "transcriptTitle": "Transcript",
+    "speaker": {
+      "man": "Man",
+      "woman": "Woman",
+      "narrator": "Narrator",
+      "other": "Speaker"
+    },
+    "audioGroup": "Conversation",
+    "audioGroupRange": "Questions {from}–{to}",
+    "evidence": "Evidence"
   },
   "settings": {
     "title": "Settings",
@@ -566,6 +629,11 @@
     "keywordTooShort": "Keyword needs at least 2 characters.",
     "presetHint": "Pre-selected from your result suggestions.",
     "focusFilter": "Focus: {name}",
-    "clearFocus": "Remove focus"
+    "clearFocus": "Remove focus",
+    "timedPerQuestion": "Time each question",
+    "timedPerQuestionHint": "Each question has a time limit and moves on automatically; answers are shown after you submit. Listening plays once like the real test.",
+    "perQuestionLabel": "Seconds per question",
+    "perQuestionAuto": "Default for this Part ({seconds}s)",
+    "perQuestionSeconds": "{seconds} seconds"
   }
 }

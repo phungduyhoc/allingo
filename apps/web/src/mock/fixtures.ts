@@ -13,8 +13,10 @@ export interface MockQuestion {
   order_no: number;
   /** Nội dung đầy đủ (có answer_key) – mock sẽ lọc trước khi trả client */
   content: QuestionContent;
-  media: { id: string; kind: string; url: string; duration_ms: number | null }[];
-  passage: { id: string; kind: string; title: string | null; body: string | null; media_url: string | null } | null;
+  /** `transcript`: transcript audio của câu (Part 1/2 – như media_assets.transcript), chỉ trả trong Review/feedback */
+  media: { id: string; kind: string; url: string; duration_ms: number | null; transcript?: MockTranscript }[];
+  /** Part 3/4: passage `audio_script` – `body` là transcript (ẩn khi đang làm bài), `segments` mốc thời gian để tô sáng */
+  passage: { id: string; kind: string; title: string | null; body: string | null; media_url: string | null; media_asset_id?: string; segments?: MockSegment[] } | null;
   /** % cộng đồng đúng (giả lập) */
   community_correct_rate: number;
 }
@@ -22,6 +24,17 @@ export interface MockQuestion {
 export interface MockTestSet extends Omit<TestSetSummary, 'last_score' | 'best_score' | 'attempts_count'> {
   sections: { code: string; skill: string; name: { vi: string; en: string }; duration_sec: number | null; question_count: number }[];
   questions: MockQuestion[];
+}
+
+export interface MockSegment {
+  start_ms: number;
+  end_ms: number;
+  speaker: string;
+  text: string;
+}
+export interface MockTranscript {
+  text: string;
+  segments?: MockSegment[];
 }
 
 const uid = (n: number, prefix = '1111') => `${prefix}0000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -468,7 +481,184 @@ export const READING_MINI: MockTestSet = {
   ],
 };
 
-export const MOCK_TEST_SETS: MockTestSet[] = [PART5_MINI, PART2_MINI, MIXED_DRILL, FULL_TEST_LOCKED, READING_MINI];
+
+// ----------------------------------------------------------------------------- Listening Part 1–4 (Sprint 4)
+// Nội dung tự biên soạn; audio là tệp WAV im lặng ngắn trong public/demo-audio/listening (đủ để chạy chuỗi phát/E2E).
+
+const seg = (start_ms: number, end_ms: number, speaker: string, text: string): MockSegment => ({ start_ms, end_ms, speaker, text });
+const transcriptOf = (segments: MockSegment[]): MockTranscript => ({ text: segments.map((x) => x.text).join(' '), segments });
+const LA = (n: number) => uid(500 + n, 'dddd');
+const audioUrl = (file: string) => `/demo-audio/listening/${file}.wav`;
+
+type Opt4 = [string, string, string, string];
+
+const p1 = (n: number, image: string, options: Opt4, correct: 'A' | 'B' | 'C' | 'D', explanation: { vi: string; en: string }, rate: number): MockQuestion => ({
+  question_id: uid(500 + n, 'aaaa'),
+  question_version_id: uid(500 + n, 'bbbb'),
+  section_code: 'part1',
+  group_key: null,
+  order_no: n,
+  content: {
+    type: 'mcq_single',
+    stem: '',
+    options: options.map((text, i) => ({ key: String.fromCharCode(65 + i), text })),
+    media: { audio_asset_id: LA(n), image_asset_id: LA(20 + n), listen_policy: 'once', pause_ms: 1000 },
+    answer_key: { correct },
+    explanation,
+    evidence: options[correct.charCodeAt(0) - 65],
+    tags: ['listening:photo'],
+  },
+  media: [
+    {
+      id: LA(n),
+      kind: 'audio',
+      url: audioUrl(`p1-0${n}`),
+      duration_ms: 2000,
+      transcript: transcriptOf([
+        seg(0, 400, 'N', `Number ${n}.`),
+        seg(400, 800, 'M1', `(A) ${options[0]}`),
+        seg(800, 1200, 'M1', `(B) ${options[1]}`),
+        seg(1200, 1600, 'M1', `(C) ${options[2]}`),
+        seg(1600, 2000, 'M1', `(D) ${options[3]}`),
+      ]),
+    },
+    { id: LA(20 + n), kind: 'image', url: `/demo-images/${image}.svg`, duration_ms: null },
+  ],
+  passage: null,
+  community_correct_rate: rate,
+});
+
+const p2l = (n: number, prompt: string, options: [string, string, string], correct: 'A' | 'B' | 'C', explanation: { vi: string; en: string }, rate: number): MockQuestion => ({
+  question_id: uid(500 + n, 'aaaa'),
+  question_version_id: uid(500 + n, 'bbbb'),
+  section_code: 'part2',
+  group_key: null,
+  order_no: n,
+  content: {
+    type: 'mcq_single',
+    stem: prompt,
+    options: options.map((text, i) => ({ key: String.fromCharCode(65 + i), text })),
+    media: { audio_asset_id: LA(n), listen_policy: 'once', pause_ms: 1000 },
+    answer_key: { correct },
+    explanation,
+    evidence: options[correct.charCodeAt(0) - 65],
+    tags: ['listening:wh'],
+  },
+  media: [
+    {
+      id: LA(n),
+      kind: 'audio',
+      url: audioUrl(`p2-0${n}`),
+      duration_ms: 2000,
+      transcript: transcriptOf([seg(0, 300, 'N', `Number ${n}.`), seg(300, 900, 'W1', prompt), seg(900, 1300, 'M1', `(A) ${options[0]}`), seg(1300, 1650, 'M1', `(B) ${options[1]}`), seg(1650, 2000, 'M1', `(C) ${options[2]}`)]),
+    },
+  ],
+  passage: null,
+  community_correct_rate: rate,
+});
+
+const P3_SEGMENTS = [
+  seg(0, 900, 'N', 'Questions 5 through 7 refer to the following conversation.'),
+  seg(900, 2600, 'W', "Hi Tom, I'm organizing the client lunch on Thursday. Have you booked a room yet?"),
+  seg(2600, 4400, 'M', 'Not yet. The large conference room is taken, but Room 4 is free from noon.'),
+  seg(4400, 6000, 'W', 'Room 4 is fine. Could you also order sandwiches for eight people?'),
+  seg(6000, 7800, 'M', "Sure. I'll call the café downstairs this afternoon."),
+];
+const P4_SEGMENTS = [
+  seg(0, 1000, 'N', 'Questions 8 through 10 refer to the following announcement and schedule.'),
+  seg(1000, 3000, 'W', 'Good morning, shoppers, and welcome to Greenway Market.'),
+  seg(3000, 4800, 'W', 'This weekend only, all fresh fruit is twenty percent off.'),
+  seg(4800, 6400, 'W', 'Our cooking demonstration has moved from the front entrance to the bakery corner.'),
+  seg(6400, 7900, 'W', 'Please also note that the store will close early on Sunday for inventory.'),
+];
+const scriptOf = (segments: MockSegment[]) => segments.map((x) => (x.speaker === 'N' ? x.text : `${x.speaker}: ${x.text}`)).join('\n');
+
+const P3_PASSAGE: NonNullable<MockQuestion['passage']> = { id: uid(501, 'eeee'), kind: 'audio_script', title: 'Conversation 1', body: scriptOf(P3_SEGMENTS), media_url: audioUrl('p3-c01'), media_asset_id: LA(40), segments: P3_SEGMENTS };
+const P4_PASSAGE: NonNullable<MockQuestion['passage']> = { id: uid(502, 'eeee'), kind: 'audio_script', title: 'Talk 1 – Announcement', body: scriptOf(P4_SEGMENTS), media_url: audioUrl('p4-t01'), media_asset_id: LA(41), segments: P4_SEGMENTS };
+
+const groupQ = (n: number, section: 'part3' | 'part4', passage: NonNullable<MockQuestion['passage']>, stem: string, options: Opt4, correct: 'A' | 'B' | 'C' | 'D', evidence: string, explanation: { vi: string; en: string }, tag: string, rate: number): MockQuestion => ({
+  question_id: uid(500 + n, 'aaaa'),
+  question_version_id: uid(500 + n, 'bbbb'),
+  section_code: section,
+  group_key: passage.id,
+  order_no: n,
+  content: {
+    type: 'mcq_single',
+    stem,
+    options: options.map((text, i) => ({ key: String.fromCharCode(65 + i), text })),
+    media: { audio_asset_id: LA(n), listen_policy: 'once', pause_ms: 1500 },
+    answer_key: { correct },
+    explanation,
+    evidence,
+    tags: [tag],
+  },
+  media: [{ id: LA(n), kind: 'audio', url: audioUrl(`q${String(n).padStart(2, '0')}`), duration_ms: 1000 }],
+  passage,
+  community_correct_rate: rate,
+});
+
+const LISTENING_QUESTIONS: MockQuestion[] = [
+  p1(1, 'p1-01', ['The man is typing on a laptop.', 'The man is closing a window.', 'The man is carrying a chair.', 'The man is drinking from a cup.'], 'A', { vi: 'Tranh: người đàn ông đang gõ máy tính xách tay.', en: 'The picture shows a man typing on a laptop.' }, 72),
+  p1(2, 'p1-02', ['The women are sitting at a table.', 'One of the women is painting a wall.', 'The women are standing near a bookshelf.', 'The women are opening a door.'], 'C', { vi: 'Hai người phụ nữ đứng cạnh kệ sách.', en: 'Two women are standing next to a bookshelf.' }, 64),
+  p2l(3, 'When does the training session start?', ['In the main hall.', 'At nine thirty tomorrow.', 'Yes, I trained there.'], 'B', { vi: 'Hỏi "When" → trả lời bằng thời gian.', en: '"When" question → answer with a time.' }, 68),
+  p2l(4, 'Could you send me the updated schedule?', ["Sure, I'll e-mail it right away.", 'It was updated last week.', 'A new schedule board.'], 'A', { vi: 'Lời đề nghị → đồng ý thực hiện.', en: 'A request → agreeing to do it.' }, 61),
+  groupQ(5, 'part3', P3_PASSAGE, 'What are the speakers mainly discussing?', ['A client lunch', 'A job interview', 'A product launch', 'A training course'], 'A', "I'm organizing the client lunch on Thursday", { vi: 'Câu đầu của người phụ nữ nêu chủ đề: bữa trưa với khách hàng.', en: "The woman's first line states the topic: a client lunch." }, 'listening:gist', 70),
+  groupQ(6, 'part3', P3_PASSAGE, "Why can't they use the large conference room?", ['It is being cleaned.', 'It is already booked.', 'It is too small.', 'It has no projector.'], 'B', 'The large conference room is taken', { vi: '"is taken" = đã có người đặt.', en: '"is taken" = already booked.' }, 'listening:detail', 55),
+  groupQ(7, 'part3', P3_PASSAGE, 'What will the man do this afternoon?', ['Send an invitation', 'Call a café', 'Move some chairs', 'Meet a client'], 'B', "I'll call the café downstairs this afternoon.", { vi: 'Người đàn ông sẽ gọi quán cà phê dưới tầng.', en: 'The man will call the café downstairs.' }, 'listening:detail', 63),
+  groupQ(8, 'part4', P4_PASSAGE, 'Where is the announcement being made?', ['At a supermarket', 'At a bank', 'At an airport', 'At a library'], 'A', 'welcome to Greenway Market', { vi: '"shoppers", "Greenway Market" → siêu thị.', en: '"shoppers", "Greenway Market" → a supermarket.' }, 'listening:gist', 78),
+  groupQ(9, 'part4', P4_PASSAGE, 'What has changed about the cooking demonstration?', ['Its time', 'Its location', 'Its price', 'Its host'], 'B', 'has moved from the front entrance to the bakery corner', { vi: 'Buổi trình diễn chuyển chỗ → địa điểm thay đổi.', en: 'The demonstration moved → its location changed.' }, 'listening:detail', 59),
+  groupQ(
+    10,
+    'part4',
+    P4_PASSAGE,
+    'Look at the graphic. What time will the store close on Sunday?\n\n**Greenway Market – Weekend Hours**\n\n| Day | Opens | Closes |\n| --- | --- | --- |\n| Friday | 8:00 | 21:00 |\n| Saturday | 8:00 | 21:00 |\n| Sunday | 9:00 | 17:00 |',
+    ['21:00', '17:00', '9:00', '8:00'],
+    'B',
+    'the store will close early on Sunday',
+    { vi: 'Chủ nhật đóng cửa sớm → bảng: 17:00.', en: 'Closing early on Sunday → the table shows 17:00.' },
+    'listening:graphic',
+    41,
+  ),
+];
+
+const LISTENING_SECTIONS: MockTestSet['sections'] = [
+  { code: 'part1', skill: 'listening', name: { vi: 'Part 1 · Mô tả tranh', en: 'Part 1 · Photographs' }, duration_sec: null, question_count: 2 },
+  { code: 'part2', skill: 'listening', name: { vi: 'Part 2 · Hỏi – đáp', en: 'Part 2 · Question–Response' }, duration_sec: null, question_count: 2 },
+  { code: 'part3', skill: 'listening', name: { vi: 'Part 3 · Hội thoại', en: 'Part 3 · Conversations' }, duration_sec: null, question_count: 3 },
+  { code: 'part4', skill: 'listening', name: { vi: 'Part 4 · Bài nói', en: 'Part 4 · Talks' }, duration_sec: null, question_count: 3 },
+];
+
+/** Đề mini Listening Part 1–4 (10 câu): ảnh Part 1, chữ Part 1/2 chỉ có trong Review, nhóm hội thoại/bài nói, graphic dạng bảng */
+export const LISTENING_MINI: MockTestSet = {
+  id: uid(6, 'cccc'),
+  code: 'toeic-listening-mini-01',
+  title: { vi: 'TOEIC Listening mini · Part 1–4 (10 câu)', en: 'TOEIC Listening mini · Parts 1–4 (10 questions)' },
+  kind: 'mini',
+  level: null,
+  is_free: true,
+  locked: false,
+  duration_sec: 600,
+  question_count: 10,
+  sections: LISTENING_SECTIONS,
+  questions: LISTENING_QUESTIONS,
+};
+
+/** Đề mini L&R (20 câu = Listening mini + Reading mini): hết Listening tự chuyển sang Reading, điểm L/R/Tổng */
+export const LR_MINI: MockTestSet = {
+  id: uid(7, 'cccc'),
+  code: 'toeic-lr-mini-01',
+  title: { vi: 'TOEIC L&R mini · Nghe + Đọc (20 câu)', en: 'TOEIC L&R mini · Listening + Reading (20 questions)' },
+  kind: 'mini',
+  level: null,
+  is_free: true,
+  locked: false,
+  duration_sec: 1200,
+  question_count: 20,
+  sections: [...LISTENING_SECTIONS, ...READING_MINI.sections],
+  questions: [...LISTENING_QUESTIONS, ...READING_MINI.questions.map((q) => ({ ...q, order_no: q.order_no + LISTENING_QUESTIONS.length }))],
+};
+
+export const MOCK_TEST_SETS: MockTestSet[] = [PART5_MINI, PART2_MINI, MIXED_DRILL, FULL_TEST_LOCKED, READING_MINI, LISTENING_MINI, LR_MINI];
 
 /** Ánh xạ tag fixture → mã kỹ năng con của seed core (catalog.subskills) để chẩn đoán mock dùng nhãn i18n thật */
 export const MOCK_SUBSKILL_OF_TAG: Record<string, string> = {
@@ -484,6 +674,11 @@ export const MOCK_SUBSKILL_OF_TAG: Record<string, string> = {
   'reading:detail': 'detail',
   'reading:inference': 'inference',
   'listening:part2': 'wh_question',
+  'listening:wh': 'wh_question',
+  'listening:photo': 'listening_detail',
+  'listening:detail': 'listening_detail',
+  'listening:gist': 'listening_gist',
+  'listening:graphic': 'listening_detail',
 };
 
 export const MOCK_PROGRAMS = [

@@ -41,13 +41,12 @@ test('khách làm đề mini Part 5, nộp, xem lại và giải thích AI', asy
   await expect(page.getByTestId('guest-banner')).toBeVisible();
   await expect(page.getByTestId('quota-mini_test')).toBeVisible();
 
-  // Chọn đề mini Part 5 (mock: toeic-p5-mini-01, seed demo: toeic-mini-part5-01) → chế độ Thi
-  await page
-    .locator('[data-testid^="test-set-toeic-"]')
-    .filter({ hasText: /Part 5/ })
-    .first()
-    .getByRole('button', { name: /Bắt đầu/ })
-    .click();
+  // Chọn đề mini Part 5 (mock: toeic-p5-mini-01, seed demo: toeic-mini-part5-01) → chế độ Thi.
+  // Dashboard chỉ hiện 2 đề mini đầu (seed S4 thêm đề mini L&R) → không có thì chọn ở trang Đề thi (lọc đề mini)
+  const part5 = () => page.locator('[data-testid^="test-set-toeic-"]').filter({ hasText: /Part 5/ }).first();
+  await expect(page.locator('[data-testid^="test-set-toeic-"]').first()).toBeVisible();
+  if ((await part5().count()) === 0) await page.goto('/vi/toeic/test-sets?kind=mini');
+  await part5().getByRole('button', { name: /Bắt đầu/ }).click();
   await page.getByTestId('mode-exam').click();
   await page.getByTestId('start-attempt').click();
   await expect(page).toHaveURL(/\/vi\/attempts\/[0-9a-f-]+$/);

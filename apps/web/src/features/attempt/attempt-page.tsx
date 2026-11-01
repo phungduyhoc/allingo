@@ -24,6 +24,15 @@ import { useSectionLabel } from './section-label';
 import { useDraftSaver, useOnlineStatus, type DraftSaver } from './use-draft-saver';
 import { useExamClock } from './use-exam-clock';
 import { FONT_SCALES, SPLIT_MAX, SPLIT_MIN, stepFont, useExamPrefs } from './exam-prefs';
+import { useMediaUrls } from './use-media-urls';
+import { buildListeningProgram } from './listening/program';
+import { useExamListening } from './listening/use-exam-listening';
+import { ListeningBar, ListeningGate } from './listening/listening-bar';
+import { AudioGroupHeader } from './listening/audio-group-header';
+import { parseTranscript } from '@/features/review/transcript-format';
+import type { ListenStatus } from './question-block';
+import { timedDrillBudgetSec, useQuestionTimer } from './question-timer';
+import { QuestionCountdown } from './question-countdown';
 import {
   answerOrEmpty,
   attemptReducer,
@@ -80,8 +89,6 @@ export function AttemptPage({ attemptId }: { attemptId: string }) {
   return <AttemptRunner attempt={query.data} saver={saver} closed={closed} />;
 }
 
-const AUDIO_KEY = (attemptId: string) => `allingo.audio.${attemptId}`;
-
 function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: DraftSaver; closed: boolean }) {
   const t = useTranslations('attempt');
   const L = useLocalized();
@@ -95,6 +102,7 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   const ranges = React.useMemo(() => sectionRanges(questions), [questions]);
   const groups = React.useMemo(() => questionGroups(questions), [questions]);
   const feedback = React.useMemo(() => attempt.feedback ?? {}, [attempt.feedback]);
+  const indexOfId = React.useMemo(() => new Map(questions.map((q, i) => [q.question_id, i])), [questions]);
 
   const [state, dispatch] = React.useReducer(attemptReducer, undefined, () => initialAttemptState(attempt, saver.queue.pendingEntries(), saver.queue.pendingUiState()));
   const current = questions[state.currentIndex] ?? questions[0]!;
@@ -133,26 +141,41 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
     return out;
   }, [current.section_code, sectionBase]);
 
-  // Audio đã phát (Exam Mode phát một lần) – nhớ qua localStorage để tải lại không phát lại
-  const [playedAudio, setPlayedAudio] = React.useState<Set<string>>(() => {
-    try {
-      return new Set(JSON.parse(window.localStorage.getItem(AUDIO_KEY(attempt.id)) ?? '[]') as string[]);
-    } catch {
-      return new Set();
-    }
+  // ---------------------------------------------------------------- Listening (Sprint 4)
+  // URL ký 10′ → gia hạn ngầm (đề L&R 120′); Exam Mode: chuỗi phát một lần toàn bộ Listening theo thứ tự đề
+  const media = useMediaUrls(attempt.id, attempt.questions);
+  const examLike = traits.examLike;
+  const program = React.useMemo(() => (examLike ? buildListeningProgram(questions, groups) : null), [examLike, groups, questions]);
+  const navigateRef = React.useRef<(index: number) => void>(() => undefined);
+  // Theo audio: đang xem câu/nhóm đang phát → tự chuyển theo; tự chuyển sang câu khác → hiện nút "Về câu đang nghe"
+  const followingRef = React.useRef(true);
+  const [following, setFollowingState] = React.useState(true);
+  const setFollowing = React.useCallback((v: boolean) => {
+    followingRef.current = v;
+    setFollowingState(v);
+  }, []);
+  const listening = useExamListening({
+    attemptId: attempt.id,
+    program,
+    audioPlays: attempt.audio_plays,
+    resolveUrl: media.resolveLatest,
+    refreshUrls: media.refresh,
+    urlsVersion: media.resolve,
+    onFocus: (index) => {
+      if (followingRef.current) navigateRef.current(index);
+    },
+    onDone: () => {
+      const next = program?.nextIndex ?? null;
+      const msg = next !== null ? t('listeningDoneReading') : t('listeningDone');
+      setLiveMessage(msg);
+      toast.info(msg, { id: 'listening-done' });
+      setFollowing(true);
+      if (next !== null) navigateRef.current(next);
+    },
   });
-  const markPlayed = (qid: string) => {
-    setPlayedAudio((prev) => {
-      const next = new Set(prev).add(qid);
-      try {
-        window.localStorage.setItem(AUDIO_KEY(attempt.id), JSON.stringify([...next]));
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-    sendAttemptEvent(attempt.id, { type: 'audio_played', meta: { question_id: qid } });
-  };
+  const { mountAudio } = listening;
+  const listeningLive = listening.active && listening.phase !== 'done';
+  const answerable = listening.isAnswerable;
 
   // ---------------------------------------------------------------- Practice/drill: phản hồi tức thì
   const isLocked = React.useCallback((qid: string) => traits.feedback && (!!feedback[qid] || !!checking[qid]), [checking, feedback, traits.feedback]);
@@ -183,13 +206,13 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   // ---------------------------------------------------------------- Trả lời / đánh dấu / điều hướng
   const setAnswerFor = React.useCallback(
     (q: QuestionPublic, answer: AnswerInput) => {
-      if (isLocked(q.question_id)) return;
+      if (isLocked(q.question_id) || !answerable(indexOfId.get(q.question_id) ?? -1)) return;
       dispatch({ type: 'answer', questionId: q.question_id, answer });
       saver.enqueue({ question_id: q.question_id, answer, flagged: state.flags[q.question_id] });
       // Practice: trắc nghiệm một đáp án → lưu ngay và hiện đúng/sai (không chờ debounce/10 s)
       if (traits.feedback && q.question_type === 'mcq_single' && isAnswered(answer)) void requestFeedback(q.question_id);
     },
-    [isLocked, requestFeedback, saver, state.flags, traits.feedback],
+    [answerable, indexOfId, isLocked, requestFeedback, saver, state.flags, traits.feedback],
   );
 
   const toggleFlagFor = React.useCallback(
@@ -223,10 +246,38 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
     },
     [attempt.id, current, questions, saver, sectionElapsed, state.answers, state.currentIndex, setGridOpen],
   );
+  React.useEffect(() => {
+    navigateRef.current = goTo;
+  }, [goTo]);
+  // Điều hướng do người học: rời câu/nhóm đang phát → ngừng tự chuyển theo audio (quay lại bằng nút hoặc chọn lại câu đó)
+  const { current: listenStep } = listening;
+  const userGoTo = React.useCallback(
+    (index: number) => {
+      if (listeningLive && listenStep) setFollowing(index >= listenStep.groupStart && index <= listenStep.groupEnd);
+      goTo(index);
+    },
+    [goTo, listenStep, listeningLive, setFollowing],
+  );
+  const jumpToListening = React.useCallback(() => {
+    setFollowing(true);
+    if (listenStep) goTo(listenStep.questionIndex);
+  }, [goTo, listenStep, setFollowing]);
   const goToPart = React.useCallback((i: number) => {
     const r = ranges[i];
-    if (r) goTo(r.start);
-  }, [goTo, ranges]);
+    if (r) userGoTo(r.start);
+  }, [ranges, userGoTo]);
+
+  // timed_drill: giới hạn giây từng câu (câu Listening do chuỗi phát điều khiển) – hết giờ câu → sang câu kế
+  const budgetSec = attempt.mode === 'timed_drill' && !program?.unlockStep.has(state.currentIndex) ? timedDrillBudgetSec(attempt.started_at, attempt.expires_at, questions.length) : null;
+  const questionTimer = useQuestionTimer({
+    attemptId: attempt.id,
+    questionId: current.question_id,
+    budgetSec,
+    onTimeout: (qid) => {
+      const i = indexOfId.get(qid);
+      if (i !== undefined && i === state.currentIndex && i < questions.length - 1) goTo(i + 1);
+    },
+  });
 
   // Trong nhóm đoạn văn: đưa câu đang xem vào tầm nhìn khi chuyển bằng phím/nút; mobile vào nhóm mới → về đầu đoạn văn
   const groupKey = group?.key ?? null;
@@ -352,6 +403,8 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   );
   const changeFont = React.useCallback((delta: 1 | -1) => setPrefs({ font: stepFont(prefs.font, delta) }), [prefs.font, setPrefs]);
 
+  const listeningGate = listening.active && listening.phase === 'gate';
+
   // Phím tắt: 1–4 / A–D chọn đáp án, ← → chuyển câu, [ ] chuyển Part, F đánh dấu, Z tập trung, + − cỡ chữ, Esc thoát tập trung
   const content = asPublicContent(current.content);
   const currentAnswer = state.answers[current.question_id] ?? null;
@@ -360,7 +413,7 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
       if (e.defaultPrevented) return;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return;
-      if (submitOpen || gridOpen || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (submitOpen || gridOpen || listeningGate || e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key;
       const commands: Record<string, () => void> = {
         z: () => setFocusMode(!focus),
@@ -371,8 +424,8 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
         _: () => changeFont(-1),
         ']': () => goToPart(sectionIdx + 1),
         '[': () => goToPart(sectionIdx - 1),
-        ArrowRight: () => goTo(state.currentIndex + 1),
-        ArrowLeft: () => goTo(state.currentIndex - 1),
+        ArrowRight: () => userGoTo(state.currentIndex + 1),
+        ArrowLeft: () => userGoTo(state.currentIndex - 1),
         f: () => toggleFlagFor(current),
         F: () => toggleFlagFor(current),
       };
@@ -389,7 +442,7 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
         command();
         return;
       }
-      if (!content || (content.type !== 'mcq_single' && content.type !== 'mcq_multi') || isLocked(current.question_id)) return;
+      if (!content || (content.type !== 'mcq_single' && content.type !== 'mcq_multi') || isLocked(current.question_id) || !answerable(state.currentIndex)) return;
       const k = key.toUpperCase();
       const idx = /^[1-9]$/.test(k) ? Number(k) - 1 : /^[A-J]$/.test(k) ? k.charCodeAt(0) - 65 : -1;
       const opt = idx >= 0 ? content.options[idx] : undefined;
@@ -406,7 +459,7 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [changeFont, content, current, currentAnswer, focus, goTo, goToPart, gridOpen, isLocked, sectionIdx, setAnswerFor, setFocusMode, state.currentIndex, submitOpen, toggleFlagFor]);
+  }, [answerable, changeFont, content, current, currentAnswer, focus, goToPart, gridOpen, isLocked, listeningGate, sectionIdx, setAnswerFor, setFocusMode, state.currentIndex, submitOpen, toggleFlagFor, userGoTo]);
 
   // ---------------------------------------------------------------- Dữ liệu hiển thị
   const gridItems = React.useMemo(
@@ -422,9 +475,20 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   const disabled = submit.isPending || clock.expired || closed;
   const isLast = state.currentIndex >= questions.length - 1;
 
+  // Trạng thái nghe (Exam Mode): sắp phát (khoá chọn) / đang phát / đã phát
+  const listenStatusOf = (index: number): ListenStatus | null => {
+    if (!listening.active || !program?.unlockStep.has(index)) return null;
+    if (listening.phase === 'done') return 'played';
+    if (!answerable(index)) return 'upcoming';
+    const cur = listening.current;
+    if (cur?.kind === 'audio' && listening.phase !== 'gate' && (cur.role === 'group' ? index >= cur.groupStart && index <= cur.groupEnd : cur.questionIndex === index)) return 'playing';
+    return 'played';
+  };
+
   const blocks = groupItems.map(({ q, index }) => {
-    const qContent = asPublicContent(q.content);
-    const listenOnce = traits.examLike && qContent && 'media' in qContent && qContent.media?.listen_policy === 'once';
+    const audioMedia = q.media.find((m) => m.kind === 'audio');
+    // Câu "nghe một lần" do chuỗi phát điều khiển; còn lại (Practice/drill, câu listen_policy = free) → trình phát tự do
+    const freeAudio = audioMedia && !program?.unlockStep.has(index) ? { src: media.resolve(audioMedia.id, audioMedia.url), onError: () => void media.refresh(), onStarted: () => sendAttemptEvent(attempt.id, { type: 'audio_started', meta: { question_id: q.question_id, asset_id: audioMedia.id } }) } : null;
     return (
       <QuestionBlock
         key={q.question_id}
@@ -435,18 +499,20 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
         flagged={!!state.flags[q.question_id]}
         current={index === state.currentIndex}
         inGroup={inGroup}
-        onActivate={() => goTo(index)}
+        onActivate={() => userGoTo(index)}
         onAnswer={(a) => setAnswerFor(q, a)}
         onToggleFlag={() => toggleFlagFor(q)}
         disabled={disabled}
         zoom={zoom}
-        badge={!traits.examLike ? <Badge variant="secondary">{modeLabel}</Badge> : null}
-        audio={{
-          policy: listenOnce ? 'once' : 'free',
-          played: playedAudio.has(q.question_id),
-          onPlayed: () => markPlayed(q.question_id),
-          onStarted: () => sendAttemptEvent(attempt.id, { type: 'audio_started', meta: { question_id: q.question_id } }),
-        }}
+        badge={
+          <>
+            {!traits.examLike ? <Badge variant="secondary">{modeLabel}</Badge> : null}
+            {index === state.currentIndex && questionTimer.budgetSec !== null ? <QuestionCountdown timer={questionTimer} /> : null}
+          </>
+        }
+        audio={freeAudio}
+        imageUrl={media.resolve}
+        listen={listenStatusOf(index)}
         practice={
           traits.feedback
             ? {
@@ -464,13 +530,13 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
 
   const navRow = (
     <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
-      <Button variant="outline" onClick={() => goTo(state.currentIndex - 1)} disabled={state.currentIndex === 0} data-testid="prev-button">
+      <Button variant="outline" onClick={() => userGoTo(state.currentIndex - 1)} disabled={state.currentIndex === 0} data-testid="prev-button">
         <ChevronLeft aria-hidden />
         {t('prev')}
       </Button>
       <p className="hidden text-center text-xs text-muted-foreground md:block">{t('keyboardHintExam')}</p>
       {!isLast ? (
-        <Button variant="navy" onClick={() => goTo(state.currentIndex + 1)} data-testid="next-button">
+        <Button variant="navy" onClick={() => userGoTo(state.currentIndex + 1)} data-testid="next-button">
           {t('next')}
           <ChevronRight aria-hidden />
         </Button>
@@ -496,8 +562,29 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
 
   const highlight = markersInStem(content && 'stem' in content ? content.stem : null);
   const rangeLabel = inGroup ? t('groupRange', { from: groupItems[0]!.index + 1, to: groupItems[groupItems.length - 1]!.index + 1 }) : undefined;
+  // Part 3/4: passage audio_script không có chữ khi đang làm bài → đầu nhóm (trạng thái nghe / trình phát practice), không chia đôi màn hình
+  const audioPassage = passage?.kind === 'audio_script' ? passage : null;
+  const textPassage = audioPassage ? null : passage;
   let body: React.ReactNode = questionsColumn;
-  if (passage && isDesktop) {
+  if (audioPassage) {
+    const groupStart = groupItems[0]!.index;
+    const groupStatus = listenStatusOf(groupStart);
+    const groupTranscript = traits.feedback ? (groupItems.map(({ q }) => parseTranscript(feedback[q.question_id]?.transcript)).find((x) => x?.source === 'passage') ?? null) : null;
+    const audioRange = inGroup ? t('audioGroupRange', { from: groupStart + 1, to: groupItems[groupItems.length - 1]!.index + 1 }) : undefined;
+    body = (
+      <div className="space-y-4">
+        <AudioGroupHeader
+          key={group?.key}
+          passage={audioPassage}
+          rangeLabel={audioRange}
+          exam={groupStatus ? { status: groupStatus } : null}
+          player={!groupStatus && audioPassage.media_url ? { src: media.resolve(audioPassage.media_asset_id, audioPassage.media_url), onError: () => void media.refresh(), onStarted: () => sendAttemptEvent(attempt.id, { type: 'audio_started', meta: { question_id: groupItems[0]!.q.question_id, ...(audioPassage.media_asset_id ? { asset_id: audioPassage.media_asset_id } : {}) } }) } : null}
+          transcript={groupTranscript}
+        />
+        {questionsColumn}
+      </div>
+    );
+  } else if (textPassage && isDesktop) {
     body = (
       <SplitPane
         data-testid="split-pane"
@@ -516,23 +603,33 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
         start={
           // key theo nhóm: đổi nhóm → cuộn đoạn văn về đầu; cùng nhóm → giữ vị trí đang đọc
           <div key={group?.key} className="h-full overflow-y-auto pr-2 pb-4">
-            <PassagePane passage={passage} zoom={zoom} highlight={highlight} rangeLabel={rangeLabel} className="min-h-full" />
+            <PassagePane passage={textPassage} zoom={zoom} highlight={highlight} rangeLabel={rangeLabel} className="min-h-full" />
           </div>
         }
         end={questionsColumn}
       />
     );
-  } else if (passage) {
+  } else if (textPassage) {
     body = (
       <div className="space-y-4">
-        <PassagePane passage={passage} zoom={zoom} highlight={highlight} rangeLabel={rangeLabel} collapsible collapsed={passageCollapsed} onToggle={() => setPassageCollapsed((c) => !c)} />
+        <PassagePane passage={textPassage} zoom={zoom} highlight={highlight} rangeLabel={rangeLabel} collapsible collapsed={passageCollapsed} onToggle={() => setPassageCollapsed((c) => !c)} />
         {questionsColumn}
       </div>
     );
   }
 
+  const listenQ = listenStep ? questions[listenStep.questionIndex] : undefined;
+  const listeningNowLabel = !listenStep
+    ? ''
+    : listenStep.kind === 'audio' && listenStep.role === 'group'
+      ? t('listeningNowGroup', { title: listenQ?.passage?.title ?? t('audioGroupTitle'), from: listenStep.groupStart + 1, to: listenStep.groupEnd + 1 })
+      : listenStep.kind === 'pause'
+        ? t('listeningNowAnswer', { number: listenStep.questionIndex + 1 })
+        : t('listeningNowQuestion', { number: listenStep.questionIndex + 1 });
+  const listeningPartLabel = listenQ ? `${sectionLabel(listenQ.section_code)} · ${t('listeningQuestionCount', { count: program?.unlockStep.size ?? 0 })}` : '';
+
   // Desktop có đoạn văn: khung cố định theo chiều cao màn hình, hai khung cuộn riêng (header/banner co giãn tự nhiên)
-  const splitLayout = !!passage && isDesktop;
+  const splitLayout = !!textPassage && isDesktop;
   return (
     <div className={cn('flex flex-col bg-background', splitLayout ? 'h-dvh overflow-hidden' : 'min-h-dvh', focus && 'pt-2')} data-testid="attempt-runner" data-focus={focus} data-mode={attempt.mode} data-store={saver.storeKind}>
       {focus ? (
@@ -555,6 +652,12 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
           </ExamToolbar>
         </>
       )}
+
+      {/* Dính dưới header (56 px) + thanh công cụ (45 px); chế độ tập trung → sát mép trên */}
+      {listeningLive ? <ListeningBar listening={listening} nowLabel={listeningNowLabel} following={following} onJump={jumpToListening} online={online} className={focus ? 'top-0' : 'top-[101px]'} /> : null}
+      {/* Phần tử <audio> của chuỗi phát (không có điều khiển – không tua/tạm dừng) */}
+      <div ref={mountAudio} hidden data-testid="exam-audio-pool" />
+      {listeningGate && !closed ? <ListeningGate listening={listening} partLabel={listeningPartLabel} /> : null}
 
       {/* Thông báo cho trình đọc màn hình: mốc thời gian 10′/5′/1′, bật/tắt tập trung (không đọc từng giây) */}
       <p className="sr-only" role="status" aria-live="polite" data-testid="attempt-live">
@@ -591,7 +694,7 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
         {!focus ? (
           <aside className={cn('hidden lg:block', splitLayout && 'min-h-0')}>
             <div className={cn('overflow-y-auto rounded-xl border border-border bg-card p-4', splitLayout ? 'max-h-full' : 'sticky top-28 max-h-[calc(100dvh-8rem)]')}>
-              <QuestionGrid items={gridItems} currentIndex={state.currentIndex} onSelect={goTo} />
+              <QuestionGrid items={gridItems} currentIndex={state.currentIndex} onSelect={userGoTo} />
             </div>
           </aside>
         ) : null}
@@ -601,14 +704,14 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
       {!focus ? (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 backdrop-blur lg:hidden">
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2">
-            <Button variant="ghost" size="sm" onClick={() => goTo(state.currentIndex - 1)} disabled={state.currentIndex === 0} aria-label={t('prev')}>
+            <Button variant="ghost" size="sm" onClick={() => userGoTo(state.currentIndex - 1)} disabled={state.currentIndex === 0} aria-label={t('prev')}>
               <ChevronLeft aria-hidden />
             </Button>
             <Button variant="outline" size="sm" onClick={() => setGridOpen(true)} aria-label={t('gridOpen')}>
               <LayoutGrid aria-hidden />
               <span className="tabular">{t('progress', { answered: questions.length - unanswered, total: questions.length })}</span>
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => goTo(state.currentIndex + 1)} disabled={isLast} aria-label={t('next')}>
+            <Button variant="ghost" size="sm" onClick={() => userGoTo(state.currentIndex + 1)} disabled={isLast} aria-label={t('next')}>
               <ChevronRight aria-hidden />
             </Button>
           </div>
@@ -619,7 +722,7 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
           <DialogHeader>
             <DialogTitle>{t('gridTitle')}</DialogTitle>
           </DialogHeader>
-          <QuestionGrid items={gridItems} currentIndex={state.currentIndex} onSelect={goTo} />
+          <QuestionGrid items={gridItems} currentIndex={state.currentIndex} onSelect={userGoTo} />
         </DialogContent>
       </Dialog>
 

@@ -324,7 +324,48 @@
     "feedbackLocked": "Đáp án đã chốt",
     "practiceFeedbackHint": "Chế độ luyện: chọn đáp án để xem ngay đúng/sai và giải thích. Câu đã kiểm tra không đổi đáp án được.",
     "closedTitle": "Bài làm đã đóng",
-    "closedDesc": "Đã hết giờ (kể cả 30 giây ân hạn) hoặc bài đã được nộp ở nơi khác. Đang mở kết quả…"
+    "closedDesc": "Đã hết giờ (kể cả 30 giây ân hạn) hoặc bài đã được nộp ở nơi khác. Đang mở kết quả…",
+    "listenNow": "Đang phát",
+    "listenUpcoming": "Chưa phát",
+    "directions": {
+      "part1": "Nhìn tranh và nghe bốn câu mô tả (A–D). Chọn câu mô tả đúng nhất – các câu không in trên đề.",
+      "part2": "Nghe một câu hỏi hoặc câu nói và ba lời đáp (A–C). Chọn lời đáp phù hợp nhất – nội dung không in trên đề."
+    },
+    "audioQuestionLabel": "Audio câu {number}",
+    "questionImageAlt": "Tranh của câu {number}",
+    "audioBack5": "Lùi 5 giây (←)",
+    "audioForward5": "Tới 5 giây (→)",
+    "audioSeek": "Tua audio",
+    "audioSpeed": "Tốc độ",
+    "audioRate": "{rate}×",
+    "audioLoop": "Lặp lại",
+    "audioGroupTitle": "Hội thoại",
+    "audioGroupExamHint": "Nghe hội thoại/bài nói rồi trả lời các câu bên dưới. Nội dung (transcript) chỉ hiển thị ở phần Xem lại sau khi nộp.",
+    "audioGroupRange": "Câu {from}–{to}",
+    "listeningStartTitle": "Bắt đầu phần Listening",
+    "listeningResumeTitle": "Tiếp tục phần Listening",
+    "listeningRuleOnce": "Audio phát liên tục MỘT lần theo thứ tự đề – không tạm dừng, không tua, không nghe lại.",
+    "listeningRuleAnswer": "Bạn chọn được đáp án của câu đang nghe và các câu đã nghe; câu chưa tới lượt bị khoá.",
+    "listeningRuleCheck": "Kiểm tra loa/tai nghe và âm lượng trước khi bắt đầu.",
+    "listeningRuleResume": "Audio tiếp tục từ chỗ bạn dừng – phần đã nghe không phát lại.",
+    "listeningStart": "Bắt đầu nghe",
+    "listeningResume": "Tiếp tục nghe",
+    "listeningBuffering": "Đang tải audio – sẽ tự tiếp tục khi có dữ liệu…",
+    "listeningOffline": "Mất kết nối – audio sẽ tiếp tục khi có mạng trở lại.",
+    "listeningLoading": "Đang chuẩn bị audio…",
+    "listeningAnswerTime": "{seconds, plural, other {Thời gian trả lời: # giây}}",
+    "listeningWaiting": "Chờ bắt đầu",
+    "listeningPlaying": "Đang phát",
+    "listeningJump": "Về câu đang nghe",
+    "listeningDone": "Đã hết phần Listening.",
+    "listeningDoneReading": "Đã hết phần Listening – chuyển sang phần Reading.",
+    "listeningNowGroup": "{title} · Câu {from}–{to}",
+    "listeningNowAnswer": "Câu {number}",
+    "listeningNowQuestion": "Câu {number}",
+    "listeningQuestionCount": "{count, plural, other {# câu Listening}}",
+    "questionTimerLabel": "{seconds, plural, other {Còn # giây cho câu này}}",
+    "questionTimeUp": "Hết giờ câu này",
+    "questionTimerLeft": "{seconds} giây"
   },
   "result": {
     "title": "Kết quả",
@@ -401,7 +442,19 @@
       "health": "Sức khoẻ",
       "education": "Giáo dục"
     },
-    "moreItems": "{count, plural, other {+# mục khác}}"
+    "moreItems": "{count, plural, other {+# mục khác}}",
+    "lrTitle": "Điểm Listening & Reading",
+    "estimatedBadge": "Ước tính",
+    "skillListening": "Listening",
+    "skillReading": "Reading",
+    "skillTotal": "Tổng",
+    "rangeEstimate": "Khoảng ước tính {low}–{high}",
+    "totalNeedsBoth": "Cần cả Listening và Reading để có tổng",
+    "skillNotInAttempt": "Không có trong bài này",
+    "skillRaw": "{correct}/{total} câu đúng",
+    "avgTimeVsCommunity": "TB {mine} giây/câu · cộng đồng {community} giây",
+    "avgTime": "TB {mine} giây/câu",
+    "estimatedNotOfficial": "Điểm quy đổi là ước tính của Allingo (thang 5–495 mỗi kỹ năng, tổng 10–990, khoảng ±25), không phải điểm chính thức của ETS."
   },
   "review": {
     "title": "Xem lại",
@@ -448,7 +501,17 @@
     "nextWrong": "Câu sai tiếp theo",
     "wrongNav": "Câu sai {current}/{total}",
     "wrongNavIdle": "{total, plural, =0 {Không có câu sai} =1 {1 câu sai} other {# câu sai}}",
-    "itemsCount": "{count, plural, =0 {Không có câu} =1 {1 câu} other {# câu}}"
+    "itemsCount": "{count, plural, =0 {Không có câu} =1 {1 câu} other {# câu}}",
+    "transcriptTitle": "Transcript",
+    "speaker": {
+      "man": "Nam",
+      "woman": "Nữ",
+      "narrator": "Người dẫn",
+      "other": "Người nói"
+    },
+    "audioGroup": "Hội thoại",
+    "audioGroupRange": "Câu {from}–{to}",
+    "evidence": "Dẫn chứng"
   },
   "settings": {
     "title": "Cài đặt",
@@ -566,6 +629,11 @@
     "keywordTooShort": "Từ khoá cần ít nhất 2 ký tự.",
     "presetHint": "Đã chọn sẵn theo gợi ý từ kết quả bài làm.",
     "focusFilter": "Trọng tâm: {name}",
-    "clearFocus": "Bỏ trọng tâm"
+    "clearFocus": "Bỏ trọng tâm",
+    "timedPerQuestion": "Tính giờ từng câu",
+    "timedPerQuestionHint": "Mỗi câu có giới hạn giây, hết giờ tự sang câu kế; đáp án hiện sau khi nộp. Listening phát một lần như thi thật.",
+    "perQuestionLabel": "Giây mỗi câu",
+    "perQuestionAuto": "Mặc định theo Part ({seconds} giây)",
+    "perQuestionSeconds": "{seconds} giây"
   }
 }

@@ -38,6 +38,9 @@ src/mock                       fixtures tự biên soạn + "máy chủ" giả l
 e2e/guest-flow.spec.ts         luồng khách → đề mini → nộp → kết quả → xem lại → giải thích → đăng ký ghép tiến độ
 e2e/exam-offline.spec.ts       Thi Part 5: offline giữa chừng → IndexedDB → online/tải lại/đóng tab → nộp → chẩn đoán → lọc câu sai
 e2e/exam-layout.spec.ts        Reading Part 5–7: thanh Part, đoạn văn + thanh kéo, nhóm câu, tập trung, cỡ chữ (mock: toeic-reading-mini-01, API: toeic-reading-full-01)
+e2e/listening.spec.ts          Listening (S4): "Bắt đầu nghe", phát một lần không tua/tạm dừng, chuyển câu theo audio, tải lại tiếp tục, URL 403 → gia hạn,
+                               Practice tua/tốc độ/lặp, timed_drill, L&R → Reading, kết quả L/R/Tổng, Review transcript (mock: toeic-listening-mini-01,
+                               toeic-lr-mini-01; API: toeic-listening-01-drill-part1, toeic-mini-lr-01)
 packages/ui/src                component dùng chung (Button, Card, Dialog/Sheet, Tabs…) + styles.css (token navy/gold)
 ```
 
@@ -49,4 +52,25 @@ packages/ui/src                component dùng chung (Button, Card, Dialog/Sheet
 - **Offline**: `DraftQueue` gộp lô (debounce 0,8 s, 10 s/lần, khi đổi câu/ẩn tab) và giữ nháp chưa gửi trong **IndexedDB** `allingo-drafts/drafts` (fallback bộ nhớ khi IndexedDB không dùng được; tự chuyển nháp localStorage của bản cũ). Màn làm bài chỉ dựng sau khi khôi phục xong; nháp + câu đang xem (`ui_state.current_question_id`) cục bộ đè dữ liệu server. Banner "Mất kết nối…" / "Đang lưu lại…". Sự kiện phiên: `tab_hidden`, `focus_lost`, `resume`, `part_switch`.
 - **Practice/drill**: chọn đáp án (mcq_single) → lưu ngay → `GET /attempts/{id}` lấy `feedback` → hiện đúng/sai, đáp án, giải thích tác giả; câu đã kiểm tra bị khoá. Dạng khác dùng nút "Kiểm tra đáp án". Không đồng hồ (trừ `timed_drill`).
 - **Kết quả/Xem lại**: khối Chẩn đoán từ `diagnosis` (Part/kỹ năng con/chủ đề yếu, cờ → câu nhận xét, gợi ý → `/toeic/practice?section=…&subskill=…`, trang practice đọc query để chọn sẵn); thang 5–495/10–990 ghi rõ "ước tính". Xem lại lọc bằng tham số API `only_wrong/flagged/section`, trạng thái lọc trên URL (`?filter=wrong&section=part5`), nút "Câu sai trước/tiếp theo".
+- **Listening Exam Mode (Sprint 4)** – `features/attempt/listening/`: `program.ts` dựng chuỗi bước từ câu `listen_policy = 'once'`
+  (Part 1/2: audio câu → `pause_ms`; Part 3/4: audio nhóm → audio câu hỏi + `pause_ms` mỗi câu), `sequencer.ts` là máy trạng thái thuần
+  (gate → loading → playing/stalled → pause → … → done, chỉ đi tới), `listening-engine.ts` gắn với DOM: 3 phần tử `<audio>` xoay vòng
+  (bước đang phát + preload 2 tệp), không `controls`, chặn tạm dừng/tua từ ngoài (phím media – Media Session, devtools/tiện ích → phát
+  tiếp/trả về vị trí), stalled/mất mạng → chờ có mạng → gia hạn URL → nạp lại đúng vị trí, sự kiện `audio_started/ended/stalled`
+  (nhóm gửi `question_id` câu đầu nhóm). Bắt buộc bấm "Bắt đầu nghe" (autoplay; Safari: mở khoá cả nhóm phần tử trong cùng cử chỉ).
+  Vị trí lưu `localStorage` `allingo.listening.<attemptId>` (bước + ms) mỗi giây; tải lại → "Tiếp tục nghe" từ đúng ms; mất bản cục bộ →
+  suy từ `attempt.audio_plays` (sau bước audio cuối đã bắt đầu, không phát lại). Câu chưa phát bị khoá chọn đáp án; người học rời câu
+  đang phát → ngừng tự chuyển, nút "Về câu đang nghe". Hết Listening → chuyển sang câu Reading đầu tiên (đề L&R).
+  E2E tăng tốc bằng `window.__ALLINGO_AUDIO_RATE__` (chỉ bản dev; production luôn 1).
+- **URL ký 10′** – `use-media-urls.ts`: gom URL theo asset id (`media[].id`, `passage.media_asset_id`), hẹn `GET /attempts/{id}/media`
+  khi URL sớm nhất còn ≤ 2′, khi tab hiện lại/có mạng lại, hoặc khi audio lỗi (403); phần tử đang phát giữ src cũ (không cắt ngang),
+  phần tử preload/trình phát tự do đổi src giữ vị trí. Dùng cho màn làm bài và Xem lại.
+- **Practice/Review Listening**: `AudioPlayer` tự do (phát/tạm dừng, thanh tua + ←/→ 5 s khi focus, tốc độ 0,75/1/1,25, lặp); Part 3/4 có
+  trình phát cả nhóm ở đầu nhóm. Transcript (`review/transcript.tsx`) chỉ sau khi nộp (Review) hoặc sau khi trả lời (practice, API trả
+  `feedback.transcript`): nhãn người nói M/W/N, tô dòng đang phát theo `segments`, tô `evidence`. Đề bài có bảng markdown (graphic) →
+  `question-stem.tsx`. Part 1/2 (API xoá chữ khi đang làm bài) → hướng dẫn chung qua i18n.
+- **timed_drill**: trang Luyện tập "Tính giờ từng câu" (+ `per_question_sec`); màn làm bài đếm ngược từng câu (ngân sách = tổng giờ / số câu),
+  hết giờ câu → sang câu kế một lần; Listening trong timed_drill do chuỗi phát điều khiển.
+- **Kết quả L&R**: thẻ Listening / Reading / Tổng + khoảng ước tính từ `AttemptResult.scaled` (ghi rõ "ước tính, không phải điểm chính
+  thức ETS"), breakdown Part 1–7 nhóm theo kỹ năng (`by_skill`), thời gian TB so cộng đồng.
 - **Kiểu dữ liệu**: ưu tiên Zod trong `packages/schemas` (đầy đủ hơn OpenAPI đã sinh); `GET /attempts/{id}/result` mới thêm (SPEC-ISSUES S8) nên path được ép kiểu cho tới khi chạy `pnpm client:gen`.

@@ -10,6 +10,7 @@ import type {
   AttemptAnswersPut,
   AttemptCreate,
   AttemptEvent,
+  AttemptMediaList,
   AttemptResult,
   AttemptReview,
   AttemptSummary,
@@ -161,6 +162,16 @@ export function useCreateAttempt() {
 /** Lưu nháp (PUT) – hàm thuần để hàng đợi lưu nháp gọi ngoài React */
 export async function saveAnswers(attemptId: string, body: AttemptAnswersPut): Promise<void> {
   unwrap(await getApi().PUT('/attempts/{attemptId}/answers', { params: { path: { attemptId } }, body: body as never }));
+}
+
+/**
+ * URL ký mới cho mọi media của attempt (GET /attempts/{id}/media – v1.1, Sprint 4): gia hạn trước khi hết hạn (TTL 10′)
+ * hoặc khi audio lỗi 403. Hàm thuần (không cache TanStack – mỗi lần gọi là URL mới, `Cache-Control: no-store`).
+ */
+export async function fetchAttemptMedia(attemptId: string): Promise<AttemptMediaList> {
+  // Kiểu OpenAPI sinh ra trùng dạng Zod (AttemptMediaList) – không cần ép kiểu
+  const data: AttemptMediaList = unwrap(await getApi().GET('/attempts/{attemptId}/media', { params: { path: { attemptId } } }));
+  return data;
 }
 
 /** Sự kiện phiên (tab_leave, resume, audio_played...) – fire-and-forget, lỗi bỏ qua */

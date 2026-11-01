@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" role="img" aria-label="Một người đàn ông đang dùng máy tính xách tay tại bàn làm việc">
+  <rect width="400" height="260" fill="#eef2f7"/>
+  <rect x="0" y="190" width="400" height="70" fill="#d7dee8"/>
+  <rect x="60" y="150" width="280" height="14" rx="3" fill="#8a6a4a"/>
+  <rect x="80" y="164" width="10" height="70" fill="#6f553b"/>
+  <rect x="310" y="164" width="10" height="70" fill="#6f553b"/>
+  <rect x="170" y="100" width="90" height="52" rx="4" fill="#1f2a44"/>
+  <rect x="176" y="106" width="78" height="40" rx="2" fill="#7fa7d9"/>
+  <rect x="160" y="148" width="110" height="6" rx="2" fill="#2d3a58"/>
+  <circle cx="125" cy="88" r="20" fill="#e2b48c"/>
+  <path d="M100 150 q25 -60 50 0 z" fill="#3b5b8c"/>
+  <rect x="140" y="118" width="40" height="8" rx="4" fill="#e2b48c"/>
+  <rect x="290" y="126" width="20" height="24" rx="3" fill="#c9a227"/>
+</svg>

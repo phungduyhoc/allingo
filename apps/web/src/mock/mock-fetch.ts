@@ -7,6 +7,9 @@ import {
   correctAnswerOf,
   grade,
   isAnswered,
+  isSpokenTextSection,
+  redactSpokenText,
+  timedDrillSeconds,
   toPublicContent,
   type Attempt,
   type AttemptMode,
@@ -16,9 +19,10 @@ import {
   type Entitlements,
   type Explanation,
   type Stats,
+  type TranscriptHighlight,
   type User,
 } from '@allingo/schemas';
-import { SCALE_INFO, TOEIC_PART_SKILL, diagnoseAttempt, toeicLr } from '@allingo/scoring';
+import { SCALE_INFO, TOEIC_PART_SKILL, diagnoseAttempt, toeicLr, toeicLrEstimate } from '@allingo/scoring';
 import { env } from '@/env';
 import { MOCK_PROGRAMS, MOCK_SUBSKILL_OF_TAG, MOCK_TEST_SETS, type MockQuestion, type MockTestSet } from './fixtures';
 import { loadState, saveState, type MockAttemptRecord, type MockState, type MockUserRecord } from './state';
@@ -72,6 +76,14 @@ function freeLimit(feature: string): number | null {
   return q ? q.limit : null;
 }
 
+/** URL "ký" giả lập (TTL 10′ như driver fs của API): `sig=init` cho URL trong attempt/review, `sig=r<n>` cho URL gia hạn */
+const MEDIA_TTL_MS = 10 * 60_000;
+let refreshCounter = 0;
+function signUrl(url: string, sig: string): { url: string; expires_at: string } {
+  const exp = Date.now() + MEDIA_TTL_MS;
+  return { url: `${url}${url.includes('?') ? '&' : '?'}exp=${Math.floor(exp / 1000)}&sig=${sig}`, expires_at: new Date(exp).toISOString() };
+}
+
 export function createMockFetch(): typeof fetch {
   const state: MockState = loadState();
   const persist = () => saveState(state);
@@ -115,6 +127,41 @@ export function createMockFetch(): typeof fetch {
     ...partial,
   });
 
+  /**
+   * Câu công khai như API: URL media "ký" 10′; đang làm bài (`attempt`) → Part 1/2 xoá chữ đề/lựa chọn, passage audio_script
+   * không có body (transcript). Review (`review`) trả đủ chữ + body.
+   */
+  const publicQuestion = (q: MockQuestion, view: 'attempt' | 'review'): Attempt['questions'][number] => {
+    const pub = toPublicContent(q.content);
+    const content = view === 'attempt' && isSpokenTextSection('toeic', q.section_code) && 'media' in pub && pub.media?.audio_asset_id ? redactSpokenText(pub) : pub;
+    const passage = q.passage
+      ? (() => {
+          const { segments: _s, media_asset_id, ...p } = q.passage;
+          const signed = p.media_url ? signUrl(p.media_url, 'init') : null;
+          return { ...p, body: view === 'attempt' && p.kind === 'audio_script' ? null : p.body, media_url: signed?.url ?? null, media_asset_id: media_asset_id ?? null, media_expires_at: signed?.expires_at ?? null };
+        })()
+      : null;
+    return {
+      question_id: q.question_id,
+      question_version_id: q.question_version_id,
+      question_type: q.content.type,
+      section_code: q.section_code,
+      group_key: q.group_key,
+      order_no: q.order_no,
+      content,
+      media: q.media.map(({ transcript: _t, ...m }) => ({ ...m, ...signUrl(m.url, 'init') })),
+      passage,
+    };
+  };
+  /** TranscriptHighlight như API: passage audio_script (Part 3/4) hoặc transcript audio câu (Part 1/2), kèm evidence của tác giả */
+  const transcriptOf = (q: MockQuestion): TranscriptHighlight | null => {
+    const evidence = q.content.evidence ?? null;
+    if (q.passage?.kind === 'audio_script' && q.passage.body) return { text: q.passage.body, ...(q.passage.segments ? { segments: q.passage.segments } : {}), evidence, source: 'passage', asset_id: q.passage.media_asset_id ?? null };
+    const audio = q.media.find((m) => m.kind === 'audio');
+    if (audio?.transcript) return { text: audio.transcript.text, ...(audio.transcript.segments ? { segments: audio.transcript.segments } : {}), evidence, source: 'media', asset_id: audio.id };
+    return evidence ? { text: evidence, evidence, source: 'evidence', asset_id: audio?.id ?? null } : null;
+  };
+
   const toAttemptDto = (a: MockAttemptRecord): Attempt => {
     const ts = findTestSet(a.test_set_id);
     const qs = questionsOf(a);
@@ -130,22 +177,13 @@ export function createMockFetch(): typeof fetch {
         elapsed_sec: a.section_elapsed_sec[code] ?? 0,
         locked: false,
       })),
-      questions: qs.map((q) => ({
-        question_id: q.question_id,
-        question_version_id: q.question_version_id,
-        question_type: q.content.type,
-        section_code: q.section_code,
-        group_key: q.group_key,
-        order_no: q.order_no,
-        content: toPublicContent(q.content),
-        media: q.media,
-        passage: q.passage,
-      })),
+      questions: qs.map((q) => publicQuestion(q, 'attempt')),
       draft_answers: Object.entries(a.answers).map(([question_id, r]) => ({ question_id, answer: r.answer, time_spent_ms: r.time_spent_ms, flagged: r.flagged })),
       started_at: a.started_at,
       expires_at: a.expires_at,
       server_time: nowIso(),
       ui_state: a.ui_state,
+      audio_plays: a.audio_plays ?? {},
       // Practice/drill: đáp án + đúng/sai + giải thích tác giả cho câu ĐÃ trả lời (exam/timed không bao giờ có)
       ...(FEEDBACK_MODES.has(a.mode)
         ? {
@@ -154,7 +192,9 @@ export function createMockFetch(): typeof fetch {
                 const rec = a.answers[q.question_id];
                 if (!rec || !isAnswered(rec.answer)) return [];
                 const g = grade(q.content, rec.answer);
-                return [[q.question_id, { is_correct: g.is_correct, correct_answer: correctAnswerOf(q.content), explanation: q.content.explanation ? { ...q.content.explanation } : null }]];
+                // Transcript (v1.1): câu đơn ngay khi trả lời; nhóm Part 3/4 chỉ khi mọi câu trong nhóm đã trả lời (như API)
+                const groupDone = !q.group_key || qs.filter((x) => x.group_key === q.group_key).every((x) => a.answers[x.question_id] && isAnswered(a.answers[x.question_id]!.answer));
+                return [[q.question_id, { is_correct: g.is_correct, correct_answer: correctAnswerOf(q.content), explanation: q.content.explanation ? { ...q.content.explanation } : null, transcript: groupDone ? transcriptOf(q) : null }]];
               }),
             ),
           }
@@ -200,6 +240,23 @@ export function createMockFetch(): typeof fetch {
       }
     }
     const lr = toeicLr({ listening: listening.total ? listening : undefined, reading: reading.total ? reading : undefined });
+    const est = toeicLrEstimate({ listening: listening.total ? listening : undefined, reading: reading.total ? reading : undefined });
+    // Theo kỹ năng (v1.1): số câu, điểm quy đổi + khoảng, thời gian TB so cộng đồng (mock: cộng đồng 15 s/câu)
+    const bySkill: NonNullable<AttemptResult['by_skill']> = {};
+    for (const [skill, cnt] of [['listening', listening], ['reading', reading]] as const) {
+      if (!cnt.total) continue;
+      const times = qs.filter((q) => TOEIC_PART_SKILL[q.section_code] === skill).map((q) => a.answers[q.question_id]?.time_spent_ms).filter((x): x is number => typeof x === 'number');
+      bySkill[skill] = {
+        correct: cnt.correct,
+        total: cnt.total,
+        scaled: est[skill],
+        range: est.ranges[skill],
+        avg_time_ms: times.length ? Math.round(times.reduce((x, y) => x + y, 0) / times.length) : null,
+        community_avg_time_ms: 15_000,
+        by_subskill: {},
+        by_topic: {},
+      };
+    }
     const scaled = lr.total ?? lr.listening ?? lr.reading;
     // Chẩn đoán theo quy tắc như API (packages/scoring.diagnoseAttempt); hết giờ mới nộp → coi là tự nộp
     const autoSubmitted = !!a.expires_at && Date.now() >= Date.parse(a.expires_at);
@@ -230,6 +287,8 @@ export function createMockFetch(): typeof fetch {
           : null,
       diagnosis: diagnosis as unknown as Record<string, unknown>,
       xp_earned: xp,
+      scaled: { listening: est.listening, reading: est.reading, total: est.total, range: est.range, ranges: est.ranges, estimated: true },
+      by_skill: bySkill,
     };
   };
 
@@ -537,12 +596,20 @@ export function createMockFetch(): typeof fetch {
       const q = (url.searchParams.get('q') ?? '').toLowerCase();
       const count = Math.min(50, Math.max(1, Number(url.searchParams.get('count') ?? 10) || 10));
       const timed = url.searchParams.get('timed') === 'true';
+      const perQuestion = Number(url.searchParams.get('per_question_sec') ?? '') || undefined;
       const t = MOCK_TEST_SETS.find((x) => x.questions.some((qq) => qq.section_code === section));
       if (!t) return error(404, 'not_found', 'No questions');
-      // Câu của Part từ mọi đề (mock không có ngẫu nhiên để E2E ổn định), từ khoá lọc theo nội dung
-      const picked = allQuestions()
-        .filter((qq) => qq.section_code === section && (!q || JSON.stringify(qq.content).toLowerCase().includes(q)))
-        .slice(0, count);
+      // Câu của Part từ mọi đề (không trùng; mock không ngẫu nhiên để E2E ổn định), từ khoá lọc theo nội dung.
+      // Nhóm cùng passage (Part 3/4/6/7) lấy trọn nhóm, liền nhau; nhóm không vừa `count` thì bỏ (trừ nhóm đầu) – như API
+      const unique = [...new Map(allQuestions().filter((qq) => qq.section_code === section && (!q || JSON.stringify(qq.content).toLowerCase().includes(q))).map((qq) => [qq.question_id, qq])).values()];
+      const picked: MockQuestion[] = [];
+      for (const qq of unique) {
+        if (picked.includes(qq)) continue;
+        const group = qq.group_key ? unique.filter((x) => x.group_key === qq.group_key) : [qq];
+        if (picked.length + group.length > count && picked.length > 0) continue;
+        picked.push(...group);
+        if (picked.length >= count) break;
+      }
       if (!picked.length) return error(404, 'not_found', 'No questions');
       const started = Date.now();
       const rec: MockAttemptRecord = {
@@ -554,8 +621,8 @@ export function createMockFetch(): typeof fetch {
         mode: timed ? 'timed_drill' : 'drill',
         status: 'in_progress',
         started_at: new Date(started).toISOString(),
-        // Như API: tính giờ 45 giây/câu
-        expires_at: timed ? new Date(started + picked.length * 45_000).toISOString() : null,
+        // Như API: Σ giây theo Part (TIMED_DRILL_SEC_PER_QUESTION) hoặc per_question_sec × số câu
+        expires_at: timed ? new Date(started + timedDrillSeconds(picked.map((x) => x.section_code), perQuestion) * 1000).toISOString() : null,
         submitted_at: null,
         answers: {},
         section_elapsed_sec: {},
@@ -600,6 +667,11 @@ export function createMockFetch(): typeof fetch {
       const a = state.attempts[params.attemptId!];
       if (a) {
         a.events.push({ type: parsed.data.type, at: parsed.data.at ?? nowIso(), meta: parsed.data.meta });
+        // audio_started (+ audio_played cũ) với question_id → đếm lượt nghe (giữ "nghe một lần" khi tải lại – như API)
+        const qid = typeof parsed.data.meta?.question_id === 'string' ? parsed.data.meta.question_id : null;
+        if ((parsed.data.type === 'audio_started' || parsed.data.type === 'audio_played') && qid && a.status === 'in_progress') {
+          a.audio_plays = { ...a.audio_plays, [qid]: (a.audio_plays?.[qid] ?? 0) + 1 };
+        }
         if (a.events.length > 500) a.events.shift();
         persist();
       }
@@ -625,6 +697,20 @@ export function createMockFetch(): typeof fetch {
       if (!a.result) return error(409, 'conflict', 'Attempt not submitted yet');
       return json(200, a.result);
     }),
+    // URL ký mới cho mọi media của attempt (v1.1 – Sprint 4); mọi trạng thái (Review nghe lại)
+    route('GET', '/attempts/{attemptId}/media', ({ params }) => {
+      const u = requireUser();
+      if (u instanceof Response) return u;
+      const a = state.attempts[params.attemptId!];
+      if (!a || a.user_id !== u.id) return error(404, 'not_found', 'Attempt not found');
+      const sig = `r${++refreshCounter}`;
+      const seen = new Map<string, { id: string; kind: string; url: string; expires_at: string }>();
+      for (const q of questionsOf(a)) {
+        for (const m of q.media) seen.set(m.id, { id: m.id, kind: m.kind, ...signUrl(m.url, sig) });
+        if (q.passage?.media_asset_id && q.passage.media_url) seen.set(q.passage.media_asset_id, { id: q.passage.media_asset_id, kind: 'audio', ...signUrl(q.passage.media_url, sig) });
+      }
+      return json(200, { data: [...seen.values()] }, { 'Cache-Control': 'no-store' });
+    }),
     route('GET', '/attempts/{attemptId}/review', ({ params, url, locale }) => {
       const u = requireUser();
       if (u instanceof Response) return u;
@@ -645,17 +731,7 @@ export function createMockFetch(): typeof fetch {
         const chosen = rec?.answer.type === 'mcq_single' ? (rec.answer.selected ?? '') : '';
         const cacheKey = `${q.question_version_id}:${chosen}:${u.explain_locale ?? locale}`;
         items.push({
-          question: {
-            question_id: q.question_id,
-            question_version_id: q.question_version_id,
-            question_type: q.content.type,
-            section_code: q.section_code,
-            group_key: q.group_key,
-            order_no: q.order_no,
-            content: toPublicContent(q.content),
-            media: q.media,
-            passage: q.passage,
-          },
+          question: publicQuestion(q, 'review'),
           your_answer: rec?.answer ?? null,
           correct_answer: g.correct_answer,
           is_correct: g.is_correct,
@@ -664,7 +740,8 @@ export function createMockFetch(): typeof fetch {
           flagged: rec?.flagged ?? false,
           details: g.details ?? null,
           explanation: state.explanations[cacheKey] ? (state.explanations[cacheKey]) : null,
-          transcript_highlight: null,
+          transcript_highlight: transcriptOf(q),
+          audio_plays: a.audio_plays?.[q.question_id] ?? 0,
           error_entry_id: null,
           community_correct_rate: q.community_correct_rate,
         });

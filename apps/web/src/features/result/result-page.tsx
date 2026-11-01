@@ -11,10 +11,12 @@ import { CardSkeleton, ErrorState } from '@/components/states';
 import { PageHeader } from '@/components/page-header';
 import { DiagnosisCard } from './diagnosis-card';
 import { parseDiagnosis, scaleView } from './diagnosis';
+import { parseScaled, ScaledScores } from './scaled-scores';
 
 const SectionChart = dynamic(() => import('./section-chart'), { ssr: false, loading: () => <Skeleton className="h-56 w-full" /> });
 
 const SECTION_KEYS = ['part1', 'part2', 'part3', 'part4', 'part5', 'part6', 'part7', 'listening', 'reading'] as const;
+const SKILL_OF_PART: Record<string, 'listening' | 'reading'> = { part1: 'listening', part2: 'listening', part3: 'listening', part4: 'listening', part5: 'reading', part6: 'reading', part7: 'reading' };
 
 export function ResultPage({ attemptId }: { attemptId: string }) {
   const t = useTranslations('result');
@@ -25,7 +27,9 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
 
   const sectionData = React.useMemo(() => {
     if (!result.data) return [];
-    return Object.entries(result.data.by_section).map(([code, s]) => ({
+    return Object.entries(result.data.by_section)
+      .sort(([a], [b]) => a.localeCompare(b, 'en', { numeric: true }))
+      .map(([code, s]) => ({
       code,
       label: (SECTION_KEYS as readonly string[]).includes(code) ? ts(code as (typeof SECTION_KEYS)[number]).split(' · ')[0]! : code,
       correct: s.correct,
@@ -54,6 +58,12 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
   const unanswered = diagnosis ? diagnosis.unanswered : typeof r.scale.unanswered === 'number' ? r.scale.unanswered : null;
   const scale = scaleView(r);
   const delta = r.compared_to_previous?.scaled_delta ?? null;
+  const scaled = parseScaled(r.scaled);
+  // Breakdown Part 1–7 nhóm theo kỹ năng (TOEIC) – kỹ năng có trong bài mới hiện tiêu đề nhóm
+  const skillGroups = (['listening', 'reading'] as const)
+    .map((skill) => ({ skill, parts: sectionData.filter((s) => SKILL_OF_PART[s.code] === skill), stats: r.by_skill?.[skill] }))
+    .filter((g) => g.parts.length > 0);
+  const otherParts = sectionData.filter((s) => !SKILL_OF_PART[s.code]);
 
   return (
     <div className="space-y-8" data-testid="result-page">
@@ -92,6 +102,11 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
                 {scale.kind === 'total' ? t('scaleRangeTotal', { min: scale.min, max: scale.max }) : t('scaleRangeSkill', { skill: ts(scale.skill ?? 'reading'), min: scale.min, max: scale.max })}
               </p>
             ) : null}
+            {scaled?.range ? (
+              <p className="tabular mt-1 text-sm text-white/90" data-testid="score-range">
+                {t('rangeEstimate', { low: scaled.range.low, high: scaled.range.high })}
+              </p>
+            ) : null}
             <p className="mt-3 text-xs leading-relaxed text-white/70">{t('estimatedNote')}</p>
           </CardContent>
         </Card>
@@ -127,6 +142,8 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
         </Card>
       </div>
 
+      <ScaledScores result={r} />
+
       {diagnosis ? <DiagnosisCard diagnosis={diagnosis} /> : null}
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
@@ -136,14 +153,26 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
           </CardHeader>
           <CardContent>
             <SectionChart data={sectionData} />
-            <ul className="mt-4 divide-y divide-border text-sm">
-              {sectionData.map((s) => (
-                <li key={s.code} className="flex items-center justify-between py-2">
-                  <span>{(SECTION_KEYS as readonly string[]).includes(s.code) ? ts(s.code as (typeof SECTION_KEYS)[number]) : s.code}</span>
-                  <span className="tabular font-semibold">{t('rawOf', { correct: s.correct, total: s.correct + s.wrong })}</span>
-                </li>
+            <div className="mt-4 space-y-4 text-sm" data-testid="part-breakdown">
+              {[...skillGroups, ...(otherParts.length ? [{ skill: null, parts: otherParts, stats: undefined }] : [])].map((g) => (
+                <div key={g.skill ?? 'other'}>
+                  {g.skill && skillGroups.length > 1 ? (
+                    <p className="flex items-center justify-between border-b border-border pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase" data-testid={`breakdown-${g.skill}`}>
+                      <span>{ts(g.skill)}</span>
+                      {g.stats ? <span className="tabular">{t('rawOf', { correct: g.stats.correct, total: g.stats.total })}</span> : null}
+                    </p>
+                  ) : null}
+                  <ul className="divide-y divide-border">
+                    {g.parts.map((s) => (
+                      <li key={s.code} className="flex items-center justify-between py-2" data-testid={`breakdown-${s.code}`}>
+                        <span>{(SECTION_KEYS as readonly string[]).includes(s.code) ? ts(s.code as (typeof SECTION_KEYS)[number]) : s.code}</span>
+                        <span className="tabular font-semibold">{t('rawOf', { correct: s.correct, total: s.correct + s.wrong })}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           </CardContent>
         </Card>
         <Card>

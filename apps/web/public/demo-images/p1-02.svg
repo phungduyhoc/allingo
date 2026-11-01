@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" role="img" aria-label="Hai người phụ nữ đứng cạnh kệ sách trong thư viện">
+  <rect width="400" height="260" fill="#f3efe6"/>
+  <rect x="30" y="40" width="150" height="190" fill="#8a6a4a"/>
+  <g fill="#5d7fb0"><rect x="40" y="52" width="14" height="40"/><rect x="58" y="56" width="12" height="36"/><rect x="74" y="50" width="16" height="42"/><rect x="94" y="58" width="12" height="34"/><rect x="110" y="52" width="14" height="40"/><rect x="128" y="54" width="18" height="38"/><rect x="150" y="56" width="20" height="36"/></g>
+  <g fill="#c9a227"><rect x="40" y="112" width="16" height="40"/><rect x="60" y="116" width="12" height="36"/><rect x="76" y="110" width="14" height="42"/><rect x="94" y="114" width="18" height="38"/><rect x="116" y="112" width="12" height="40"/><rect x="132" y="118" width="16" height="34"/><rect x="152" y="112" width="18" height="40"/></g>
+  <rect x="30" y="100" width="150" height="6" fill="#6f553b"/><rect x="30" y="160" width="150" height="6" fill="#6f553b"/>
+  <circle cx="240" cy="90" r="18" fill="#e2b48c"/><path d="M215 220 l10 -105 h30 l10 105 z" fill="#1f2a44"/>
+  <circle cx="310" cy="96" r="18" fill="#c99a74"/><path d="M285 220 l10 -100 h30 l10 100 z" fill="#3b5b8c"/>
+  <rect x="255" y="130" width="34" height="24" rx="2" fill="#f7f7f7" stroke="#1f2a44"/>
+</svg>

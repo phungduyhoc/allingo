@@ -6,6 +6,8 @@ import { Badge, cn, Spinner } from '@allingo/ui';
 import { formatAnswer } from '@/lib/format-answer';
 import { useLocalized } from '@/lib/localized';
 import type { Attempt } from '@/lib/types';
+import { Transcript } from '@/features/review/transcript';
+import { parseTranscript } from '@/features/review/transcript-format';
 
 export type FeedbackEntry = NonNullable<Attempt['feedback']>[string];
 
@@ -14,6 +16,7 @@ export type FeedbackEntry = NonNullable<Attempt['feedback']>[string];
  * Chưa có phản hồi → "Đang kiểm tra…" (hoặc báo sẽ hiện khi có mạng).
  */
 export function PracticeFeedback({ feedback, checking, online }: { feedback: FeedbackEntry | undefined; checking: boolean; online: boolean }) {
+  const transcript = parseTranscript(feedback?.transcript);
   const t = useTranslations('attempt');
   const L = useLocalized();
 
@@ -66,6 +69,8 @@ export function PracticeFeedback({ feedback, checking, online }: { feedback: Fee
       ) : (
         <p className="text-muted-foreground">{t('feedbackNoExplanation')}</p>
       )}
+      {/* Listening Part 1/2: transcript của câu (Part 3/4 – transcript nhóm hiện ở đầu nhóm khi cả nhóm đã trả lời) */}
+      {transcript && transcript.source !== 'passage' ? <Transcript transcript={transcript} className="mt-3" /> : null}
     </div>
   );
 }
