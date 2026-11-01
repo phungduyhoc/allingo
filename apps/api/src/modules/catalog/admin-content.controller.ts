@@ -6,6 +6,7 @@ import { CONTENT_ENTITY_TYPES, CONTENT_STATUSES, programCodeSchema } from '@alli
 import { CurrentUser, Roles, type AuthUser } from '../../shared/auth/auth.guard.js';
 import { ApiZod, ZodBody, ZodParams, ZodQuery } from '../../shared/http/zod.js';
 import { ContentAiCheckService } from './content-ai-check.service.js';
+import { ContentGenerationService, generateQuestionsInputSchema, type GenerateQuestionsInput } from './content-generation.service.js';
 import { ContentWorkflowService, adminQuestionInputSchema, newVersionInputSchema, reviewInputSchema, type AdminQuestionInput, type NewVersionInput, type ReviewInput } from './content-workflow.service.js';
 
 const listQuery = z.object({
@@ -17,6 +18,7 @@ const listQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 const questionParam = z.object({ questionId: z.uuid() });
+const jobParam = z.object({ jobId: z.uuid() });
 const reviewParam = z.object({ entityType: z.enum(CONTENT_ENTITY_TYPES), entityId: z.uuid() });
 
 const meta = (req: FastifyRequest) => ({ ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null });
@@ -32,7 +34,23 @@ export class AdminContentController {
   constructor(
     private readonly workflow: ContentWorkflowService,
     private readonly aiCheck: ContentAiCheckService,
+    private readonly generation: ContentGenerationService,
   ) {}
+
+  /** Sinh lô câu hỏi AI → draft source=ai + AI check + cờ trùng (job content.generate) – 202 { job_id } (S5) */
+  @Post('generate/questions')
+  @HttpCode(202)
+  @ApiZod({ body: generateQuestionsInputSchema, responses: { 202: z.record(z.string(), z.unknown()) } })
+  generate(@CurrentUser() user: AuthUser, @ZodBody(generateQuestionsInputSchema) body: GenerateQuestionsInput) {
+    return this.generation.start({ id: user.id, roles: user.roles }, body);
+  }
+
+  /** Trạng thái/kết quả job sinh câu (v1.1 – Sprint 5) */
+  @Get('generate/questions/:jobId')
+  @ApiZod({ responses: { 200: z.record(z.string(), z.unknown()), 404: 'empty' } })
+  generationStatus(@ZodParams(jobParam) p: z.infer<typeof jobParam>) {
+    return this.generation.status(p.jobId);
+  }
 
   @Get('questions')
   @ApiZod({ query: listQuery, responses: { 200: z.record(z.string(), z.unknown()) } })

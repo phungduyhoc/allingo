@@ -45,12 +45,15 @@ export class AdminController {
     return { user_id: p.userId, roles: await this.users.getRoles(p.userId) };
   }
 
-  /** Báo cáo chi phí AI theo ngày/tác vụ (master prompt §7(7)) */
+  /**
+   * Báo cáo chi phí AI theo ngày (giờ VN) × tác vụ × model (S5): tổng, by_day, by_task, by_model, rows; cache hit, fallback,
+   * credit, token, p95 latency; `from`/`to` là ngày lịch Asia/Ho_Chi_Minh (mặc định 30 ngày gần nhất).
+   */
   @Get('reports/ai-costs')
   @ApiZod({ query: rangeQuery, responses: { 200: z.record(z.string(), z.unknown()) } })
   aiCosts(@ZodQuery(rangeQuery) q: z.infer<typeof rangeQuery>) {
-    const to = q.to ? new Date(`${q.to}T23:59:59.999Z`) : new Date();
-    const from = q.from ? new Date(`${q.from}T00:00:00Z`) : new Date(to.getTime() - 30 * 86_400_000);
+    const to = q.to ? new Date(`${q.to}T23:59:59.999+07:00`) : new Date();
+    const from = q.from ? new Date(`${q.from}T00:00:00+07:00`) : new Date(to.getTime() - 30 * 86_400_000);
     return this.gateway.costReport(from, to);
   }
 }

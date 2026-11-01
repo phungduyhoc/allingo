@@ -3,6 +3,8 @@ import { ConfigModule } from '../config/config.module.js';
 import { DbModule } from '../shared/db/db.module.js';
 import { RedisModule } from '../shared/cache/redis.module.js';
 import { QueueModule } from '../shared/queue/queue.module.js';
+import { JobsModule } from '../shared/queue/jobs.service.js';
+import { ClockModule } from '../shared/clock/clock.module.js';
 import { StorageModule } from '../shared/storage/storage.module.js';
 import { EventsModule } from '../shared/events/outbox.service.js';
 import { NotifyModule } from '../shared/notify/mailer.service.js';
@@ -19,7 +21,7 @@ import { WorkerRunner } from './worker.runner.js';
 
 /** Worker: cùng codebase, không mở HTTP; chạy processors BullMQ + job định kỳ */
 @Module({
-  imports: [ConfigModule, DbModule, RedisModule, QueueModule, StorageModule, EventsModule, NotifyModule, SharedAuthModule, RealtimeModule, IamModule, CatalogModule, BillingModule, AiGatewayModule, TestEngineModule, LearningModule, SpeechModule],
+  imports: [ConfigModule, DbModule, RedisModule, QueueModule, JobsModule, ClockModule, StorageModule, EventsModule, NotifyModule, SharedAuthModule, RealtimeModule, IamModule, CatalogModule, BillingModule, AiGatewayModule, TestEngineModule, LearningModule, SpeechModule],
   providers: [WorkerRunner],
 })
 export class WorkerModule {}

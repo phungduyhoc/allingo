@@ -28,7 +28,7 @@
     "client:gen": "pnpm --filter @allingo/api-client gen",
     "schemas:gen-ai": "pnpm --filter @allingo/schemas gen-ai",
     "eval:build": "pnpm --filter @allingo/api eval:build",
-    "eval:run": "promptfoo eval --config docs/spec/allingo-promptfoo.yaml",
+    "eval:run": "pnpm --filter @allingo/api eval:run",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

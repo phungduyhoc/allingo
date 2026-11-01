@@ -6,6 +6,7 @@ import { ENV, type Env } from '../config/env.js';
 import { DbService } from '../shared/db/db.module.js';
 import { RedisService } from '../shared/cache/redis.module.js';
 import { OutboxService } from '../shared/events/outbox.service.js';
+import { JobsService } from '../shared/queue/jobs.service.js';
 import { getLogger } from '../shared/telemetry/logger.js';
 import { QuotaService } from '../modules/billing/index.js';
 import { AttemptsService } from '../modules/test-engine/index.js';
@@ -35,6 +36,7 @@ export class WorkerRunner implements OnModuleInit, OnModuleDestroy {
     private readonly attempts: AttemptsService,
     private readonly deletion: DeletionService,
     private readonly media: MediaProcessorService,
+    private readonly jobs: JobsService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -50,12 +52,13 @@ export class WorkerRunner implements OnModuleInit, OnModuleDestroy {
         'attempt.expire': async () => ({ expired: await this.attempts.expireOverdue() }),
         'iam.purge': async () => ({ purged: await this.deletion.purgeDue() }),
       },
-      grading: {},
-      content: {},
+      // Sprint 5: summary.attempt (learning), content.generate / eval.run (catalog, ai-gateway) – đăng ký qua JobsService
+      grading: { ...this.jobs.handlersFor('grading') },
+      content: { ...this.jobs.handlersFor('content') },
       // media.process: chuẩn hoá audio/ảnh + waveform/thumbnail (ffmpeg trong image worker, ADR-0025)
       media: mediaJobHandlers(this.media),
       notify: {},
-      analytics: {},
+      analytics: { ...this.jobs.handlersFor('analytics') },
     };
     if (this.redis.isHealthy || this.redis.client.status === 'connecting') {
       for (const [queue, map] of Object.entries(handlers) as Array<[QueueName, Record<string, Handler>]>) {

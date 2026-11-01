@@ -5,13 +5,14 @@ import { IamModule } from '../../iam/index.js';
 import { AiGatewayModule } from '../core/ai-gateway.module.js';
 import { AiController } from './ai.controller.js';
 import { ExplainService } from './explain.service.js';
+import { FeedbackService } from './feedback.service.js';
 import { ThreadsService } from './threads.service.js';
 
 /** Endpoint /ai/* (explain, tutor chat, feedback) – tách khỏi lõi để tránh phụ thuộc vòng với catalog */
 @Module({
   imports: [AiGatewayModule, CatalogModule, BillingModule, IamModule],
   controllers: [AiController],
-  providers: [ExplainService, ThreadsService],
+  providers: [ExplainService, ThreadsService, FeedbackService],
   exports: [ExplainService],
 })
 export class AiFeaturesModule {}

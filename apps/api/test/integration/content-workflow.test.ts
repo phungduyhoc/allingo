@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import { DbService } from '../../src/shared/db/db.module.js';
 import { OutboxService } from '../../src/shared/events/outbox.service.js';
@@ -147,6 +147,9 @@ describe('content workflow (integration)', () => {
     const v1Id = v1.body.current_version_id as string;
 
     // Người học làm drill có câu này (v1)
+    // Câu "Version …" của các lượt test trước vẫn published trong allingo_test và khớp trigram với từ khoá → thu hồi để drill
+    // (chọn ngẫu nhiên trong kết quả tìm kiếm) chỉ còn câu của lượt này (S5 – test cũ chập chờn khi DB test tích luỹ dữ liệu)
+    await dbs.db.execute(sql`update catalog.questions q set status = 'retired' from catalog.question_versions v where v.id = q.current_version_id and q.status = 'published' and (v.content ->> 'stem') like 'Version %' and q.id <> ${id}::uuid`);
     const drill = await learnerApi.call('GET', `/practice/questions?program=toeic&section=part5&q=${encodeURIComponent(`Version ${token}`)}&count=1`);
     expect(drill.status).toBe(201);
     const attemptId = drill.body.id as string;

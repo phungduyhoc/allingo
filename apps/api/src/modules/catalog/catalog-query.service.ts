@@ -454,6 +454,16 @@ export class CatalogQueryService {
     };
   }
 
+  /** Thời lượng audio (ms) theo asset id – null khi chưa biết (ngân sách timed_drill Listening, v1.1 – S5) */
+  async audioDurations(assetIds: string[]): Promise<Map<string, number | null>> {
+    const out = new Map<string, number | null>();
+    const ids = [...new Set(assetIds.filter(Boolean))];
+    if (ids.length === 0) return out;
+    const rows = await this.dbs.db.select({ id: catalogMediaAssets.id, durationMs: catalogMediaAssets.durationMs }).from(catalogMediaAssets).where(inArray(catalogMediaAssets.id, ids));
+    for (const r of rows) out.set(r.id, r.durationMs ?? null);
+    return out;
+  }
+
   /**
    * URL media (presigned/external) cho các asset id. Chỉ asset `ready`; URL ký hết hạn sau S3_PRESIGN_TTL_SECONDS (10′) –
    * `expires_at` để client gia hạn qua GET /attempts/{id}/media. Mọi định dạng nội dung đã xử lý đều phát được (mp3, webp, svg…).

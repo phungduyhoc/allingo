@@ -4,6 +4,9 @@ import { ConfigModule } from './config/config.module.js';
 import { DbModule } from './shared/db/db.module.js';
 import { RedisModule } from './shared/cache/redis.module.js';
 import { QueueModule } from './shared/queue/queue.module.js';
+import { JobsModule } from './shared/queue/jobs.service.js';
+import { ClockModule } from './shared/clock/clock.module.js';
+import { MetricsController } from './shared/http/metrics.controller.js';
 import { StorageModule } from './shared/storage/storage.module.js';
 import { EventsModule } from './shared/events/outbox.service.js';
 import { NotifyModule } from './shared/notify/mailer.service.js';
@@ -32,6 +35,8 @@ import { AdminModule } from './modules/admin/index.js';
     DbModule,
     RedisModule,
     QueueModule,
+    JobsModule,
+    ClockModule,
     StorageModule,
     EventsModule,
     NotifyModule,
@@ -51,7 +56,7 @@ import { AdminModule } from './modules/admin/index.js';
     B2bModule,
     AdminModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, MetricsController],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_FILTER, useClass: AppExceptionFilter },

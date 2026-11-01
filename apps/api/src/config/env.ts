@@ -108,7 +108,24 @@ export const envSchema = z.object({
   LANGFUSE_PUBLIC_KEY: z.string().optional(),
   LANGFUSE_SECRET_KEY: z.string().optional(),
   LANGFUSE_BASE_URL: z.string().optional(),
-  ALLOW_UNEVALUATED_ACTIVATION: bool(true),
+  // Sprint 5: chỉ có hiệu lực khi APP_ENV = development | test (staging/production luôn bắt buộc eval đạt ngưỡng)
+  ALLOW_UNEVALUATED_ACTIVATION: bool(false),
+  // Sprint 5 – AI Gateway mức sản xuất: retry có jitter (chỉ lỗi tạm thời), circuit breaker theo provider
+  AI_RETRY_MAX: z.coerce.number().int().min(0).max(5).default(2),
+  AI_RETRY_BASE_MS: z.coerce.number().int().min(1).max(10_000).default(300),
+  AI_BREAKER_FAILURES: z.coerce.number().int().min(1).max(100).default(5),
+  AI_BREAKER_WINDOW_MS: z.coerce.number().int().min(1000).default(60_000),
+  AI_BREAKER_OPEN_MS: z.coerce.number().int().min(1000).default(60_000),
+  // Embedding (dedup câu sinh AI): auto = theo AI_PROVIDER và khoá có sẵn (openai → google → mock)
+  AI_EMBEDDING_PROVIDER: z.enum(['auto', 'mock', 'google', 'openai']).default('auto'),
+  GEMINI_EMBEDDING_MODEL: z.string().default('gemini-embedding-001'),
+  OPENAI_EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
+  AI_DEDUP_COSINE_THRESHOLD: z.coerce.number().min(0.5).max(1).default(0.92),
+  LANGFUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().min(200).default(2000),
+  // Job nền (content.generate, summary.attempt, eval.run): true = chạy trong process API (dev không chạy worker); false = BullMQ
+  JOBS_INLINE: bool(false),
+  // Bảo vệ GET /v1/metrics (Prometheus): Bearer METRICS_TOKEN; trống → dùng INTERNAL_API_TOKEN (ADR-0026)
+  METRICS_TOKEN: z.string().optional(),
 
   SPEECH_PROVIDER: z.enum(['mock', 'azure']).default('mock'),
   AZURE_SPEECH_KEY: z.string().optional(),

@@ -6,11 +6,13 @@ import { IamModule } from '../iam/index.js';
 import { IdempotencyService } from '../../shared/http/idempotency.js';
 import { AttemptsController } from './attempts.controller.js';
 import { AttemptsService } from './attempts.service.js';
+import { AttemptDiagnosisController } from './attempt-diagnosis.controller.js';
+import { AttemptDiagnosisService } from './attempt-diagnosis.service.js';
 
 @Module({
   imports: [CatalogModule, BillingModule, AiGatewayModule, IamModule],
-  controllers: [AttemptsController],
-  providers: [AttemptsService, IdempotencyService],
-  exports: [AttemptsService],
+  controllers: [AttemptsController, AttemptDiagnosisController],
+  providers: [AttemptsService, IdempotencyService, AttemptDiagnosisService],
+  exports: [AttemptsService, AttemptDiagnosisService],
 })
 export class TestEngineModule {}

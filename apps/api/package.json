@@ -24,7 +24,8 @@
     "start:dev": "node --import @swc-node/register/esm-register src/main.ts",
     "search:reindex": "node --import @swc-node/register/esm-register scripts/search-reindex.ts",
     "test-sets:generate": "node --import @swc-node/register/esm-register scripts/generate-test-set.ts",
-    "seed:media": "node --import @swc-node/register/esm-register scripts/seed-media.ts"
+    "seed:media": "node --import @swc-node/register/esm-register scripts/seed-media.ts",
+    "eval:run": "node --import @swc-node/register/esm-register scripts/eval-run.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.94",

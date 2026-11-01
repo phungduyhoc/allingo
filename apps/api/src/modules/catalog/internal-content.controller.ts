@@ -5,7 +5,9 @@ import { DEFAULT_DUPLICATE_THRESHOLD, programCodeSchema, questionContentSchema }
 import { ENV, type Env } from '../../config/env.js';
 import { InternalTokenGuard, Public } from '../../shared/auth/auth.guard.js';
 import { ZodValidationPipe } from '../../shared/http/zod.js';
+import { ValidationFailed } from '../../shared/http/errors.js';
 import { ContentAiCheckService } from './content-ai-check.service.js';
+import { ContentGenerationService, generateQuestionsInputSchema } from './content-generation.service.js';
 import { ContentPublishService, publishTestSetSchema, type PublishTestSetInput } from './content-publish.service.js';
 import { ContentWorkflowService, syncQuestionSchema, type SyncQuestionInput } from './content-workflow.service.js';
 
@@ -17,6 +19,7 @@ const duplicatesSchema = z.object({
   exclude_external_refs: z.array(z.string().max(128)).max(2000).default([]),
 });
 const validateTestSetSchema = publishTestSetSchema.pick({ program: true, kind: true, items: true });
+const internalGenerateSchema = generateQuestionsInputSchema.extend({ requested_by_email: z.string().max(254) });
 
 /** Guard X-Internal-Token (token từ env) */
 @Injectable()
@@ -43,7 +46,23 @@ export class InternalContentController {
     private readonly publish: ContentPublishService,
     private readonly workflow: ContentWorkflowService,
     private readonly aiCheck: ContentAiCheckService,
+    private readonly generation: ContentGenerationService,
   ) {}
+
+  /** CMS "Sinh câu hỏi bằng AI" (S5): actor = tài khoản API của biên tập viên (apiUserEmail) – 202 { job_id } */
+  @Post('questions/generate')
+  @HttpCode(202)
+  async generate(@Body(new ZodValidationPipe(internalGenerateSchema)) body: z.infer<typeof internalGenerateSchema>) {
+    const { requested_by_email, ...input } = body;
+    const actor = await this.generation.actorByEmail(requested_by_email);
+    return this.generation.start(actor, input);
+  }
+
+  @Get('questions/generate/:jobId')
+  generationStatus(@Param('jobId') jobId: string) {
+    if (!/^[0-9a-f-]{36}$/i.test(jobId)) throw new ValidationFailed({ issues: [{ path: 'jobId', message: 'invalid uuid' }] });
+    return this.generation.status(jobId);
+  }
 
   @Get('reference')
   reference() {

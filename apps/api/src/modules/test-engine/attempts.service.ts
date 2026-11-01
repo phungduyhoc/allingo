@@ -12,7 +12,7 @@ import {
   grade,
   isAnswered,
   correctAnswerOf,
-  timedDrillSeconds,
+  timedDrillBudgetSeconds,
   type AnswerInput,
   type AttemptMediaList,
   type Attempt,
@@ -41,7 +41,7 @@ import { encodeCursor, decodeCursor } from '../../shared/http/cursor.js';
 import { getLogger } from '../../shared/telemetry/logger.js';
 import { CatalogQueryService, SearchService, type LoadedQuestion, type PracticeHistory } from '../catalog/index.js';
 import { EntitlementService, QuotaService } from '../billing/index.js';
-import { EXAM_LOCK_KEY, ExplanationCacheService } from '../ai-gateway/index.js';
+import { AiGatewayService, EXAM_LOCK_KEY, ExplanationCacheService } from '../ai-gateway/index.js';
 import { EnrollmentsService, UsersService } from '../iam/index.js';
 
 const { learnAttempts, learnAttemptAnswers, catalogTestSets } = schema;
@@ -76,6 +76,7 @@ export class AttemptsService {
     private readonly explanationCache: ExplanationCacheService,
     private readonly enrollments: EnrollmentsService,
     private readonly users: UsersService,
+    private readonly gateway: AiGatewayService,
   ) {}
 
   // ------------------------------------------------------------------ tạo attempt
@@ -93,7 +94,7 @@ export class AttemptsService {
       questions = await this.catalog.loadTestSetQuestions(input.test_set_id);
       feature = ts.ts.kind === 'full' ? FEATURE_CODES.FULL_TEST : ts.ts.kind === 'part_drill' ? FEATURE_CODES.PART_DRILL : FEATURE_CODES.MINI_TEST;
       // exam: đồng hồ của đề; timed_drill: giới hạn theo Part (Sprint 4); practice/drill/diagnostic: không giới hạn
-      timeLimitSec = input.mode === 'exam' ? (ts.ts.durationSec ?? null) : input.mode === 'timed_drill' ? timedDrillSeconds(questions.map((q) => q.section_code)) : null;
+      timeLimitSec = input.mode === 'exam' ? (ts.ts.durationSec ?? null) : input.mode === 'timed_drill' ? await this.timedDrillBudget(questions) : null;
       testSet = { title: ts.ts.title, kind: ts.ts.kind };
       const ctx = await this.entitlements.getContext(userId, input.program);
       if (!ts.ts.isFree && !ctx.features.has(feature)) throw new Forbidden('Test set requires an upgrade', { feature, upgrade: true });
@@ -102,7 +103,7 @@ export class AttemptsService {
       if (!section || section.programCode !== input.program) throw new NotFound('section', input.section_id);
       questions = await this.catalog.randomQuestions(input.program, { section_code: section.code, count: SECTION_DRILL_COUNT, history: await this.practiceHistory(userId, input.program) });
       feature = FEATURE_CODES.PART_DRILL;
-      timeLimitSec = input.mode === 'timed_drill' ? timedDrillSeconds(questions.map((q) => q.section_code)) : null;
+      timeLimitSec = input.mode === 'timed_drill' ? await this.timedDrillBudget(questions) : null;
     } else {
       throw new ValidationFailed({ issues: [{ path: 'test_set_id', message: 'test_set_id or section_id is required' }] });
     }
@@ -318,6 +319,31 @@ export class AttemptsService {
     const assetIds = await this.catalog.assetIdsForVersions([...new Set(draft.question_order.map((q) => q.question_version_id))]);
     const urls = await this.catalog.mediaUrls(assetIds);
     return { data: [...urls.values()].filter((u) => u.url).map((u) => ({ id: u.id, kind: u.kind, url: u.url, expires_at: u.expires_at })) };
+  }
+
+  /**
+   * Ngân sách timed_drill (v1.1 – S5): thời gian trả lời theo Part/per_question_sec + audio Listening của câu + pause_ms
+   * + audio nhóm (passage Part 3/4) một lần mỗi nhóm – thời lượng từ catalog.media_assets.duration_ms.
+   */
+  private async timedDrillBudget(questions: LoadedQuestion[], perQuestionSec?: number): Promise<number> {
+    const audioOf = (q: LoadedQuestion) => ('media' in q.content ? q.content.media?.audio_asset_id : undefined) ?? null;
+    const durations = await this.catalog.audioDurations([...questions.map(audioOf), ...questions.map((q) => q.passage?.media_asset_id ?? null)].filter((x): x is string => !!x));
+    return timedDrillBudgetSeconds(
+      questions.map((q) => {
+        const audio = audioOf(q);
+        const group = q.passage?.media_asset_id ?? null;
+        return {
+          section_code: q.section_code,
+          group_key: q.group_key ?? q.passage?.id ?? null,
+          has_audio: !!audio,
+          audio_ms: audio ? (durations.get(audio) ?? null) : null,
+          has_group_audio: !!group,
+          group_audio_ms: group ? (durations.get(group) ?? null) : null,
+          pause_ms: 'media' in q.content ? (q.content.media?.pause_ms ?? null) : null,
+        };
+      }),
+      perQuestionSec,
+    );
   }
 
   // ------------------------------------------------------------------ nộp & chấm
@@ -548,6 +574,8 @@ export class AttemptsService {
     // Sau khi nộp: trả đủ chữ (Part 1/2) + passage audio_script + transcript tô sáng (Sprint 4)
     const publicQs = await this.catalog.toPublic(loaded, { revealTranscript: true });
     const transcripts: Map<string, TranscriptHighlight> = await this.catalog.transcripts(loaded);
+    // Cache giải thích chỉ hợp lệ với phiên bản prompt explain_mcq đang phục vụ người dùng (S5 – A57)
+    const explainVersion = await this.gateway.currentPromptVersionId('explain_mcq', row.programCode, userId);
     const items = [];
     for (let i = 0; i < ordered.length; i++) {
       const { o, q } = ordered[i]!;
@@ -558,7 +586,7 @@ export class AttemptsService {
       if (filter.flagged && !a?.flagged) continue;
       if (filter.section && o.section_code !== filter.section) continue;
       const chosen = answer && answer.type === 'mcq_single' ? answer.selected : null;
-      const explanation = await this.explanationCache.get(q.question_version_id, chosen, locale);
+      const explanation = explainVersion ? await this.explanationCache.get(q.question_version_id, chosen, locale, explainVersion) : null;
       items.push({
         question: publicQs[i]!,
         your_answer: answer,
@@ -568,7 +596,7 @@ export class AttemptsService {
         time_spent_ms: a?.timeSpentMs ?? null,
         flagged: a?.flagged ?? false,
         details: g.details ?? null,
-        explanation: explanation ? { ...explanation.content, locale, cached: true, ai_task_id: null } : null,
+        explanation: explanation ? { ...explanation.content, locale, cached: true, ai_task_id: null, prompt_version_id: explanation.promptVersionId } : null,
         transcript_highlight: transcripts.get(q.question_id) ?? null,
         error_entry_id: null,
         community_correct_rate: q.exposure_count > 0 ? Math.round((q.correct_count / q.exposure_count) * 1000) / 10 : null,
@@ -636,7 +664,7 @@ export class AttemptsService {
     if (questions.length === 0) throw new NotFound('questions');
     const ctx = await this.entitlements.getContext(userId, q.program);
     await this.quotas.consume(userId, ctx.planKind, FEATURE_CODES.PART_DRILL);
-    const timeLimitSec = q.timed ? timedDrillSeconds(questions.map((x) => x.section_code), q.per_question_sec) : null;
+    const timeLimitSec = q.timed ? await this.timedDrillBudget(questions, q.per_question_sec) : null;
     const draft: AttemptDraftState = {
       question_order: questions.map((x) => ({ question_id: x.question_id, question_version_id: x.question_version_id, section_code: x.section_code, group_key: x.group_key, order_no: x.order_no })),
       time_limit_sec: timeLimitSec,
@@ -683,6 +711,20 @@ export class AttemptsService {
   async countGraded(userId: string, program: string): Promise<number> {
     const [r] = await this.dbs.db.select({ n: sql<number>`count(*)`.mapWith(Number) }).from(learnAttempts).where(and(eq(learnAttempts.userId, userId), eq(learnAttempts.programCode, program), eq(learnAttempts.status, 'graded')));
     return r?.n ?? 0;
+  }
+
+  /**
+   * Thứ tự (1-based) của attempt trong các bài ĐÃ CHẤM của người học theo submitted_at (summary sau mỗi 3 bài – S5);
+   * null nếu attempt không thuộc người dùng hoặc chưa chấm.
+   */
+  async gradedPosition(userId: string, program: string, attemptId: string): Promise<number | null> {
+    const rows = await this.dbs.db.execute<{ pos: number | null }>(sql`
+      select (select count(*)::int from learn.attempts a2
+               where a2.user_id = a.user_id and a2.program_code = a.program_code and a2.status = 'graded'
+                 and (a2.submitted_at, a2.id) <= (a.submitted_at, a.id)) as pos
+        from learn.attempts a
+       where a.id = ${attemptId}::uuid and a.user_id = ${userId}::uuid and a.program_code = ${program} and a.status = 'graded'`);
+    return rows[0]?.pos ?? null;
   }
 
   async statsSource(userId: string, program: string) {

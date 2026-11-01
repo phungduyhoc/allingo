@@ -38,11 +38,25 @@ export class MockProvider implements ModelProviderAdapter {
   }
 }
 
-/** Trích "key: value" từ prompt đã render */
+const KV = /^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$/;
+
+/**
+ * Trích "key: value" từ prompt đã render. Dòng dạng `a: x | b: y` (template generate/diagnose/summarize) tách thành nhiều khoá
+ * khi MỌI đoạn đều có dạng khoá; chú thích cuối dòng `   # …` bị bỏ.
+ */
 export function extractVars(user: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const line of user.split('\n')) {
-    const m = /^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$/.exec(line.trim());
+  for (const raw of user.split('\n')) {
+    const line = raw.trim().replace(/\s{2,}#\s.*$/, '');
+    const segs = line.split(' | ');
+    if (segs.length > 1 && segs.every((x) => KV.test(x.trim()))) {
+      for (const seg of segs) {
+        const m = KV.exec(seg.trim())!;
+        out[m[1]!] = m[2] ?? '';
+      }
+      continue;
+    }
+    const m = KV.exec(line);
     if (m) out[m[1]!] = m[2] ?? '';
   }
   return out;
@@ -101,22 +115,44 @@ export function buildMock(taskCode: AiTaskCode, user: string): unknown {
         refused: false,
       };
     }
-    case 'diagnose_rl':
+    case 'diagnose_rl': {
+      // Số liệu chép đúng từ <data> (numeric fidelity): loại sai nhiều nhất trong by_question_type
+      const byType = parseJson<Record<string, { correct?: number; total?: number }>>(v.by_question_type, {});
+      const ranked = Object.entries(byType)
+        .filter(([, x]) => (x.total ?? 0) > 0)
+        .sort((a, b) => ((a[1].correct ?? 0) / (a[1].total ?? 1)) - ((b[1].correct ?? 0) / (b[1].total ?? 1)) || (b[1].total ?? 0) - (a[1].total ?? 0));
+      const [type, stat] = ranked[0] ?? ['vocabulary', { correct: 0, total: 0 }];
+      const wrong = (stat.total ?? 0) - (stat.correct ?? 0);
+      const wrongItems = parseJson<Array<{ stem_excerpt?: string; chosen?: string; correct?: string }>>(v.wrong_items, []);
+      const ev = wrongItems[0]?.stem_excerpt ? `"${wrongItems[0].stem_excerpt.slice(0, 120)}" – bạn chọn ${wrongItems[0].chosen ?? '—'}, đáp án ${wrongItems[0].correct ?? '—'} (mock)` : `Sai ${wrong}/${stat.total ?? 0} câu ${type} (mock)`;
       return {
-        top_error_type: 'vocabulary',
-        evidence: ['Sai 3/5 câu từ vựng theo ngữ cảnh (mock)'],
-        why: 'Bạn thường chọn từ có nghĩa gần nhưng không đúng collocation (mock).',
-        steps: ['Ôn 20 collocation văn phòng', 'Làm 10 câu drill Part 5 từ vựng', 'Xem lại 5 câu sai hôm nay'],
+        top_error_type: type,
+        evidence: [ev.slice(0, 240)],
+        why: `Dạng ${type} sai ${wrong}/${stat.total ?? 0}: thường do chọn từ nghĩa gần nhưng sai từ loại/collocation (mock).`.slice(0, 500),
+        steps: ['Xác định từ loại cần điền dựa vào từ đứng trước và sau chỗ trống', 'Loại phương án sai từ loại trước khi xét nghĩa', 'Đọc lại cả câu với phương án đã chọn để kiểm tra'],
         check_question: { stem: 'Customers who register early are ______ to a discount.', options: ['entitled', 'available', 'capable'], answer: 'entitled', explanation: 'be entitled to + N (mock)' },
         encouragement: 'Bạn đang đi đúng hướng – giữ nhịp 20 phút mỗi ngày nhé!',
       };
-    case 'summarize_attempt':
+    }
+    case 'summarize_attempt': {
+      const byType = parseJson<Record<string, { correct?: number; total?: number }>>(v.by_subskill, {});
+      const sections = parseJson<Record<string, { correct?: number; total?: number }>>(v.by_section, {});
+      const pool = Object.keys(byType).length ? byType : sections;
+      const worst = Object.entries(pool)
+        .filter(([, x]) => (x.total ?? 0) > 0)
+        .sort((a, b) => ((a[1].correct ?? 0) / (a[1].total ?? 1)) - ((b[1].correct ?? 0) / (b[1].total ?? 1)))[0];
+      const area = worst?.[0] ?? 'part5';
+      const tot = worst?.[1].total ?? 0;
+      const wrongN = tot - (worst?.[1].correct ?? 0);
+      const allowed = parseJson<string[]>(v.allowed_task_types, ['part_drill']);
+      const score = v.scaled_score && v.scaled_score !== 'null' ? v.scaled_score : null;
       return {
-        headline: `Điểm ước tính ${v.scaled_score ?? 'n/a'} – tiến bộ ổn định (mock)`,
-        weakest: { area: 'part5:vocabulary_context', evidence: 'Sai 2/3 câu từ vựng (mock)' },
-        next_tasks: [{ task_type: 'part_drill', ref_hint: 'part5', reason: 'Củng cố từ vựng theo ngữ cảnh' }],
+        headline: (score ? `Điểm ước tính ${score} – tiếp tục củng cố ${area} (mock)` : `Tiếp tục củng cố ${area} (mock)`).slice(0, 140),
+        weakest: { area, evidence: `wrong ${wrongN}/${tot} in ${area}`.slice(0, 120) },
+        next_tasks: [{ task_type: allowed[0] ?? 'part_drill', ref_hint: area, reason: `Luyện thêm ${area} (mock)`.slice(0, 140) }],
         trend_note: null,
       };
+    }
     case 'grade_writing_ielts': {
       const cf = (band: number) => ({ band, strengths: ['Ý rõ (mock)'], issues: ['Thiếu ví dụ cụ thể (mock)'], how_to_improve: 'Thêm một ví dụ cho mỗi luận điểm (mock)' });
       return {
@@ -152,29 +188,42 @@ export function buildMock(taskCode: AiTaskCode, user: string): unknown {
     case 'upgrade_phrasing':
       return { verdict: 'partly', note: 'Câu đã tốt hơn nhưng vẫn thiếu mạo từ (mock).', remaining_issue: 'article', reveal_suggestion: false };
     case 'generate_questions': {
-      const count = Math.min(Number(v.count ?? 1) || 1, 5);
+      // Mock: sinh đúng `count` câu (≤ 50) theo chủ đề; nếu có forbidden_recent_stems và count ≥ 5, câu CUỐI cố ý lặp lại
+      // stem đầu danh sách để kiểm chứng đường ống gắn cờ trùng (A62) – model thật bị cấm điều này trong system prompt.
+      const count = Math.max(1, Math.min(Number(v.count ?? 1) || 1, 50));
+      const topic = (v.topic ?? 'general').trim() || 'general';
+      const forbidden = parseJson<string[]>(v.forbidden_recent_stems, []);
+      const subskills = parseJson<string[]>(v.allowed_subskills, []);
+      const level = parseJson<{ level?: string }>(v.difficulty_target, {}).level ?? 'B1';
+      const T = [
+        { stem: (t: string, i: number) => `The ${t} team ______ the delivery schedule before the end of quarter ${i}.`, opts: ['will review', 'reviewing', 'reviewed', 'to review'], key: 'A', why: 'will + V (future)' },
+        { stem: (t: string, i: number) => `All ${t} invoices must be submitted ______ Friday, ${i} March.`, opts: ['by', 'until', 'since', 'during'], key: 'A', why: 'by + deadline' },
+        { stem: (t: string, i: number) => `Ms. Tran was ______ to lead the new ${t} project in region ${i}.`, opts: ['selected', 'selecting', 'selection', 'selects'], key: 'A', why: 'be + V3 (passive)' },
+        { stem: (t: string, i: number) => `Because of the ${t} delay, shipment ${i} arrived ______ than expected.`, opts: ['later', 'lately', 'latest', 'late'], key: 'A', why: 'comparative + than' },
+        { stem: (t: string, i: number) => `The warehouse manager asked staff to handle ${t} item ${i} ______.`, opts: ['carefully', 'careful', 'care', 'cared'], key: 'A', why: 'adverb modifies verb' },
+        { stem: (t: string) => `Neither the driver ______ the dispatcher noticed the error on the ${t} form.`, opts: ['nor', 'or', 'and', 'but'], key: 'A', why: 'neither … nor' },
+        { stem: (t: string) => `Our ${t} partner has offered free storage ______ the contract is renewed.`, opts: ['provided that', 'in spite of', 'because of', 'instead of'], key: 'A', why: 'conjunction + clause' },
+        { stem: (t: string) => `Customers can track their ${t} orders online ______ any time of day.`, opts: ['at', 'on', 'in', 'by'], key: 'A', why: 'at any time' },
+        { stem: (t: string) => `The new ${t} software is expected to reduce paperwork ______.`, opts: ['significantly', 'significant', 'significance', 'signify'], key: 'A', why: 'adverb after object' },
+        { stem: (t: string) => `Ms. Le will be responsible ______ coordinating all ${t} vendors next year.`, opts: ['for', 'to', 'with', 'of'], key: 'A', why: 'responsible for + V-ing' },
+      ];
       return {
-        questions: Array.from({ length: count }, (_, i) => ({
-          content: {
-            type: 'mcq_single',
-            stem: `The committee ______ the proposal at next week's meeting (mock ${i + 1}).`,
-            options: [
-              { key: 'A', text: 'will discuss' },
-              { key: 'B', text: 'discussed' },
-              { key: 'C', text: 'discussing' },
-              { key: 'D', text: 'has discussed' },
-            ],
-            answer_key: { correct: 'A' },
-            tags: [],
-          },
-          answer: 'A',
-          distractor_rationale: { B: 'quá khứ', C: 'V-ing', D: 'hoàn thành' },
-          explanation_seed: 'next week → future simple',
-          difficulty_estimate: { level: 'B1', irt_b: 0 },
-          subskill_codes: ['verb_tense'],
-          trap_type: 'tense_marker',
-          keywords: ['next week', 'proposal'],
-        })),
+        questions: Array.from({ length: count }, (_, i) => {
+          const tpl = T[i % T.length]!;
+          const dup = forbidden.length > 0 && count >= 5 && i === count - 1;
+          const stem = dup ? forbidden[0]! : tpl.stem(topic, i + 1);
+          const opts = ['A', 'B', 'C', 'D'].map((k, j) => ({ key: k, text: tpl.opts[j]! }));
+          return {
+            content: { type: 'mcq_single', stem, options: opts, answer_key: { correct: tpl.key }, explanation: { en: `${tpl.why} (mock)`, vi: `${tpl.why} (mock)` }, tags: [topic] },
+            answer: tpl.key,
+            distractor_rationale: Object.fromEntries(opts.filter((o) => o.key !== tpl.key).map((o) => [o.key, `"${o.text}" sai dạng/nghĩa (mock)`])),
+            explanation_seed: `${tpl.why}; distractors differ in form (mock)`,
+            difficulty_estimate: { level, irt_b: 0 },
+            subskill_codes: subskills.length ? [subskills[i % subskills.length]!] : ['grammar'],
+            trap_type: 'word_form',
+            keywords: [topic, `item ${i + 1}`],
+          };
+        }),
       };
     }
     case 'check_question': {

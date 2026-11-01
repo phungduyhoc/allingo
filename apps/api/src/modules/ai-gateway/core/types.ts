@@ -7,11 +7,13 @@ export interface ResolvedTask {
   promptVersionId: string;
   versionNo: number;
   status: 'draft' | 'canary' | 'active' | 'retired';
+  /** % người dùng nhận bản canary (hash user_id ổn định) */
+  canaryPercent: number;
   systemPrompt: string;
   userTemplate: string;
   fewShots: unknown[];
   outputSchema: Record<string, unknown>;
-  modelPolicy: ModelPolicy & { cache_key?: string[] | null; partials?: Record<string, string> };
+  modelPolicy: ModelPolicy & { cache_key?: string[] | null; partials?: Record<string, string>; eval?: { eval_set?: string; thresholds?: Record<string, unknown> } | null };
   route: { primaryModel: string; fallbackModels: string[]; params: Record<string, unknown>; timeoutMs: number; creditsCost: number };
 }
 
@@ -36,6 +38,8 @@ export interface ProviderCallOptions {
   timeoutMs: number;
   /** JSON Schema đầu ra để provider bật JSON mode / structured output */
   outputSchema?: Record<string, unknown>;
+  /** 'json' (mặc định) = bật JSON mode khi provider hỗ trợ; 'none' = chỉ dựa vào prompt (route params.json_mode) */
+  jsonMode?: 'json' | 'none';
   taskCode: AiTaskCode;
   signal?: AbortSignal;
 }
@@ -78,11 +82,14 @@ export interface RunTaskInput {
   /** Khoá cache tuỳ tác vụ (explain dùng explanation_cache riêng) */
   traceId?: string;
   signal?: AbortSignal;
+  /** Chạy đúng phiên bản prompt này thay vì phiên bản registry chọn (eval phiên bản draft/canary) */
+  taskOverride?: ResolvedTask;
 }
 
 export interface RunTaskResult<T = unknown> {
   data: T;
   aiTaskId: string;
+  promptVersionId: string;
   cached: boolean;
   model: ResolvedModel | null;
   tokensIn: number | null;
