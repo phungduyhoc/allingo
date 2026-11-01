@@ -475,6 +475,61 @@ const SUBSKILLS: Array<{ program: string; skill: string; code: string; name: { v
     code: 'listening_gist',
     name: { vi: 'Nghe ý chính', en: 'Listening for gist' },
   },
+  // Sprint 4 – đủ dạng câu Listening Part 1–4
+  {
+    program: 'toeic',
+    skill: 'listening',
+    code: 'photo_description',
+    name: { vi: 'Mô tả tranh', en: 'Photo description' },
+  },
+  {
+    program: 'toeic',
+    skill: 'listening',
+    code: 'tag_question',
+    name: { vi: 'Câu hỏi đuôi', en: 'Tag questions' },
+  },
+  {
+    program: 'toeic',
+    skill: 'listening',
+    code: 'choice_question',
+    name: { vi: 'Câu hỏi lựa chọn', en: 'Choice questions' },
+  },
+  {
+    program: 'toeic',
+    skill: 'listening',
+    code: 'request_suggestion',
+    name: { vi: 'Yêu cầu, đề nghị, gợi ý', en: 'Requests, offers and suggestions' },
+  },
+  {
+    program: 'toeic',
+    skill: 'listening',
+    code: 'statement_response',
+    name: { vi: 'Phản hồi câu trần thuật', en: 'Responses to statements' },
+  },
+  {
+    program: 'toeic',
+    skill: 'listening',
+    code: 'listening_inference',
+    name: { vi: 'Suy luận khi nghe', en: 'Inference (listening)' },
+  },
+  {
+    program: 'toeic',
+    skill: 'listening',
+    code: 'next_action',
+    name: { vi: 'Hành động tiếp theo', en: 'Next action' },
+  },
+  {
+    program: 'toeic',
+    skill: 'listening',
+    code: 'speaker_intent',
+    name: { vi: 'Hàm ý người nói', en: "Speaker's intent" },
+  },
+  {
+    program: 'toeic',
+    skill: 'listening',
+    code: 'graphic_question',
+    name: { vi: 'Câu hỏi kết hợp bảng/biểu đồ', en: 'Graphic questions' },
+  },
 ];
 
 const TOPICS: Array<{ program: string | null; code: string; name: { vi: string; en: string } }> = [
