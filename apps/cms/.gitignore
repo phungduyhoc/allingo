@@ -1,0 +1,5 @@
+.next/
+media/*
+!media/.gitignore
+next-env.d.ts
+*.tsbuildinfo

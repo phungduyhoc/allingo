@@ -1,0 +1,675 @@
+[
+  {
+    "import_key": "demo:toeic:p5-01",
+    "program": "toeic",
+    "section_code": "part5",
+    "question_type": "mcq_single",
+    "difficulty": "B1",
+    "topic_code": "finance",
+    "subskill_codes": [
+      "word_form"
+    ],
+    "source": "human",
+    "content": {
+      "type": "mcq_single",
+      "stem": "The quarterly report must be ______ to the finance department by Friday.",
+      "options": [
+        {
+          "key": "A",
+          "text": "submit"
+        },
+        {
+          "key": "B",
+          "text": "submitted"
+        },
+        {
+          "key": "C",
+          "text": "submitting"
+        },
+        {
+          "key": "D",
+          "text": "submission"
+        }
+      ],
+      "answer_key": {
+        "correct": "B"
+      },
+      "explanation": {
+        "vi": "Cấu trúc bị động \"must be + V3\": báo cáo được nộp.",
+        "en": "Passive \"must be + past participle\": the report is submitted."
+      },
+      "evidence": "must be ______ to",
+      "tags": []
+    }
+  },
+  {
+    "import_key": "demo:toeic:p5-02",
+    "program": "toeic",
+    "section_code": "part5",
+    "question_type": "mcq_single",
+    "difficulty": "A2",
+    "topic_code": "office",
+    "subskill_codes": [
+      "preposition"
+    ],
+    "source": "human",
+    "content": {
+      "type": "mcq_single",
+      "stem": "Ms. Tran will be out of the office ______ next Wednesday.",
+      "options": [
+        {
+          "key": "A",
+          "text": "until"
+        },
+        {
+          "key": "B",
+          "text": "since"
+        },
+        {
+          "key": "C",
+          "text": "during"
+        },
+        {
+          "key": "D",
+          "text": "while"
+        }
+      ],
+      "answer_key": {
+        "correct": "A"
+      },
+      "explanation": {
+        "vi": "\"until\" + mốc thời gian: vắng mặt cho đến thứ Tư tới.",
+        "en": "\"until\" + a point in time."
+      },
+      "tags": []
+    }
+  },
+  {
+    "import_key": "demo:toeic:p5-03",
+    "program": "toeic",
+    "section_code": "part5",
+    "question_type": "mcq_single",
+    "difficulty": "A2",
+    "topic_code": "office",
+    "subskill_codes": [
+      "pronoun"
+    ],
+    "source": "human",
+    "content": {
+      "type": "mcq_single",
+      "stem": "All employees are required to wear ______ identification badges while in the building.",
+      "options": [
+        {
+          "key": "A",
+          "text": "they"
+        },
+        {
+          "key": "B",
+          "text": "them"
+        },
+        {
+          "key": "C",
+          "text": "their"
+        },
+        {
+          "key": "D",
+          "text": "theirs"
+        }
+      ],
+      "answer_key": {
+        "correct": "C"
+      },
+      "explanation": {
+        "vi": "Cần tính từ sở hữu đứng trước danh từ \"badges\".",
+        "en": "Possessive adjective before the noun \"badges\"."
+      },
+      "tags": []
+    }
+  },
+  {
+    "import_key": "demo:toeic:p5-04",
+    "program": "toeic",
+    "section_code": "part5",
+    "question_type": "mcq_single",
+    "difficulty": "B1",
+    "topic_code": "technology",
+    "subskill_codes": [
+      "word_form"
+    ],
+    "source": "human",
+    "content": {
+      "type": "mcq_single",
+      "stem": "The new software update has ______ improved the speed of our online store.",
+      "options": [
+        {
+          "key": "A",
+          "text": "significant"
+        },
+        {
+          "key": "B",
+          "text": "significance"
+        },
+        {
+          "key": "C",
+          "text": "significantly"
+        },
+        {
+          "key": "D",
+          "text": "signify"
+        }
+      ],
+      "answer_key": {
+        "correct": "C"
+      },
+      "explanation": {
+        "vi": "Trạng từ bổ nghĩa cho động từ \"improved\".",
+        "en": "An adverb modifies the verb \"improved\"."
+      },
+      "tags": []
+    }
+  },
+  {
+    "import_key": "demo:toeic:p5-05",
+    "program": "toeic",
+    "section_code": "part5",
+    "question_type": "mcq_single",
+    "difficulty": "B1",
+    "topic_code": "business",
+    "subskill_codes": [
+      "conjunction"
+    ],
+    "source": "human",
+    "content": {
+      "type": "mcq_single",
+      "stem": "______ the heavy rain, the outdoor product launch went ahead as planned.",
+      "options": [
+        {
+          "key": "A",
+          "text": "Because"
+        },
+        {
+          "key": "B",
+          "text": "Despite"
+        },
+        {
+          "key": "C",
+          "text": "Although"
+        },
+        {
+          "key": "D",
+          "text": "Even"
+        }
+      ],
+      "answer_key": {
+        "correct": "B"
+      },
+      "explanation": {
+        "vi": "\"Despite\" + cụm danh từ; \"Although\" cần mệnh đề.",
+        "en": "\"Despite\" + noun phrase; \"Although\" needs a clause."
+      },
+      "tags": []
+    }
+  },
+  {
+    "import_key": "demo:toeic:p5-06",
+    "program": "toeic",
+    "section_code": "part5",
+    "question_type": "mcq_single",
+    "difficulty": "B1",
+    "topic_code": "travel",
+    "subskill_codes": [
+      "relative_clause"
+    ],
+    "source": "human",
+    "content": {
+      "type": "mcq_single",
+      "stem": "The hotel offers a complimentary shuttle service ______ runs every thirty minutes.",
+      "options": [
+        {
+          "key": "A",
+          "text": "who"
+        },
+        {
+          "key": "B",
+          "text": "that"
+        },
+        {
+          "key": "C",
+          "text": "where"
+        },
+        {
+          "key": "D",
+          "text": "what"
+        }
+      ],
+      "answer_key": {
+        "correct": "B"
+      },
+      "explanation": {
+        "vi": "Mệnh đề quan hệ chỉ vật dùng \"that/which\".",
+        "en": "Relative pronoun for a thing: \"that/which\"."
+      },
+      "tags": []
+    }
+  },
+  {
+    "import_key": "demo:toeic:p5-07",
+    "program": "toeic",
+    "section_code": "part5",
+    "question_type": "mcq_single",
+    "difficulty": "A2",
+    "topic_code": "finance",
+    "subskill_codes": [
+      "verb_tense"
+    ],
+    "source": "human",
+    "content": {
+      "type": "mcq_single",
+      "stem": "Please ______ the attached invoice and return a signed copy within five business days.",
+      "options": [
+        {
+          "key": "A",
+          "text": "review"
+        },
+        {
+          "key": "B",
+          "text": "reviewing"
+        },
+        {
+          "key": "C",
+          "text": "reviewed"
+        },
+        {
+          "key": "D",
+          "text": "reviews"
+        }
+      ],
+      "answer_key": {
+        "correct": "A"
+      },
+      "explanation": {
+        "vi": "Câu mệnh lệnh dùng động từ nguyên mẫu.",
+        "en": "Imperative sentence uses the base verb."
+      },
+      "tags": []
+    }
+  },
+  {
+    "import_key": "demo:toeic:p5-08",
+    "program": "toeic",
+    "section_code": "part5",
+    "question_type": "mcq_single",
+    "difficulty": "B1",
+    "topic_code": "finance",
+    "subskill_codes": [
+      "vocabulary_context"
+    ],
+    "source": "human",
+    "content": {
+      "type": "mcq_single",
+      "stem": "The marketing budget for next year is ______ larger than this year's.",
+      "options": [
+        {
+          "key": "A",
+          "text": "very"
+        },
+        {
+          "key": "B",
+          "text": "much"
+        },
+        {
+          "key": "C",
+          "text": "more"
+        },
+        {
+          "key": "D",
+          "text": "so"
+        }
+      ],
+      "answer_key": {
+        "correct": "B"
+      },
+      "explanation": {
+        "vi": "\"much\" nhấn mạnh so sánh hơn \"larger\".",
+        "en": "\"much\" intensifies the comparative \"larger\"."
+      },
+      "tags": []
+    }
+  },
+  {
+    "import_key": "demo:toeic:p5-09",
+    "program": "toeic",
+    "section_code": "part5",
+    "question_type": "mcq_single",
+    "difficulty": "B2",
+    "topic_code": "finance",
+    "subskill_codes": [
+      "verb_tense"
+    ],
+    "source": "human",
+    "content": {
+      "type": "mcq_single",
+      "stem": "By the time the auditors arrive, the accounting team ______ all the records.",
+      "options": [
+        {
+          "key": "A",
+          "text": "organizes"
+        },
+        {
+          "key": "B",
+          "text": "will have organized"
+        },
+        {
+          "key": "C",
+          "text": "has organized"
+        },
+        {
+          "key": "D",
+          "text": "is organizing"
+        }
+      ],
+      "answer_key": {
+        "correct": "B"
+      },
+      "explanation": {
+        "vi": "\"By the time + hiện tại\" → tương lai hoàn thành ở mệnh đề chính.",
+        "en": "\"By the time + present\" → future perfect in the main clause."
+      },
+      "tags": []
+    }
+  },
+  {
+    "import_key": "demo:toeic:p5-10",
+    "program": "toeic",
+    "section_code": "part5",
+    "question_type": "mcq_single",
+    "difficulty": "B2",
+    "topic_code": "shopping",
+    "subskill_codes": [
+      "vocabulary_context"
+    ],
+    "source": "human",
+    "content": {
+      "type": "mcq_single",
+      "stem": "Customers who register before March 1 are ______ to a 15 percent discount on their first order.",
+      "options": [
+        {
+          "key": "A",
+          "text": "entitled"
+        },
+        {
+          "key": "B",
+          "text": "available"
+        },
+        {
+          "key": "C",
+          "text": "capable"
+        },
+        {
+          "key": "D",
+          "text": "eligible"
+        }
+      ],
+      "answer_key": {
+        "correct": "A"
+      },
+      "explanation": {
+        "vi": "\"be entitled to + danh từ\" = được hưởng quyền; \"eligible\" đi với \"for\".",
+        "en": "\"be entitled to + noun\"; \"eligible\" collocates with \"for\"."
+      },
+      "tags": []
+    }
+  },
+  {
+    "import_key": "demo:toeic:p2-01",
+    "program": "toeic",
+    "section_code": "part2",
+    "question_type": "mcq_single",
+    "difficulty": "A2",
+    "subskill_codes": [
+      "wh_question"
+    ],
+    "source": "human",
+    "content": {
+      "type": "mcq_single",
+      "stem": "",
+      "options": [
+        {
+          "key": "A",
+          "text": ""
+        },
+        {
+          "key": "B",
+          "text": ""
+        },
+        {
+          "key": "C",
+          "text": ""
+        }
+      ],
+      "answer_key": {
+        "correct": "B"
+      },
+      "evidence": "Q: Where is the staff meeting this afternoon? — A: At three o'clock. B: In the conference room on the second floor. C: Yes, I will attend.",
+      "explanation": {
+        "vi": "Câu hỏi \"Where\" cần trả lời về địa điểm.",
+        "en": "\"Where\" asks for a place."
+      },
+      "media": {
+        "listen_policy": "once",
+        "pause_ms": 5000
+      },
+      "tags": []
+    }
+  },
+  {
+    "import_key": "demo:toeic:p2-02",
+    "program": "toeic",
+    "section_code": "part2",
+    "question_type": "mcq_single",
+    "difficulty": "A2",
+    "subskill_codes": [
+      "yes_no_question"
+    ],
+    "source": "human",
+    "content": {
+      "type": "mcq_single",
+      "stem": "",
+      "options": [
+        {
+          "key": "A",
+          "text": ""
+        },
+        {
+          "key": "B",
+          "text": ""
+        },
+        {
+          "key": "C",
+          "text": ""
+        }
+      ],
+      "answer_key": {
+        "correct": "A"
+      },
+      "evidence": "Q: Did you send the contract to the client? — A: Yes, this morning. B: The client is from Singapore. C: It costs two hundred dollars.",
+      "explanation": {
+        "vi": "Câu hỏi Yes/No về hành động đã làm.",
+        "en": "Yes/No question about a completed action."
+      },
+      "media": {
+        "listen_policy": "once",
+        "pause_ms": 5000
+      },
+      "tags": []
+    }
+  },
+  {
+    "import_key": "demo:toeic:p2-03",
+    "program": "toeic",
+    "section_code": "part2",
+    "question_type": "mcq_single",
+    "difficulty": "B1",
+    "subskill_codes": [
+      "indirect_response"
+    ],
+    "source": "human",
+    "content": {
+      "type": "mcq_single",
+      "stem": "",
+      "options": [
+        {
+          "key": "A",
+          "text": ""
+        },
+        {
+          "key": "B",
+          "text": ""
+        },
+        {
+          "key": "C",
+          "text": ""
+        }
+      ],
+      "answer_key": {
+        "correct": "C"
+      },
+      "evidence": "Q: Who is going to present the sales figures? — A: The figures were higher last month. B: At the quarterly meeting. C: I thought Mr. Lee had volunteered.",
+      "explanation": {
+        "vi": "Trả lời gián tiếp: nêu người đã xung phong.",
+        "en": "Indirect answer naming the person who volunteered."
+      },
+      "media": {
+        "listen_policy": "once",
+        "pause_ms": 5000
+      },
+      "tags": []
+    }
+  },
+  {
+    "import_key": "demo:toeic:p2-04",
+    "program": "toeic",
+    "section_code": "part2",
+    "question_type": "mcq_single",
+    "difficulty": "B1",
+    "subskill_codes": [
+      "similar_sound"
+    ],
+    "source": "human",
+    "content": {
+      "type": "mcq_single",
+      "stem": "",
+      "options": [
+        {
+          "key": "A",
+          "text": ""
+        },
+        {
+          "key": "B",
+          "text": ""
+        },
+        {
+          "key": "C",
+          "text": ""
+        }
+      ],
+      "answer_key": {
+        "correct": "B"
+      },
+      "evidence": "Q: How long does the delivery usually take? — A: It takes the highway. B: About three business days. C: The package is quite long.",
+      "explanation": {
+        "vi": "Bẫy từ lặp \"take/long\"; \"How long\" hỏi thời gian.",
+        "en": "Distractors repeat \"take/long\"; \"How long\" asks duration."
+      },
+      "media": {
+        "listen_policy": "once",
+        "pause_ms": 5000
+      },
+      "tags": []
+    }
+  },
+  {
+    "import_key": "demo:toeic:p2-05",
+    "program": "toeic",
+    "section_code": "part2",
+    "question_type": "mcq_single",
+    "difficulty": "A2",
+    "subskill_codes": [
+      "wh_question"
+    ],
+    "source": "human",
+    "content": {
+      "type": "mcq_single",
+      "stem": "",
+      "options": [
+        {
+          "key": "A",
+          "text": ""
+        },
+        {
+          "key": "B",
+          "text": ""
+        },
+        {
+          "key": "C",
+          "text": ""
+        }
+      ],
+      "answer_key": {
+        "correct": "A"
+      },
+      "evidence": "Q: When will the new branch open? — A: Sometime in October. B: On Nguyen Hue Street. C: The manager opened it.",
+      "explanation": {
+        "vi": "\"When\" hỏi thời điểm.",
+        "en": "\"When\" asks for a time."
+      },
+      "media": {
+        "listen_policy": "once",
+        "pause_ms": 5000
+      },
+      "tags": []
+    }
+  },
+  {
+    "import_key": "demo:toeic:p2-06",
+    "program": "toeic",
+    "section_code": "part2",
+    "question_type": "mcq_single",
+    "difficulty": "B2",
+    "subskill_codes": [
+      "indirect_response"
+    ],
+    "source": "human",
+    "content": {
+      "type": "mcq_single",
+      "stem": "",
+      "options": [
+        {
+          "key": "A",
+          "text": ""
+        },
+        {
+          "key": "B",
+          "text": ""
+        },
+        {
+          "key": "C",
+          "text": ""
+        }
+      ],
+      "answer_key": {
+        "correct": "C"
+      },
+      "evidence": "Q: Should we order more printer paper? — A: The printer is on the third floor. B: I ordered a sandwich. C: Let me check the supply closet first.",
+      "explanation": {
+        "vi": "Trả lời gián tiếp hợp lý: kiểm tra kho trước.",
+        "en": "Reasonable indirect response: check the closet first."
+      },
+      "media": {
+        "listen_policy": "once",
+        "pause_ms": 5000
+      },
+      "tags": []
+    }
+  }
+]
