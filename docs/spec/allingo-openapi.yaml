@@ -14,7 +14,7 @@ info:
     - Phân trang: cursor (`?cursor=&limit=` ≤ 100) → `{ "data": [], "next_cursor": "..." | null }`.
     - Idempotency: POST tạo đơn hàng / submission / order dùng header `Idempotency-Key` (UUID), hiệu lực 24 giờ.
     - Rate limit: header `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After`.
-    - Quota/credit: 402 `quota_exceeded` / `insufficient_credits` kèm `details.feature`, `details.reset_at`.
+    - Quota/credit: 429 `quota_exceeded` (kèm `details.feature`, `details.reset_at`, `details.quota` = QuotaExceededDetails – v1.1) / 402 `insufficient_credits`.
     - Realtime: WebSocket `wss://api.allingo.vn/v1/ws` (Socket.IO), sự kiện `submission.graded`, `plan.updated`, `credits.changed`, `notification.new`.
     - Streaming AI: `text/event-stream` cho chat và giải thích (`event: delta|done|error`).
   contact:
@@ -464,7 +464,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [answers], properties: { answers: { type: array, items: { $ref: '#/components/schemas/AttemptAnswerInput' } }, section_elapsed_sec: { type: object, additionalProperties: { type: integer } } } }
+            schema: { type: object, required: [answers], properties: { answers: { type: array, items: { $ref: '#/components/schemas/AttemptAnswerInput' } }, section_elapsed_sec: { type: object, additionalProperties: { type: integer } }, ui_state: { $ref: '#/components/schemas/AttemptUiState' } } }
       responses: { '204': { description: Đã lưu } }
   /attempts/{attemptId}/events:
     post:
@@ -514,9 +514,26 @@ paths:
     post:
       tags: [AI]
       summary: Ask AI trên kết quả R/L – dạng sai nhiều nhất, vì sao, 3 bước kỹ thuật (stream)
+      description: |
+        v1.1 – Sprint 5 (`diagnose_rl`). Chỉ attempt đã chấm của chính người học; người học đang làm đề Exam Mode khác → 403
+        `exam_mode_locked`; quyền `ai_diagnose` (Free → 403 `forbidden` + `details.upgrade`); credit theo `ai.model_routes`
+        (402 `insufficient_credits`). SSE: `start` → `delta`* → `result` (data = AttemptAiDiagnosis) → `done`; lỗi AI →
+        `error` → `done` (không trừ credit). Đã có kết quả của cùng phiên bản prompt + ngôn ngữ → `start{cached:true}` → `result` → `done`.
+        Đang sinh (yêu cầu song song) → 409 `conflict` (`details.reason = in_progress`).
       parameters: [ { $ref: '#/components/parameters/AttemptId' } ]
       responses:
         '200': { description: SSE, content: { text/event-stream: { schema: { type: string } } } }
+        '402': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+    get:
+      tags: [AI]
+      summary: Kết quả chẩn đoán AI đã lưu của attempt (màn kết quả tải lại) – v1.1 Sprint 5
+      parameters: [ { $ref: '#/components/parameters/AttemptId' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AttemptAiDiagnosis' } } } }
+        '404': { $ref: '#/components/responses/Error' }
   /me/attempts:
     get:
       tags: [Attempts]
@@ -535,8 +552,8 @@ paths:
         - { name: topic, in: query, schema: { type: string } }
         - { name: subskill, in: query, schema: { type: string } }
         - { name: count, in: query, schema: { type: integer, default: 10, maximum: 50 } }
-        - { name: timed, in: query, schema: { type: boolean }, description: 'true → mode=timed_drill: `expires_at` = Σ giây theo Part (P1–P2 20 s, P3–P4 35 s, P5 25 s, P6–P7 60 s) hoặc per_question_sec × số câu; không có feedback trước khi nộp. false → mode=drill, không giới hạn giờ, đáp án hiện ngay (v1.1 – Sprint 4)' }
-        - { name: per_question_sec, in: query, schema: { type: integer, minimum: 5, maximum: 600 }, description: 'Ghi đè giây mỗi câu cho timed_drill (v1.1 – Sprint 4)' }
+        - { name: timed, in: query, schema: { type: boolean }, description: 'true → mode=timed_drill: `expires_at` = Σ thời gian trả lời theo Part (P1–P2 20 s, P3–P4 35 s, P5 25 s, P6–P7 60 s) hoặc per_question_sec × số câu, CỘNG với câu Listening: thời lượng audio của câu + `content.media.pause_ms` + audio nhóm (passage Part 3/4) tính một lần mỗi nhóm (media_assets.duration_ms; chưa rõ → ước tính 6 s/câu, 45 s/nhóm – v1.1 S5); không có feedback trước khi nộp. false → mode=drill, không giới hạn giờ, đáp án hiện ngay (v1.1 – Sprint 4)' }
+        - { name: per_question_sec, in: query, schema: { type: integer, minimum: 5, maximum: 600 }, description: 'Ghi đè giây TRẢ LỜI mỗi câu cho timed_drill – không gồm audio/pause (v1.1 – Sprint 4/5)' }
         - { name: q, in: query, schema: { type: string }, description: 'Từ khoá (tìm qua Meilisearch/PG; chỉ câu đã phát hành) – v1.1' }
       description: |
         Nguồn câu (v1.1 – Sprint 4): ưu tiên câu người học CHƯA làm → câu làm SAI trong 30 ngày → ngẫu nhiên. Câu cùng passage
@@ -559,6 +576,12 @@ paths:
     post:
       tags: [AI]
       summary: Giải thích câu hỏi (cache theo phiên bản câu, đáp án chọn, ngôn ngữ); stream nếu chưa cache
+      description: |
+        v1.1 – Sprint 5. Ngôn ngữ = `explain_locale` của người học. Khoá cache = (question_version_id, chosen_option, explain_locale,
+        prompt_version_id). Cache hit → JSON `Explanation` (`cached: true`, có `ai_task_id` để gửi /ai/feedback; không trừ credit/quota).
+        Sinh mới → SSE `start` → `delta`* → `result` (data = Explanation) → `done`; lỗi AI → `error` (`ai_failed` | `ai_timeout`) → `done`
+        (hoàn quota, không trừ credit). Exam Mode đang làm → 403 `exam_mode_locked`. Free vượt hạn mức ngày → 429 `quota_exceeded`
+        với `details.quota` (QuotaExceededDetails); thiếu credit → 402 `insufficient_credits`.
       requestBody:
         required: true
         content:
@@ -571,6 +594,8 @@ paths:
             application/json: { schema: { $ref: '#/components/schemas/Explanation' } }
             text/event-stream: { schema: { type: string } }
         '402': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '429': { description: 'quota_exceeded – details.quota = QuotaExceededDetails', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /ai/threads:
     get:
       tags: [AI]
@@ -625,8 +650,12 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [ai_task_id, rating], properties: { ai_task_id: { type: string, format: uuid }, rating: { type: string, enum: [helpful, not_helpful, wrong] }, comment: { type: string } } }
-      responses: { '201': { description: Đã ghi } }
+            schema: { type: object, required: [ai_task_id, rating], properties: { ai_task_id: { type: string, format: uuid }, rating: { type: string, enum: [helpful, not_helpful, wrong] }, comment: { type: string, maxLength: 1000, description: 'Lý do (👎) – tuỳ chọn' } } }
+      description: 'v1.1 – Sprint 5: chỉ chủ tác vụ (ai_tasks.user_id) – người khác 403, không tồn tại 404; gửi lại cho cùng tác vụ → cập nhật (`updated: true`).'
+      responses:
+        '201': { description: Đã ghi, content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, id: { type: string, format: uuid }, ai_task_id: { type: string, format: uuid }, rating: { type: string }, updated: { type: boolean } } } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
 
   # ---------------------------------------------------------------- Grading
   /uploads/presign:
@@ -1076,8 +1105,22 @@ paths:
     post:
       tags: [Admin]
       summary: Sinh lô câu hỏi bằng AI theo schema → Nháp + AI check tự động (job)
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [program, section, question_type, count], properties: { program: { type: string }, section: { type: string }, question_type: { type: string }, topic: { type: string }, difficulty: { type: string }, count: { type: integer, maximum: 50 }, passage_id: { type: string, format: uuid } } } } } }
-      responses: { '202': { description: job_id } }
+      description: |
+        v1.1 – Sprint 5. Job `content.generate`: generate_questions (lô 10) → draft `source = ai` (external_ref `ai-gen:<job_id>:<n>`)
+        → check_question (review stage ai_check) → dedup: embedding cosine ≥ 0,92 với câu published cùng chương trình + section
+        (ai.embeddings), pg_trgm ≥ 0,85, trùng trong lô → `duplicate.flagged`. Quyền editor/teacher/admin.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [program, section, question_type, count], properties: { program: { type: string }, section: { type: string }, question_type: { type: string }, topic: { type: string }, difficulty: { type: string }, count: { type: integer, minimum: 1, maximum: 50 }, passage_id: { type: string, format: uuid } } } } } }
+      responses:
+        '202': { description: job_id, content: { application/json: { schema: { type: object, properties: { job_id: { type: string, format: uuid }, status: { type: string }, mode: { type: string, enum: [queued, inline] }, poll_url: { type: string } } } } } }
+        '403': { $ref: '#/components/responses/Error' }
+  /admin/generate/questions/{jobId}:
+    get:
+      tags: [Admin]
+      summary: Trạng thái / kết quả job sinh câu hỏi AI (v1.1 – Sprint 5)
+      parameters: [ { name: jobId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/GenerateQuestionsJob' } } } }
+        '404': { $ref: '#/components/responses/Error' }
   /admin/test-sets/generate:
     post:
       tags: [Admin]
@@ -1095,27 +1138,53 @@ paths:
     get:
       tags: [Admin]
       summary: Prompt templates & phiên bản
-      responses: { '200': { description: OK } }
+      description: 'v1.1 – Sprint 5: mỗi template kèm route (model_routes) và phiên bản (status, canary_percent, latest_eval).'
+      responses: { '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/PromptTemplate' } } } } } } } }
+    post:
+      tags: [Admin]
+      summary: Tạo prompt template (code thuộc 14 task_code; program tuỳ chọn) – v1.1 Sprint 5
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [code], properties: { code: { type: string }, program: { type: string, nullable: true }, description: { type: string } } } } } }
+      responses:
+        '201': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PromptTemplate' } } } }
+        '409': { $ref: '#/components/responses/Error' }
   /admin/prompts/{templateId}/versions:
     post:
       tags: [Admin]
       summary: Tạo phiên bản prompt (draft) kèm rubric/output schema/model policy
       parameters: [ { name: templateId, in: path, required: true, schema: { type: string, format: uuid } } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PromptVersionInput' } } } }
-      responses: { '201': { description: OK } }
+      responses:
+        '201': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PromptVersion' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
   /admin/prompts/versions/{versionId}/status:
     patch:
       tags: [Admin]
       summary: draft → canary(x%) → active → retired; chặn active nếu eval chưa đạt
+      description: |
+        v1.1 – Sprint 5. canary/active cần một `ai.eval_runs` của phiên bản với `passed = true`, KHÔNG phải mock, metrics đạt
+        `eval.thresholds` (allingo-prompts.yaml) → thiếu: 409 `conflict`, `details.reason = eval_required`, `details.eval_gate`.
+        `ALLOW_UNEVALUATED_ACTIVATION=true` chỉ có hiệu lực ở APP_ENV development/test. Kích hoạt → active cũ thành retired,
+        cache giải thích của phiên bản cũ bị xoá. Hợp lệ: draft→canary|active|retired, canary→draft|active|retired, active→retired
+        (cần canary thay thế), retired→draft. canary_percent 1–50 (mặc định 10), chia người dùng theo hash user_id ổn định.
       parameters: [ { name: versionId, in: path, required: true, schema: { type: string, format: uuid } } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [status], properties: { status: { type: string, enum: [draft, canary, active, retired] }, canary_percent: { type: integer } } } } } }
-      responses: { '200': { description: OK } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [status], properties: { status: { type: string, enum: [draft, canary, active, retired] }, canary_percent: { type: integer, minimum: 1, maximum: 50 } } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { version: { $ref: '#/components/schemas/PromptVersion' }, changed: { type: boolean }, eval_gate: { type: object, nullable: true }, retired_version_ids: { type: array, items: { type: string, format: uuid } }, invalidated_cache_rows: { type: integer } } } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
   /admin/eval-runs:
+    get:
+      tags: [Admin]
+      summary: Danh sách eval run (mới nhất trước) – v1.1 Sprint 5
+      parameters: [ { name: task_code, in: query, schema: { type: string } }, { name: prompt_version_id, in: query, schema: { type: string, format: uuid } }, { name: eval_set_id, in: query, schema: { type: string, format: uuid } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
+      responses: { '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/EvalRun' } }, next_cursor: { type: [string, 'null'] } } } } } } }
     post:
       tags: [Admin]
       summary: Chạy eval set với phiên bản prompt/model (job)
+      description: 'v1.1 – Sprint 5: job `eval.run`; provider mock → run ghi `metrics.mock = true`, `passed = false` (không mở cổng kích hoạt).'
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [eval_set_id, prompt_version_id], properties: { eval_set_id: { type: string, format: uuid }, prompt_version_id: { type: string, format: uuid }, model: { type: string } } } } } }
-      responses: { '202': { description: run_id } }
+      responses: { '202': { description: run_id, content: { application/json: { schema: { type: object, properties: { run_id: { type: string, format: uuid }, status: { type: string }, mock: { type: boolean }, job_id: { type: string }, mode: { type: string } } } } } } }
   /admin/plans:
     put:
       tags: [Admin]
@@ -1140,8 +1209,9 @@ paths:
     get:
       tags: [Admin]
       summary: Chi phí AI theo ngày/tác vụ/model, credit tiêu, cache hit, chất lượng eval
+      description: 'v1.1 – Sprint 5: `from`/`to` là ngày lịch Asia/Ho_Chi_Minh (mặc định 30 ngày); tổng `cost_usd` = tổng ai_tasks.cost_usd (cùng giá trị gửi Langfuse `usage.totalCost`).'
       parameters: [ { name: from, in: query, schema: { type: string, format: date } }, { name: to, in: query, schema: { type: string, format: date } } ]
-      responses: { '200': { description: OK } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AiCostReport' } } } } }
 
 components:
   securitySchemes:
@@ -1343,7 +1413,7 @@ components:
         started_at: { type: string, format: date-time }
         server_time: { type: string, format: date-time }
         expires_at: { type: [string, 'null'], format: date-time, description: 'Hạn nộp (server) – exam/timed_drill' }
-        ui_state: { type: object }
+        ui_state: { $ref: '#/components/schemas/AttemptUiState' }
         feedback: { type: object, additionalProperties: { type: object, properties: { is_correct: { type: [boolean, 'null'] }, correct_answer: {}, explanation: { type: [object, 'null'] }, transcript: { oneOf: [ { $ref: '#/components/schemas/TranscriptHighlight' }, { type: 'null' } ], description: 'v1.1 – Sprint 4: transcript audio của câu; nhóm Part 3/4 chỉ khi mọi câu trong nhóm đã trả lời' } } }, description: 'Chỉ mode practice/drill – đáp án của câu đã trả lời (v1.1). Không có ở exam/timed_drill/diagnostic' }
         audio_plays: { type: object, additionalProperties: { type: integer }, description: 'Số lần bắt đầu phát audio theo question_id (sự kiện audio_started) – giữ quy tắc "nghe một lần" khi tải lại (v1.1 – Sprint 4)' }
     AttemptAnswerInput:
@@ -1502,10 +1572,14 @@ components:
         why_correct: { type: string }
         why_others_wrong: { type: object, additionalProperties: { type: string } }
         how_to_spot: { type: string }
-        related_points: { type: array, items: { type: object, properties: { type: { type: string }, ref_id: { type: string, format: uuid }, label: { type: string } } } }
+        related_points: { type: array, items: { type: object, properties: { type: { type: string }, ref_id: { type: string, format: uuid }, code: { type: string }, label: { type: string } } } }
+        tested_point: { type: string, description: v1.1 }
+        chosen_option_trap: { type: string, nullable: true, description: v1.1 }
+        key_vocab: { type: array, items: { type: object, properties: { term: { type: string }, reading: { type: string, nullable: true }, meaning: { type: string } } }, description: v1.1 }
         locale: { type: string }
         cached: { type: boolean }
-        ai_task_id: { type: string, format: uuid, nullable: true }
+        ai_task_id: { type: string, format: uuid, nullable: true, description: 'Có cả khi cache hit (ai_tasks.cache_hit = true) – dùng cho /ai/feedback (v1.1)' }
+        prompt_version_id: { type: string, format: uuid, nullable: true, description: v1.1 – Sprint 5 }
     ThreadContext:
       type: object
       properties:
@@ -1888,7 +1962,7 @@ components:
         program: { type: string }
         is_pro: { type: boolean }
         features: { type: array, items: { type: string } }
-        quotas: { type: array, items: { type: object, properties: { feature: { type: string }, period: { type: string }, limit: { type: integer, nullable: true }, used: { type: integer }, reset_at: { type: string, format: date-time } } } }
+        quotas: { type: array, items: { type: object, properties: { feature: { type: string }, period: { type: string, enum: [day, month, lifetime] }, limit: { type: integer, nullable: true }, used: { type: integer }, remaining: { type: integer, nullable: true, description: 'limit − used (≥ 0); v1.1 – Sprint 5' }, reset_at: { type: string, format: date-time, description: '00:00 giờ Asia/Ho_Chi_Minh của kỳ kế tiếp' } } } }
         credits: { type: integer }
     NotificationPreferences:
       type: object
@@ -1952,6 +2026,132 @@ components:
         source: { type: string, enum: [human, ai, licensed] }
         content: { type: object }
         metadata: { type: object }
+    AttemptUiState:
+      type: object
+      description: Trạng thái UI để khôi phục (lưu draft_state.ui_state; PUT /answers gộp nông theo khoá) – v1.1
+      properties:
+        current_question_id: { type: string, format: uuid }
+        current_section_code: { type: string }
+        listening:
+          type: object
+          description: 'Vị trí chuỗi phát Listening (khôi phục khi đổi thiết bị/mất localStorage) – v1.1 Sprint 5'
+          required: [step, offset_ms]
+          properties:
+            step: { type: integer, minimum: 0, description: Chỉ số bước trong hàng đợi phát (audio câu/nhóm, pause) }
+            offset_ms: { type: integer, minimum: 0, description: Vị trí trong bước hiện tại }
+    QuotaExceededDetails:
+      type: object
+      description: 'error.details.quota của 429 quota_exceeded (v1.1 – Sprint 5); kỳ ngày/tháng reset 00:00 giờ Asia/Ho_Chi_Minh'
+      required: [feature, period, limit, used, remaining, resets_at]
+      properties:
+        feature: { type: string, example: ai_explain }
+        period: { type: string, enum: [day, month, lifetime] }
+        limit: { type: integer }
+        used: { type: integer }
+        remaining: { type: integer, example: 0 }
+        resets_at: { type: string, format: date-time }
+        reset_at: { type: string, format: date-time, description: Bí danh cũ của resets_at }
+    AttemptAiDiagnosis:
+      type: object
+      description: Kết quả diagnose_rl lưu tại learn.attempts.score_breakdown.ai_diagnosis (v1.1 – Sprint 5)
+      properties:
+        attempt_id: { type: string, format: uuid }
+        top_error_type: { type: string }
+        evidence: { type: array, items: { type: string } }
+        why: { type: string }
+        steps: { type: array, items: { type: string }, minItems: 3, maxItems: 3 }
+        check_question: { type: object, properties: { stem: { type: string }, options: { type: array, items: { type: string } }, answer: { type: string }, explanation: { type: string } } }
+        encouragement: { type: string }
+        locale: { type: string }
+        ai_task_id: { type: string, format: uuid, nullable: true }
+        prompt_version_id: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+        cached: { type: boolean }
+    GenerateQuestionsJob:
+      type: object
+      description: Trạng thái job content.generate (v1.1 – Sprint 5)
+      properties:
+        job_id: { type: string, format: uuid }
+        status: { type: string, enum: [queued, running, completed, failed] }
+        input: { type: object }
+        progress: { type: object, nullable: true }
+        error: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        result:
+          type: object
+          nullable: true
+          properties:
+            summary: { type: object, properties: { requested: { type: integer }, generated: { type: integer }, created: { type: integer }, invalid: { type: integer }, flagged_duplicates: { type: integer }, verdicts: { type: object }, embedding_model: { type: string }, cosine_threshold: { type: number }, mock: { type: boolean } } }
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  index: { type: integer }
+                  status: { type: string, enum: [created, invalid] }
+                  question_id: { type: string, format: uuid, nullable: true }
+                  question_version_id: { type: string, format: uuid, nullable: true }
+                  external_ref: { type: string, nullable: true }
+                  workflow_status: { type: string, nullable: true }
+                  verdict: { type: string, enum: [pass, needs_change, fail], nullable: true }
+                  issues: { type: array, items: { type: object } }
+                  duplicate: { type: object, properties: { flagged: { type: boolean }, method: { type: string, enum: [embedding, trigram, in_batch], nullable: true }, of_question_id: { type: string, nullable: true }, of_index: { type: integer, nullable: true }, similarity: { type: number, nullable: true }, embedding_similarity: { type: number, nullable: true }, trigram_similarity: { type: number, nullable: true } } }
+                  content: { type: object, nullable: true }
+                  errors: { type: array, items: { type: string } }
+    PromptTemplate:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        program: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        route: { type: object, nullable: true, properties: { primary_model: { type: string }, fallback_models: { type: array, items: { type: string } }, timeout_ms: { type: integer }, credits_cost: { type: integer }, params: { type: object } } }
+        versions: { type: array, items: { $ref: '#/components/schemas/PromptVersion' } }
+    PromptVersion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        template_id: { type: string, format: uuid }
+        version_no: { type: integer }
+        status: { type: string, enum: [draft, canary, active, retired] }
+        canary_percent: { type: integer }
+        system_prompt: { type: string }
+        user_template: { type: string }
+        output_schema: { type: object }
+        model_policy: { type: object }
+        eval_run_id: { type: string, format: uuid, nullable: true }
+        latest_eval: { type: object, nullable: true, properties: { id: { type: string, format: uuid }, passed: { type: boolean }, mock: { type: boolean }, run_at: { type: string, format: date-time } } }
+        created_at: { type: string, format: date-time }
+    EvalRun:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        eval_set: { type: object, properties: { id: { type: string, format: uuid }, name: { type: string }, task_code: { type: string } } }
+        prompt_version_id: { type: string, format: uuid }
+        prompt_version_no: { type: integer }
+        model: { type: string }
+        passed: { type: boolean, description: 'Luôn false khi mock = true' }
+        mock: { type: boolean }
+        status: { type: string, enum: [running, completed] }
+        metrics: { type: object, description: 'n, schema_valid, correct_option_match, covers_all_distractors, teacher_rating_mean, factual_error_rate, latency_p95_ms, cost_usd, est_cost_per_1000_explain_usd, thresholds, threshold_checks, would_pass, mock' }
+        triggered_by: { type: string, nullable: true }
+        run_at: { type: string, format: date-time }
+    AiCostReport:
+      type: object
+      description: v1.1 – Sprint 5
+      properties:
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        timezone: { type: string, example: Asia/Ho_Chi_Minh }
+        total_tasks: { type: integer }
+        totals: { type: object, properties: { tasks: { type: integer }, succeeded: { type: integer }, failed: { type: integer }, cache_hits: { type: integer }, fallbacks: { type: integer }, credits: { type: integer }, cost_usd: { type: number }, tokens_in: { type: integer }, tokens_out: { type: integer } } }
+        explanation_cache_hits: { type: integer }
+        by_task: { type: object, additionalProperties: { type: object } }
+        by_day: { type: object, additionalProperties: { type: object } }
+        by_model: { type: object, additionalProperties: { type: object } }
+        rows: { type: array, items: { type: object, properties: { day: { type: string, format: date }, task_code: { type: string }, model: { type: string }, tasks: { type: integer }, succeeded: { type: integer }, failed: { type: integer }, cache_hits: { type: integer }, fallbacks: { type: integer }, credits: { type: integer }, cost_usd: { type: number }, tokens_in: { type: integer }, tokens_out: { type: integer }, avg_latency_ms: { type: integer }, p95_latency_ms: { type: integer, nullable: true } } } }
+        breakers: { type: object, description: Trạng thái circuit breaker theo provider }
     PromptVersionInput:
       type: object
       required: [system_prompt, user_template, output_schema, model_policy]
@@ -1961,4 +2161,5 @@ components:
         few_shots: { type: array, items: { type: object } }
         rubric: { type: object }
         output_schema: { type: object }
-        model_policy: { type: object, properties: { primary: { type: string }, fallbacks: { type: array, items: { type: string } }, temperature: { type: number }, max_tokens: { type: integer } } }
+        model_policy: { type: object, required: [primary], properties: { primary: { type: string }, fallbacks: { type: array, items: { type: string } }, temperature: { type: number }, top_p: { type: number }, max_tokens: { type: integer } } }
+        change_note: { type: string, description: v1.1 }
