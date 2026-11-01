@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
 import { Forbidden, Unauthorized } from '../http/errors.js';
 import { JwtService, type AccessClaims } from './jwt.service.js';
+import { SessionRevocationService } from './session-revocation.service.js';
 
 export const ACCESS_COOKIE = 'allingo_at';
 export const REFRESH_COOKIE = 'allingo_rt';
@@ -42,6 +43,7 @@ export class AuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly jwt: JwtService,
+    private readonly revocation: SessionRevocationService,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -50,6 +52,8 @@ export class AuthGuard implements CanActivate {
     const token = extractToken(req);
     let claims: AccessClaims | null = null;
     if (token) claims = await this.jwt.verifyAccess(token);
+    // Phiên đã thu hồi (logout/thu hồi từ xa/refresh reuse/xoá tài khoản) → coi như chưa đăng nhập
+    if (claims && (await this.revocation.isRevoked(claims.sid))) claims = null;
     if (claims) req.user = { id: claims.sub, sessionId: claims.sid, roles: claims.roles ?? [], isGuest: !!claims.guest };
     if (isPublic) return true;
     if (!req.user) throw new Unauthorized();

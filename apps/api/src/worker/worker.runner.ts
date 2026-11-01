@@ -9,6 +9,7 @@ import { OutboxService } from '../shared/events/outbox.service.js';
 import { getLogger } from '../shared/telemetry/logger.js';
 import { QuotaService } from '../modules/billing/index.js';
 import { AttemptsService } from '../modules/test-engine/index.js';
+import { DeletionService } from '../modules/iam/index.js';
 
 type Handler = (job: Job) => Promise<unknown>;
 
@@ -31,18 +32,21 @@ export class WorkerRunner implements OnModuleInit, OnModuleDestroy {
     private readonly outbox: OutboxService,
     private readonly quotas: QuotaService,
     private readonly attempts: AttemptsService,
+    private readonly deletion: DeletionService,
   ) {}
 
   async onModuleInit(): Promise<void> {
     this.timers.push(setInterval(() => void this.relay(), 2000));
     this.timers.push(setInterval(() => void this.expire(), 60_000));
     this.timers.push(setInterval(() => void this.nightly(), 60_000));
+    this.timers.push(setInterval(() => void this.purge(), this.env.PURGE_SCAN_INTERVAL_SECONDS * 1000));
     await ensureMonthPartitions(this.dbs.db, 2).catch((err: Error) => this.logger.warn({ err: err.message }, 'partition ensure failed'));
     const handlers: Record<QueueName, Record<string, Handler>> = {
       maintenance: {
         'quota.flush': async () => ({ flushed: await this.quotas.flushToDb() }),
         'partition.ensure': async () => ({ created: await ensureMonthPartitions(this.dbs.db, 2) }),
         'attempt.expire': async () => ({ expired: await this.attempts.expireOverdue() }),
+        'iam.purge': async () => ({ purged: await this.deletion.purgeDue() }),
       },
       grading: {},
       content: {},
@@ -72,6 +76,16 @@ export class WorkerRunner implements OnModuleInit, OnModuleDestroy {
       this.logger.warn('redis unavailable: BullMQ processors disabled, timers still run');
     }
     this.logger.info('worker started');
+  }
+
+  /** Xoá tài khoản đến hạn (iam.deletion_requests, CLAUDE.md §9) */
+  private async purge(): Promise<void> {
+    try {
+      const n = await this.deletion.purgeDue();
+      if (n) this.logger.info({ purged: n }, 'iam.purge');
+    } catch (err) {
+      this.logger.warn({ err: (err as Error).message }, 'iam.purge failed');
+    }
   }
 
   private async relay(): Promise<void> {

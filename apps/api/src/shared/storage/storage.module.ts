@@ -1,5 +1,5 @@
 import { Global, Inject, Injectable, Module } from '@nestjs/common';
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { ENV, type Env } from '../../config/env.js';
 
@@ -29,6 +29,16 @@ export class StorageService {
 
   async presignPut(bucket: Bucket, key: string, contentType: string, ttlSec = this.env.S3_PRESIGN_TTL_SECONDS): Promise<string> {
     return getSignedUrl(this.client, new PutObjectCommand({ Bucket: this.bucketName(bucket), Key: key, ContentType: contentType }), { expiresIn: ttlSec });
+  }
+
+  /** Xoá đối tượng (xoá dữ liệu cá nhân theo iam.deletion_requests). Trả false khi lỗi để caller ghi nhận và thử lại. */
+  async deleteObject(bucket: Bucket, key: string): Promise<boolean> {
+    try {
+      await this.client.send(new DeleteObjectCommand({ Bucket: this.bucketName(bucket), Key: key }));
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 

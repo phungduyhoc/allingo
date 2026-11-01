@@ -76,8 +76,12 @@ paths:
                 guest_token: { type: string, description: Token phiên khách để ghép tiến độ }
                 referral_code: { type: string }
                 ui_locale: { type: string, default: vi }
+                accept_terms: { type: boolean, description: 'Đồng ý điều khoản + chính sách (PDPL); false → 400. v1.1' }
+                marketing_opt_in: { type: boolean }
+                turnstile_token: { type: string, description: Cloudflare Turnstile (bắt buộc khi máy chủ bật) }
       responses:
         '201': { $ref: '#/components/responses/AuthTokens' }
+        '400': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
   /auth/login:
     post:
@@ -94,6 +98,8 @@ paths:
               properties:
                 email: { type: string, format: email }
                 password: { type: string }
+                guest_token: { type: string }
+                turnstile_token: { type: string }
       responses:
         '200': { $ref: '#/components/responses/AuthTokens' }
         '401': { $ref: '#/components/responses/Error' }
@@ -114,27 +120,40 @@ paths:
                 id_token: { type: string }
                 code: { type: string }
                 redirect_uri: { type: string }
+                nonce: { type: string }
                 guest_token: { type: string }
                 referral_code: { type: string }
+                ui_locale: { type: string }
+                display_name: { type: string, description: Apple chỉ gửi tên ở lần đầu – client chuyển tiếp }
+                link_password: { type: string, description: 'Khi email đã có tài khoản mật khẩu: xác nhận liên kết (409 link_required nếu thiếu)' }
+                link_confirm: { type: boolean, description: 'Khi email đã có tài khoản không mật khẩu: xác nhận liên kết' }
       responses:
         '200': { $ref: '#/components/responses/AuthTokens' }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
   /auth/otp/request:
     post:
       tags: [Auth]
       security: []
-      summary: Gửi OTP qua Zalo ZNS hoặc SMS
+      summary: Gửi OTP qua Zalo ZNS, SMS hoặc email (đúng một trong phone | email)
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [phone]
               properties:
                 phone: { type: string, example: '+84901234567' }
-                channel: { type: string, enum: [zalo, sms], default: zalo }
+                email: { type: string, format: email }
+                channel: { type: string, enum: [zalo, sms, email], description: 'Mặc định zalo cho phone, email cho email' }
+                turnstile_token: { type: string }
       responses:
-        '202': { description: 'Đã gửi; `retry_after` giây' }
+        '202':
+          description: 'Đã gửi; `retry_after` giây trước khi gửi lại'
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string, enum: [sent] }, channel: { type: string }, retry_after: { type: integer }, expires_in: { type: integer } } }
         '429': { $ref: '#/components/responses/Error' }
   /auth/otp/verify:
     post:
@@ -147,13 +166,18 @@ paths:
           application/json:
             schema:
               type: object
-              required: [phone, otp]
+              required: [otp]
               properties:
                 phone: { type: string }
+                email: { type: string, format: email }
                 otp: { type: string, minLength: 6, maxLength: 6 }
                 guest_token: { type: string }
+                display_name: { type: string, description: Dùng khi tạo tài khoản mới }
+                ui_locale: { type: string }
       responses:
         '200': { $ref: '#/components/responses/AuthTokens' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
   /auth/guest:
     post:
       tags: [Auth]
@@ -203,7 +227,12 @@ paths:
       tags: [Me]
       summary: Yêu cầu xoá tài khoản & dữ liệu (hoàn tất ≤ 72 giờ, PDPL)
       responses:
-        '202': { description: 'Đã tiếp nhận, trả `due_at`' }
+        '202':
+          description: 'Đã tiếp nhận; mọi phiên bị thu hồi ngay'
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string, enum: [scheduled] }, due_at: { type: string, format: date-time }, request_id: { type: string, format: uuid } } }
+        '409': { $ref: '#/components/responses/Error' }
   /me/sessions:
     get:
       tags: [Me]

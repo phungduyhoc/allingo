@@ -28,7 +28,7 @@ TypeScript strict toàn repo. Node LTS hiện hành, pnpm 10, Turborepo. Phiên 
 | CMS | Payload CMS (Next.js), dùng chung PostgreSQL schema `cms` |
 | Data | PostgreSQL 16+ với `pgvector`, `citext`, `pg_trgm`; Redis/Valkey; S3-compatible (MinIO dev); Meilisearch |
 | AI | Vercel AI SDK (`ai`, `@ai-sdk/google`, `@ai-sdk/anthropic`, `@ai-sdk/openai`) sau lớp `AiGateway`; Azure AI Speech qua `SpeechProvider`; Handlebars cho template |
-| Auth | Better Auth (email/password, Google, Apple, Facebook, OTP qua plugin); JWT access 15 phút + refresh xoay vòng; cookie httpOnly cho web, bearer cho mobile |
+| Auth | Lõi auth tự triển khai trong `iam` (ADR-0020/0022): email/mật khẩu Argon2id, Google/Apple/Facebook qua `jose` + JWKS, OTP email/SMS/Zalo; JWT access 15 phút + refresh xoay vòng, thu hồi tức thời theo phiên; cookie httpOnly cho web, bearer cho mobile |
 | Kiểm thử | Vitest, Testcontainers (Postgres/Redis), Playwright, Schemathesis/openapi-diff, Promptfoo |
 | Hạ tầng | Docker, Terraform (`infra/terraform`), GitHub Actions |
 

@@ -1,13 +1,13 @@
-import { Controller, Delete, Get, HttpCode, Patch, Post } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, Patch, Post, Req } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { and, desc, eq, isNull } from 'drizzle-orm';
-import { schema } from '@allingo/db';
-import { consentInputSchema, consentSchema, enrollmentInputSchema, enrollmentSchema, programCodeSchema, sessionSchema, userSchema, userUpdateSchema, type EnrollmentInput, type UserUpdate } from '@allingo/schemas';
+import { consentInputSchema, consentSchema, deletionRequestResultSchema, enrollmentInputSchema, enrollmentSchema, programCodeSchema, sessionSchema, userSchema, userUpdateSchema, type EnrollmentInput, type UserUpdate } from '@allingo/schemas';
 import { CurrentUser, type AuthUser } from '../../shared/auth/auth.guard.js';
-import { DbService } from '../../shared/db/db.module.js';
 import { NotFound } from '../../shared/http/errors.js';
 import { ApiZod, ZodBody, ZodParams } from '../../shared/http/zod.js';
+import { ConsentsService } from './consents.service.js';
+import { DeletionService } from './deletion.service.js';
 import { EnrollmentsService } from './enrollments.service.js';
 import { SessionsService } from './sessions.service.js';
 import { UsersService } from './users.service.js';
@@ -22,7 +22,8 @@ export class MeController {
     private readonly users: UsersService,
     private readonly enrollments: EnrollmentsService,
     private readonly sessions: SessionsService,
-    private readonly dbs: DbService,
+    private readonly consents: ConsentsService,
+    private readonly deletion: DeletionService,
   ) {}
 
   @Get()
@@ -50,10 +51,10 @@ export class MeController {
 
   @Delete()
   @HttpCode(202)
-  @ApiZod({ responses: { 202: 'empty' } })
-  async requestDeletion(@CurrentUser() user: AuthUser) {
-    await this.users.requestDeletion(user.id);
-    return { status: 'scheduled', due_in_hours: 72 };
+  @ApiZod({ responses: { 202: deletionRequestResultSchema, 409: 'empty' } })
+  async requestDeletion(@CurrentUser() user: AuthUser, @Req() req: FastifyRequest) {
+    const r = await this.deletion.request(user.id, { ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null });
+    return { status: 'scheduled' as const, due_at: r.due_at, request_id: r.request_id };
   }
 
   @Get('sessions')
@@ -71,27 +72,15 @@ export class MeController {
 
   @Get('consents')
   @ApiZod({ responses: { 200: z.array(consentSchema) } })
-  async consents(@CurrentUser() user: AuthUser) {
-    const rows = await this.dbs.db.select().from(schema.iamConsents).where(eq(schema.iamConsents.userId, user.id)).orderBy(desc(schema.iamConsents.grantedAt));
-    return rows.map((r) => ({ type: r.type, version: r.version, granted_at: r.grantedAt.toISOString(), revoked_at: r.revokedAt?.toISOString() ?? null }));
+  listConsents(@CurrentUser() user: AuthUser) {
+    return this.consents.list(user.id);
   }
 
   @Post('consents')
   @HttpCode(200)
   @ApiZod({ body: consentInputSchema, responses: { 200: consentSchema } })
-  async consent(@CurrentUser() user: AuthUser, @ZodBody(consentInputSchema) body: z.infer<typeof consentInputSchema>) {
-    const version = body.version ?? '2026-11';
-    if (body.granted) {
-      const [row] = await this.dbs.db.insert(schema.iamConsents).values({ userId: user.id, type: body.type, version }).returning();
-      return { type: row!.type, version: row!.version, granted_at: row!.grantedAt.toISOString(), revoked_at: null };
-    }
-    const [row] = await this.dbs.db
-      .update(schema.iamConsents)
-      .set({ revokedAt: new Date() })
-      .where(and(eq(schema.iamConsents.userId, user.id), eq(schema.iamConsents.type, body.type), isNull(schema.iamConsents.revokedAt)))
-      .returning();
-    if (!row) throw new NotFound('consent', body.type);
-    return { type: row.type, version: row.version, granted_at: row.grantedAt.toISOString(), revoked_at: row.revokedAt?.toISOString() ?? null };
+  consent(@CurrentUser() user: AuthUser, @ZodBody(consentInputSchema) body: z.infer<typeof consentInputSchema>, @Req() req: FastifyRequest) {
+    return this.consents.set(user.id, { type: body.type, granted: body.granted, version: body.version, ip: req.ip ?? null });
   }
 
   @Get('enrollments')

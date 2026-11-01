@@ -6,6 +6,7 @@ import { RedisModule } from './shared/cache/redis.module.js';
 import { QueueModule } from './shared/queue/queue.module.js';
 import { StorageModule } from './shared/storage/storage.module.js';
 import { EventsModule } from './shared/events/outbox.service.js';
+import { NotifyModule } from './shared/notify/mailer.service.js';
 import { SharedAuthModule } from './shared/auth/auth.module.js';
 import { AuthGuard } from './shared/auth/auth.guard.js';
 import { AppExceptionFilter } from './shared/http/exception.filter.js';
@@ -33,6 +34,7 @@ import { AdminModule } from './modules/admin/index.js';
     QueueModule,
     StorageModule,
     EventsModule,
+    NotifyModule,
     SharedAuthModule,
     RealtimeModule,
     IamModule,

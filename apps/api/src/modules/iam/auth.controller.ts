@@ -1,19 +1,25 @@
 import { Body, Controller, HttpCode, Post, Req, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { authTokensSchema, guestSessionSchema, loginInputSchema, otpRequestInputSchema, otpVerifyInputSchema, refreshInputSchema, registerInputSchema, type LoginInput, type RegisterInput } from '@allingo/schemas';
+import { z } from 'zod';
+import { OAUTH_PROVIDERS, authTokensSchema, guestSessionSchema, loginInputSchema, oauthInputSchema, otpRequestInputSchema, otpRequestResultSchema, otpVerifyInputSchema, refreshInputSchema, registerInputSchema, type LoginInput, type OAuthInput, type OtpRequestInput, type OtpVerifyInput, type RegisterInput } from '@allingo/schemas';
 import { ACCESS_COOKIE, CurrentUser, Public, REFRESH_COOKIE, type AuthUser } from '../../shared/auth/auth.guard.js';
-import { ApiZod, ZodBody, ZodValidationPipe } from '../../shared/http/zod.js';
-import { AppError } from '../../shared/http/errors.js';
+import { ApiZod, ZodBody, ZodParams, ZodValidationPipe } from '../../shared/http/zod.js';
 import { AuthService, type RequestMeta } from './auth.service.js';
+import { OAuthService } from './oauth/oauth.service.js';
 import type { IssuedTokens } from './sessions.service.js';
+
+const providerParam = z.object({ provider: z.enum(OAUTH_PROVIDERS) });
 
 type Req = FastifyRequest & { cookies?: Record<string, string | undefined> };
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly oauth: OAuthService,
+  ) {}
 
   private meta(req: FastifyRequest, device?: Record<string, unknown>): RequestMeta {
     return { ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null, device };
@@ -80,20 +86,32 @@ export class AuthController {
     void reply.clearCookie(REFRESH_COOKIE, { path: '/v1/auth' });
   }
 
-  // OTP qua Zalo/SMS: Sprint 1 (S1). Endpoint có mặt để khớp hợp đồng, trả 501 rõ ràng.
+  @Public()
+  @Post('oauth/:provider')
+  @HttpCode(200)
+  @ApiZod({ body: oauthInputSchema, responses: { 200: authTokensSchema, 401: 'empty', 409: 'empty' } })
+  async oauthSignIn(@ZodParams(providerParam) params: z.infer<typeof providerParam>, @ZodBody(oauthInputSchema) body: OAuthInput, @Req() req: FastifyRequest, @Res({ passthrough: true }) reply: FastifyReply) {
+    const { tokens, body: out } = await this.oauth.signIn(params.provider, body, this.meta(req));
+    this.setCookies(reply, tokens);
+    return this.isMobile(req) ? { ...out, refresh_token: tokens.refreshToken } : out;
+  }
+
   @Public()
   @Post('otp/request')
   @HttpCode(202)
-  @ApiZod({ body: otpRequestInputSchema, responses: { 202: 'empty', 429: 'empty' } })
-  otpRequest(@ZodBody(otpRequestInputSchema) _body: unknown) {
-    throw new AppError('feature_disabled', 'OTP login is not available yet (Sprint 1)', 501, { flag: 'ff.iam.otp' });
+  @ApiZod({ body: otpRequestInputSchema, responses: { 202: otpRequestResultSchema, 429: 'empty' } })
+  otpRequest(@ZodBody(otpRequestInputSchema) body: OtpRequestInput, @Req() req: FastifyRequest) {
+    const locale = (req.headers['accept-language'] ?? '').toString().startsWith('en') ? 'en' : 'vi';
+    return this.auth.otpRequest(body, this.meta(req), locale);
   }
 
   @Public()
   @Post('otp/verify')
   @HttpCode(200)
-  @ApiZod({ body: otpVerifyInputSchema, responses: { 200: authTokensSchema } })
-  otpVerify(@ZodBody(otpVerifyInputSchema) _body: unknown) {
-    throw new AppError('feature_disabled', 'OTP login is not available yet (Sprint 1)', 501, { flag: 'ff.iam.otp' });
+  @ApiZod({ body: otpVerifyInputSchema, responses: { 200: authTokensSchema, 401: 'empty', 429: 'empty' } })
+  async otpVerify(@ZodBody(otpVerifyInputSchema) body: OtpVerifyInput, @Req() req: FastifyRequest, @Res({ passthrough: true }) reply: FastifyReply) {
+    const { tokens, body: out } = await this.auth.otpVerify(body, this.meta(req));
+    this.setCookies(reply, tokens);
+    return this.isMobile(req) ? { ...out, refresh_token: tokens.refreshToken } : out;
   }
 }

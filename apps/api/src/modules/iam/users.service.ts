@@ -5,7 +5,10 @@ import type { Locale, ProgramCode, User } from '@allingo/schemas';
 import { DbService, type DbOrTx } from '../../shared/db/db.module.js';
 import { Conflict, NotFound } from '../../shared/http/errors.js';
 
-const { iamUsers, iamUserRoles, learnEnrollments } = schema;
+export type IdentityRow = typeof iamAuthIdentities.$inferSelect;
+export type AuthProviderCode = IdentityRow['provider'];
+
+const { iamUsers, iamUserRoles, iamAuthIdentities, learnEnrollments } = schema;
 
 export type UserRow = typeof iamUsers.$inferSelect;
 
@@ -38,6 +41,60 @@ export class UsersService {
       .returning();
     await tx.insert(iamUserRoles).values({ userId: row!.id, roleCode: 'learner' }).onConflictDoNothing();
     return row!;
+  }
+
+  async findByPhone(phone: string, db: DbOrTx = this.dbs.db): Promise<UserRow | null> {
+    const [row] = await db.select().from(iamUsers).where(eq(iamUsers.phone, phone)).limit(1);
+    return row ?? null;
+  }
+
+  /** Tài khoản tạo qua OAuth/OTP: không có mật khẩu; email chỉ đặt khi nhà cung cấp đã xác minh */
+  async createExternalUser(tx: DbOrTx, input: { email?: string | null; phone?: string | null; displayName: string; avatarUrl?: string | null; uiLocale?: Locale }): Promise<UserRow> {
+    if (input.email) {
+      const existing = await this.findByEmail(input.email, tx);
+      if (existing) throw new Conflict('Email already registered', { field: 'email' });
+    }
+    if (input.phone) {
+      const existing = await this.findByPhone(input.phone, tx);
+      if (existing) throw new Conflict('Phone already registered', { field: 'phone' });
+    }
+    const [row] = await tx
+      .insert(iamUsers)
+      .values({ email: input.email?.trim() ?? null, phone: input.phone ?? null, displayName: input.displayName, avatarUrl: input.avatarUrl ?? null, uiLocale: input.uiLocale ?? 'vi', explainLocale: input.uiLocale ?? 'vi', isGuest: false, status: 'active' })
+      .returning();
+    await tx.insert(iamUserRoles).values({ userId: row!.id, roleCode: 'learner' }).onConflictDoNothing();
+    return row!;
+  }
+
+  async findIdentity(provider: AuthProviderCode, providerUid: string, db: DbOrTx = this.dbs.db): Promise<IdentityRow | null> {
+    const [row] = await db.select().from(iamAuthIdentities).where(and(eq(iamAuthIdentities.provider, provider), eq(iamAuthIdentities.providerUid, providerUid))).limit(1);
+    return row ?? null;
+  }
+
+  async linkIdentity(tx: DbOrTx, input: { userId: string; provider: AuthProviderCode; providerUid: string; email?: string | null; rawProfile?: Record<string, unknown> | null }): Promise<IdentityRow> {
+    const [row] = await tx
+      .insert(iamAuthIdentities)
+      .values({ userId: input.userId, provider: input.provider, providerUid: input.providerUid, email: input.email ?? null, rawProfile: input.rawProfile ?? null })
+      .onConflictDoUpdate({ target: [iamAuthIdentities.provider, iamAuthIdentities.providerUid], set: { email: input.email ?? null, rawProfile: input.rawProfile ?? null } })
+      .returning();
+    return row!;
+  }
+
+  async listIdentities(userId: string, db: DbOrTx = this.dbs.db): Promise<Array<{ provider: AuthProviderCode; created_at: string }>> {
+    const rows = await db.select({ provider: iamAuthIdentities.provider, createdAt: iamAuthIdentities.createdAt }).from(iamAuthIdentities).where(eq(iamAuthIdentities.userId, userId));
+    return rows.map((r) => ({ provider: r.provider, created_at: r.createdAt.toISOString() }));
+  }
+
+  async grantRole(tx: DbOrTx, input: { userId: string; roleCode: string; programCode?: string | null; grantedBy?: string | null }): Promise<void> {
+    await tx.insert(iamUserRoles).values({ userId: input.userId, roleCode: input.roleCode, programCode: input.programCode ?? null, grantedBy: input.grantedBy ?? null }).onConflictDoNothing();
+  }
+
+  async revokeRole(tx: DbOrTx, input: { userId: string; roleCode: string; programCode?: string | null }): Promise<number> {
+    const rows = await tx
+      .delete(iamUserRoles)
+      .where(and(eq(iamUserRoles.userId, input.userId), eq(iamUserRoles.roleCode, input.roleCode), input.programCode ? eq(iamUserRoles.programCode, input.programCode) : sql`${iamUserRoles.programCode} IS NULL`))
+      .returning({ userId: iamUserRoles.userId });
+    return rows.length;
   }
 
   async createGuest(tx: DbOrTx, displayName: string, uiLocale: Locale = 'vi'): Promise<UserRow> {
@@ -85,12 +142,4 @@ export class UsersService {
     };
   }
 
-  /** Đánh dấu yêu cầu xoá (job purge xử lý sau 72 giờ – Sprint 1) */
-  async requestDeletion(userId: string): Promise<void> {
-    await this.dbs.db.transaction(async (tx) => {
-      await tx.insert(schema.iamDeletionRequests).values({ userId, dueAt: sql`now() + interval '72 hours'` });
-      await tx.update(iamUsers).set({ status: 'pending_deletion', updatedAt: new Date() }).where(eq(iamUsers.id, userId));
-      await tx.update(schema.iamSessions).set({ revokedAt: new Date() }).where(eq(schema.iamSessions.userId, userId));
-    });
-  }
 }

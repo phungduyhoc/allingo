@@ -4,6 +4,7 @@ import { and, asc, eq, isNull, lt, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import { DbService, type DbOrTx } from '../db/db.module.js';
 import { getLogger } from '../telemetry/logger.js';
+import { AuditService } from './audit.service.js';
 
 export interface OutboxEvent<T = Record<string, unknown>> {
   id: number;
@@ -66,7 +67,7 @@ export class OutboxService {
 @Global()
 @Module({
   imports: [EventEmitterModule.forRoot({ wildcard: true, delimiter: '.', maxListeners: 50 })],
-  providers: [OutboxService],
-  exports: [OutboxService, EventEmitterModule],
+  providers: [OutboxService, AuditService],
+  exports: [OutboxService, AuditService, EventEmitterModule],
 })
 export class EventsModule {}

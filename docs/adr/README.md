@@ -10,7 +10,7 @@ Mẫu Context – Decision – Consequences; thay đổi ADR cần Tech Lead duy
 - [ADR-0006](./0006-bullmq-outbox.md) — BullMQ trên Redis cho job
 - [ADR-0007](./0007-ai-gateway.md) — AI Gateway là module trong `api`/`worker` với adapter theo nhà cung cấp
 - [ADR-0008](./0008-azure-speech.md) — Azure AI Speech cho STT, Pronunciation Assessment, TTS qua interface `SpeechProvider`
-- [ADR-0009](./0009-auth-better-auth.md) — Better Auth (self-host): JWT access 15 phút + refresh xoay vòng
+- [ADR-0009](./0009-auth-better-auth.md) — Better Auth (self-host): JWT access 15 phút + refresh xoay vòng — *thay thế một phần bởi ADR-0022*
 - [ADR-0010](./0010-entitlements-quota.md) — Entitlement vật chất hoá trong `billing.entitlements`
 - [ADR-0011](./0011-credit-ledger.md) — Credit ledger append-only (`billing.credit_ledger`) + bảng số dư
 - [ADR-0012](./0012-payments-webhook-first.md) — Thanh toán webhook-first qua `PaymentProvider` adapter (VNPay, MoMo, ZaloPay, PayOS, Stripe)
