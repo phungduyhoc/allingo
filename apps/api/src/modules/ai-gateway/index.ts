@@ -1,7 +1,9 @@
 // Giao diện công khai của module ai-gateway (CLAUDE.md §5.2: mọi lời gọi AI đi qua AiGatewayService)
 export { AiGatewayModule } from './core/ai-gateway.module.js';
 export { AiGatewayService } from './core/ai-gateway.service.js';
-export { GuardrailsService, EXAM_LOCK_KEY } from './core/guardrails.service.js';
+export { GuardrailsService, EXAM_LOCK_KEY, type GuardDecision } from './core/guardrails.service.js';
+export { localGuard, redactPii, refusalCodeOf, foldText, type GuardCategory, type LocalGuardResult } from './core/guard-rules.js';
+export { createJsonFieldStreamer, type JsonFieldStreamer } from './core/json-field-stream.js';
 export { ExplanationCacheService } from './core/explanation-cache.service.js';
 export { TaskRegistry, bucket } from './core/task-registry.js';
 export { ModelRouter, type RouteCandidate } from './core/model-router.js';
@@ -18,3 +20,4 @@ export { VercelProvider } from './providers/vercel.provider.js';
 export { AiTaskFailedError, type RunTaskInput, type RunTaskResult, type ResolvedTask, type ModelProviderAdapter, type ProviderCallOptions, type ProviderResult } from './core/types.js';
 export { AiFeaturesModule } from './features/ai-features.module.js';
 export { ExplainService } from './features/explain.service.js';
+export { wrapUserInput, wrapData } from './core/prompt-renderer.js';

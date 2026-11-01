@@ -46,8 +46,9 @@ export class Conflict extends AppError {
  * `details.feature`/`details.reset_at` ở mức trên theo quy ước chung của OpenAPI (info.description).
  */
 export class QuotaExceeded extends AppError {
-  constructor(details: { feature: string; period: string; limit: number; used: number; remaining: number; resets_at: string; reset_at: string }) {
-    super('quota_exceeded', 'Quota exceeded', HttpStatus.TOO_MANY_REQUESTS, { quota: details, feature: details.feature, reset_at: details.resets_at, upgrade: true });
+  /** `extra` (S6) gộp vào details.quota – vd `{ scope: 'thread', thread_id }` cho giới hạn lượt/hội thoại gia sư */
+  constructor(details: { feature: string; period: string; limit: number; used: number; remaining: number; resets_at: string; reset_at: string }, extra?: Record<string, unknown>) {
+    super('quota_exceeded', 'Quota exceeded', HttpStatus.TOO_MANY_REQUESTS, { quota: { ...details, ...(extra ?? {}) }, feature: details.feature, reset_at: details.resets_at, upgrade: true });
   }
 }
 export class InsufficientCredits extends AppError {

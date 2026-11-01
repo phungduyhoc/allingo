@@ -1,5 +1,6 @@
 import type { AiProvider, AiTaskCode } from '@allingo/schemas';
 import type { ModelProviderAdapter, ProviderCallOptions, ProviderResult, ProviderStreamChunk } from '../core/types.js';
+import { foldText, localGuard, redactPii } from '../core/guard-rules.js';
 
 /**
  * MockProvider: sinh đầu ra HỢP LỆ theo Zod cho 14 task_code mà không gọi model (AI_PROVIDER=mock hoặc thiếu khoá).
@@ -98,15 +99,19 @@ export function buildMock(taskCode: AiTaskCode, user: string): unknown {
       };
     }
     case 'guard_classify': {
-      const text = (user.split('<user_input>')[1] ?? '').split('</user_input>')[0]?.toLowerCase() ?? '';
-      const injection = /ignore (all |the )?(previous|above) instructions|bỏ qua (mọi |các )?hướng dẫn|system prompt|you are now/.test(text);
-      const leak = /(đáp án|answer key|answers?) (của |for )?(đề|bài|test) (đang|hiện)|give me (all )?the answers|cho (tôi|em) đáp án/.test(text) && v.exam_mode === 'true';
-      const offTopic = /bitcoin|crypto|chứng khoán|cá cược/.test(text);
-      const category = injection ? 'injection' : leak ? 'answer_leak' : offTopic ? 'off_topic' : 'ok';
-      return { allowed: category === 'ok', category, reason: category === 'ok' ? 'Nội dung học tập hợp lệ (mock)' : `Phát hiện ${category} (mock)`, redacted_text: null };
+      // Mock guard: luật cục bộ (EN/VI có/không dấu) + mẫu ngoài phạm vi + PII còn sót; model thật phân loại ngữ nghĩa
+      const raw = userInputOf(user).trim();
+      const folded = foldText(raw);
+      const local = localGuard(raw);
+      const leakInExam = v.exam_mode === 'true' && /(dap an|answer key|answers?|goi y|hint)/.test(folded);
+      const offTopic = /\b(bitcoin|crypto|chung khoan|ca cuoc|xo so|stock market|write (me )?(a |some )?(python|javascript|code)|viet code|lap trinh)\b/.test(folded);
+      const pii = redactPii(raw);
+      const category = local.category !== 'ok' ? local.category : leakInExam ? 'answer_leak' : offTopic ? 'off_topic' : pii.redacted ? 'pii' : 'ok';
+      return { allowed: category === 'ok', category, reason: category === 'ok' ? 'Nội dung học tập hợp lệ (mock)' : `Phát hiện ${category} (mock)`, redacted_text: category === 'pii' ? pii.text : null };
     }
     case 'tutor_chat': {
-      const msg = (v.message ?? userInputOf(user)).trim();
+      // Tin hiện tại = khối <user_input> CUỐI (lượt user trong lịch sử cũng được bọc <user_input> – S6)
+      const msg = (v.message ?? (user.split('<user_input>').at(-1) ?? '').split('</user_input>')[0] ?? '').trim();
       return {
         reply_markdown: `Câu hỏi của bạn: "${msg.slice(0, 120)}". Đây là câu trả lời mẫu từ gia sư AI (mock). Hãy xem lại dấu hiệu trong đề và thử giải thích lý do bạn chọn phương án đó.`,
         actions: [],

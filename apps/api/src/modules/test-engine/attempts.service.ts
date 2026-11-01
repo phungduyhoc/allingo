@@ -41,8 +41,10 @@ import { encodeCursor, decodeCursor } from '../../shared/http/cursor.js';
 import { getLogger } from '../../shared/telemetry/logger.js';
 import { CatalogQueryService, SearchService, type LoadedQuestion, type PracticeHistory } from '../catalog/index.js';
 import { EntitlementService, QuotaService } from '../billing/index.js';
-import { AiGatewayService, EXAM_LOCK_KEY, ExplanationCacheService } from '../ai-gateway/index.js';
+import { AiGatewayService, ExplanationCacheService } from '../ai-gateway/index.js';
 import { EnrollmentsService, UsersService } from '../iam/index.js';
+import { EXAM_LOCK_KEY } from '../../shared/exam/exam-mode.js';
+import { NotesService } from './notes.service.js';
 
 const { learnAttempts, learnAttemptAnswers, catalogTestSets } = schema;
 type AttemptRow = typeof learnAttempts.$inferSelect;
@@ -77,6 +79,7 @@ export class AttemptsService {
     private readonly enrollments: EnrollmentsService,
     private readonly users: UsersService,
     private readonly gateway: AiGatewayService,
+    private readonly notes: NotesService,
   ) {}
 
   // ------------------------------------------------------------------ tạo attempt
@@ -576,6 +579,8 @@ export class AttemptsService {
     const transcripts: Map<string, TranscriptHighlight> = await this.catalog.transcripts(loaded);
     // Cache giải thích chỉ hợp lệ với phiên bản prompt explain_mcq đang phục vụ người dùng (S5 – A57)
     const explainVersion = await this.gateway.currentPromptVersionId('explain_mcq', row.programCode, userId);
+    // Ghi chú của người học theo câu (S6 – ReviewItem.note)
+    const notes = await this.notes.latestByQuestion(userId, ordered.map((x) => x.o.question_id));
     const items = [];
     for (let i = 0; i < ordered.length; i++) {
       const { o, q } = ordered[i]!;
@@ -602,6 +607,7 @@ export class AttemptsService {
         community_correct_rate: q.exposure_count > 0 ? Math.round((q.correct_count / q.exposure_count) * 1000) / 10 : null,
         community_avg_time_ms: q.avg_time_ms,
         audio_plays: draft.audio_plays[o.question_id] ?? 0,
+        note: notes.get(o.question_id) ?? null,
       });
     }
     return { attempt_id: attemptId, items };

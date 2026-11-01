@@ -126,6 +126,16 @@ export const envSchema = z.object({
   JOBS_INLINE: bool(false),
   // Bảo vệ GET /v1/metrics (Prometheus): Bearer METRICS_TOKEN; trống → dùng INTERNAL_API_TOKEN (ADR-0026)
   METRICS_TOKEN: z.string().optional(),
+  // Sprint 6 – gia sư: ngân sách token (ước lượng ký tự/4) cho ngữ cảnh + lịch sử của tutor_chat
+  AI_TUTOR_CONTEXT_TOKENS: z.coerce.number().int().min(300).max(16_000).default(1800),
+
+  // Sprint 6 – Web Push (VAPID). Trống → push tắt (POST /me/push-subscriptions 503). Sinh khoá dev: pnpm --filter @allingo/api push:vapid
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().default('mailto:dev@allingo.vn'),
+  // auto: web-push khi có khoá VAPID; memory: sender giả trong process (test/dev không có trình duyệt nhận)
+  PUSH_SENDER: z.enum(['auto', 'webpush', 'memory']).default('auto'),
+  PUSH_TTL_SECONDS: z.coerce.number().int().min(0).max(2_419_200).default(3600),
 
   SPEECH_PROVIDER: z.enum(['mock', 'azure']).default('mock'),
   AZURE_SPEECH_KEY: z.string().optional(),

@@ -15,6 +15,7 @@ import { AuthGuard } from './shared/auth/auth.guard.js';
 import { AppExceptionFilter } from './shared/http/exception.filter.js';
 import { HealthController } from './shared/http/health.controller.js';
 import { RealtimeModule } from './shared/realtime/realtime.gateway.js';
+import { ExamModeModule } from './shared/exam/exam-mode.js';
 import { IamModule } from './modules/iam/index.js';
 import { CatalogModule } from './modules/catalog/index.js';
 import { BillingModule } from './modules/billing/index.js';
@@ -41,6 +42,7 @@ import { AdminModule } from './modules/admin/index.js';
     EventsModule,
     NotifyModule,
     SharedAuthModule,
+    ExamModeModule,
     RealtimeModule,
     IamModule,
     CatalogModule,

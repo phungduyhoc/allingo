@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import type { FeatureCode } from '@allingo/schemas';
+import { SCOPED_QUOTA_FEATURES, type FeatureCode } from '@allingo/schemas';
 import { CLOCK, type Clock } from '../../shared/clock/clock.module.js';
 import { DbService } from '../../shared/db/db.module.js';
 import { RedisService } from '../../shared/cache/redis.module.js';
@@ -129,6 +129,7 @@ export class QuotaService {
    * Tiêu `amount` đơn vị quota. Vượt hạn → QuotaExceeded (429). Trả trạng thái sau khi tiêu (null = không giới hạn).
    */
   async consume(userId: string, planKind: PlanKind, feature: FeatureCode, amount = 1): Promise<QuotaStatus | null> {
+    if ((SCOPED_QUOTA_FEATURES as readonly string[]).includes(feature)) throw new Error(`${feature} is a scoped quota – count it in the owning table`);
     const lim = await this.limitFor(planKind, feature);
     if (!lim) return null;
     const now = this.now();
@@ -185,7 +186,8 @@ export class QuotaService {
 
   /** Trạng thái các quota áp dụng cho gói (GET /me/entitlements – UI hiển thị "còn N lượt") */
   async statusFor(userId: string, planKind: PlanKind): Promise<QuotaStatus[]> {
-    const rows = (await this.limits()).filter((r) => r.planKind === planKind);
+    // Quota theo phạm vi (vd lượt/thread gia sư) đếm ở bảng nghiệp vụ – không liệt kê ở đây (S6)
+    const rows = (await this.limits()).filter((r) => r.planKind === planKind && !(SCOPED_QUOTA_FEATURES as readonly string[]).includes(r.feature));
     const now = this.now();
     return Promise.all(
       rows.map(async (r) => {

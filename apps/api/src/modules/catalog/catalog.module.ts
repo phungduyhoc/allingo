@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { AiGatewayModule } from '../ai-gateway/core/ai-gateway.module.js';
 import { BillingModule } from '../billing/index.js';
 import { IamModule } from '../iam/index.js';
+import { SpeechModule } from '../speech/index.js';
+import { DictionaryService } from './dictionary.service.js';
 import { AdminContentController } from './admin-content.controller.js';
 import { AdminTestSetsController } from './admin-test-sets.controller.js';
 import { CatalogController } from './catalog.controller.js';
@@ -15,9 +17,9 @@ import { MiniTestService } from './mini-test.service.js';
 import { SearchService } from './search/search.service.js';
 
 @Module({
-  imports: [BillingModule, AiGatewayModule, IamModule],
+  imports: [BillingModule, AiGatewayModule, IamModule, SpeechModule],
   controllers: [CatalogController, InternalContentController, AdminContentController, AdminTestSetsController],
-  providers: [CatalogQueryService, ContentPublishService, ContentWorkflowService, ContentAiCheckService, ContentGenerationService, SearchService, InternalTokenGuardFactory, MiniTestService],
-  exports: [CatalogQueryService, ContentPublishService, ContentWorkflowService, ContentGenerationService, SearchService, MiniTestService],
+  providers: [CatalogQueryService, ContentPublishService, ContentWorkflowService, ContentAiCheckService, ContentGenerationService, SearchService, InternalTokenGuardFactory, MiniTestService, DictionaryService],
+  exports: [CatalogQueryService, ContentPublishService, ContentWorkflowService, ContentGenerationService, SearchService, MiniTestService, DictionaryService],
 })
 export class CatalogModule {}

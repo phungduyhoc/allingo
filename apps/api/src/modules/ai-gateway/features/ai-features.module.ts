@@ -6,13 +6,12 @@ import { AiGatewayModule } from '../core/ai-gateway.module.js';
 import { AiController } from './ai.controller.js';
 import { ExplainService } from './explain.service.js';
 import { FeedbackService } from './feedback.service.js';
-import { ThreadsService } from './threads.service.js';
 
-/** Endpoint /ai/* (explain, tutor chat, feedback) – tách khỏi lõi để tránh phụ thuộc vòng với catalog */
+/** Endpoint /ai/explain, /ai/feedback – tách khỏi lõi để tránh phụ thuộc vòng với catalog. Gia sư /ai/threads* ở module learning (S6 – cần ngữ cảnh bài làm). */
 @Module({
   imports: [AiGatewayModule, CatalogModule, BillingModule, IamModule],
   controllers: [AiController],
-  providers: [ExplainService, ThreadsService, FeedbackService],
+  providers: [ExplainService, FeedbackService],
   exports: [ExplainService],
 })
 export class AiFeaturesModule {}

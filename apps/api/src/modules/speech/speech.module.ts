@@ -8,6 +8,7 @@ import { AzureSpeechProvider } from './providers/azure-speech.provider.js';
 import { MockSpeechProvider } from './providers/mock-speech.provider.js';
 import { SPEECH_PROVIDER, type SpeechProvider } from './speech-provider.js';
 import { TtsService } from './tts.service.js';
+import { TtsController } from './tts.controller.js';
 
 /**
  * Chọn SpeechProvider: SPEECH_PROVIDER=azure + AZURE_SPEECH_KEY/REGION → Azure REST; còn lại mock.
@@ -24,7 +25,7 @@ export function createSpeechProvider(env: Env): SpeechProvider {
 
 /** Module speech (ADR-0008, ADR-0025): SpeechProvider (TTS, Pronunciation Assessment), TTS cache, pipeline media */
 @Module({
-  controllers: [InternalMediaController],
+  controllers: [InternalMediaController, TtsController],
   providers: [{ provide: SPEECH_PROVIDER, inject: [ENV], useFactory: createSpeechProvider }, MediaProcessorService, MediaAssetsService, TtsService, SpeechInternalTokenGuard],
   exports: [SPEECH_PROVIDER, MediaProcessorService, MediaAssetsService, TtsService],
 })
