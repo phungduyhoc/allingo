@@ -18,6 +18,7 @@ import {
   real,
   pgPolicy,
   primaryKey,
+  check,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { ScoreBreakdown, AttemptDraftState } from '@allingo/schemas';
@@ -198,6 +199,9 @@ export const learnPlanTasks = learn.table(
     resultRef: jsonb('result_ref'),
   },
   (table) => [
+    index('ix_plan_tasks_pending_due')
+      .using('btree', table.dueDate.asc().nullsLast().op('date_ops'))
+      .where(sql`(status = 'pending'::learn.plan_task_status)`),
     index('ix_plan_tasks_week_due').using(
       'btree',
       table.planWeekId.asc().nullsLast().op('date_ops'),
@@ -208,6 +212,57 @@ export const learnPlanTasks = learn.table(
       foreignColumns: [learnPlanWeeks.id],
       name: 'plan_tasks_plan_week_id_fkey',
     }).onDelete('cascade'),
+  ],
+);
+
+export const learnPlanAdjustments = learn.table(
+  'plan_adjustments',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    planId: uuid('plan_id').notNull(),
+    planWeekId: uuid('plan_week_id'),
+    userId: uuid('user_id').notNull(),
+    source: text().notNull(),
+    status: text().default('pending').notNull(),
+    input: jsonb().default({}).notNull(),
+    proposal: jsonb(),
+    result: jsonb(),
+    aiTaskId: uuid('ai_task_id'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    appliedAt: timestamp('applied_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [
+    index('ix_plan_adjustments_plan').using(
+      'btree',
+      table.planId.asc().nullsLast().op('uuid_ops'),
+      table.createdAt.desc().nullsFirst().op('timestamptz_ops'),
+    ),
+    index('ix_plan_adjustments_user').using(
+      'btree',
+      table.userId.asc().nullsLast().op('uuid_ops'),
+      table.createdAt.desc().nullsFirst().op('uuid_ops'),
+    ),
+    foreignKey({
+      columns: [table.planId],
+      foreignColumns: [learnStudyPlans.id],
+      name: 'plan_adjustments_plan_id_fkey',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.planWeekId],
+      foreignColumns: [learnPlanWeeks.id],
+      name: 'plan_adjustments_plan_week_id_fkey',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [iamUsers.id],
+      name: 'plan_adjustments_user_id_fkey',
+    }).onDelete('cascade'),
+    check('plan_adjustments_source_check', sql`source = ANY (ARRAY['checkin'::text, 'instruction'::text])`),
+    check(
+      'plan_adjustments_status_check',
+      sql`status = ANY (ARRAY['pending'::text, 'ready'::text, 'rejected'::text, 'needs_clarification'::text, 'applied'::text, 'expired'::text, 'failed'::text, 'superseded'::text])`,
+    ),
   ],
 );
 

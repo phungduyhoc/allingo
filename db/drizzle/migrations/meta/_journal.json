@@ -36,6 +36,13 @@
       "when": 1793793600000,
       "tag": "0005_s8_billing_growth",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793880000000,
+      "tag": "0006_s9_learning_plan",
+      "breakpoints": true
     }
   ]
 }

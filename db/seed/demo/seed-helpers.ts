@@ -70,7 +70,7 @@ export interface SeedItem {
 /** Kiểm tra cấu trúc bộ đề bằng cùng hàm API dùng khi phát hành; sai → dừng seed */
 export function assertStructure(
   specs: readonly SectionSpecRow[],
-  kind: 'full' | 'part_drill' | 'mini',
+  kind: 'full' | 'part_drill' | 'mini' | 'diagnostic',
   code: string,
   items: readonly SeedItem[],
 ): void {
@@ -185,7 +185,7 @@ async function linkSubskill(db: Db, ctx: SeedContext, questionId: string, subski
 export interface SeedTestSetInput {
   code: string;
   title: { vi: string; en: string };
-  kind: 'full' | 'part_drill' | 'mini';
+  kind: 'full' | 'part_drill' | 'mini' | 'diagnostic';
   durationSec: number;
   items: readonly SeedItem[];
   questionIdByKey: ReadonlyMap<string, string>;

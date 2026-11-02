@@ -196,7 +196,8 @@ const FLAGS: Array<{ key: string; enabled: boolean; rules?: Record<string, unkno
   // S8: referral bật mặc định cho DB mới (DB đã có giữ giá trị – bật bằng PUT /admin/flags/ff.growth.referral)
   { key: 'ff.growth.referral', enabled: true, rules: REFERRAL_FLAG_RULES },
   { key: 'ff.growth.beta_gate', enabled: false },
-  { key: 'ff.learning.study_plan', enabled: false },
+  // S9: lộ trình bật mặc định cho DB mới (DB đã có giữ giá trị – bật bằng PUT /admin/flags/ff.learning.study_plan, A145)
+  { key: 'ff.learning.study_plan', enabled: true },
   { key: 'ff.catalog.program.ielts', enabled: false },
   { key: 'ff.catalog.program.jlpt', enabled: false },
   { key: 'ff.catalog.program.hsk', enabled: false },

@@ -2,7 +2,7 @@
   "name": "@allingo/db",
   "version": "0.1.0",
   "private": true,
-  "description": "Lớp dữ liệu Allingo: Drizzle schema 6 schema PostgreSQL, migration, seed, kiểm tra lệch với docs/spec/allingo-schema.sql",
+  "description": "L\u1edbp d\u1eef li\u1ec7u Allingo: Drizzle schema 6 schema PostgreSQL, migration, seed, ki\u1ec3m tra l\u1ec7ch v\u1edbi docs/spec/allingo-schema.sql",
   "type": "module",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -48,7 +48,8 @@
     "postgres": "^3.4.7",
     "yaml": "^2.8.1",
     "zod": "^4.6.7",
-    "argon2": "^0.45.1"
+    "argon2": "^0.45.1",
+    "@allingo/scoring": "workspace:*"
   },
   "devDependencies": {
     "@allingo/config": "workspace:*",
