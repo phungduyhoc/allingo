@@ -7,6 +7,7 @@ export * from './attempt.js';
 export * from './media.js';
 export * from './learning-tools.js';
 export * from './billing.js';
+export * from './growth.js';
 
 // ----------------------------------------------------------------------------- Auth / Me
 export const registerInputSchema = z.object({

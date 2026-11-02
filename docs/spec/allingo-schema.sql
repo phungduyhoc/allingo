@@ -48,7 +48,8 @@ CREATE TABLE iam.users (
   birth_year      smallint,
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now(),
-  deleted_at      timestamptz
+  deleted_at      timestamptz,
+  referral_code   text UNIQUE                          -- v1.1 – Sprint 8: mã giới thiệu của người dùng (cấp lười khi GET /me/referral)
 );
 CREATE TRIGGER trg_users_updated BEFORE UPDATE ON iam.users FOR EACH ROW EXECUTE FUNCTION ops.set_updated_at();
 
@@ -132,9 +133,15 @@ CREATE TABLE iam.referrals (
   ip                  inet,
   credited_join_at    timestamptz,
   credited_upgrade_at timestamptz,
-  created_at          timestamptz NOT NULL DEFAULT now()
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  blocked_reason      text,                             -- v1.1 – Sprint 8: self_referral | duplicate_device | duplicate_ip (không thưởng)
+  metadata            jsonb NOT NULL DEFAULT '{}',      -- v1.1 – Sprint 8: utm, lý do bỏ qua thưởng theo mốc, ledger id
+  started_at          timestamptz,                      -- v1.1 – Sprint 8: attempt.graded đầu tiên của người được giới thiệu
+  upgraded_at         timestamptz                       -- v1.1 – Sprint 8: order.paid gói Pro đầu tiên
 );
 CREATE INDEX ix_referrals_referrer ON iam.referrals(referrer_user_id);
+CREATE INDEX ix_referrals_fingerprint ON iam.referrals(device_fingerprint, created_at) WHERE device_fingerprint IS NOT NULL;  -- v1.1 – Sprint 8: chống lạm dụng
+CREATE INDEX ix_referrals_ip ON iam.referrals(ip, created_at) WHERE ip IS NOT NULL;  -- v1.1 – Sprint 8
 
 CREATE TABLE iam.consents (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1080,7 +1087,7 @@ CREATE INDEX ix_prices_plan_valid ON billing.prices(plan_id, valid_from, valid_t
 CREATE TABLE billing.promotions (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   code            text NOT NULL UNIQUE,
-  kind            text NOT NULL,                        -- percent | amount
+  kind            text NOT NULL,                        -- v1.1 – Sprint 8: percent | fixed | credit_bonus | trial_days (amount cũ → fixed)
   value           numeric(14,2) NOT NULL,
   plan_ids        uuid[],
   valid_from      timestamptz NOT NULL,
@@ -1088,8 +1095,15 @@ CREATE TABLE billing.promotions (
   max_uses        integer,
   used_count      integer NOT NULL DEFAULT 0,
   per_user_limit  smallint NOT NULL DEFAULT 1,
-  is_active       boolean NOT NULL DEFAULT true
+  is_active       boolean NOT NULL DEFAULT true,
+  conditions      jsonb NOT NULL DEFAULT '{}',          -- v1.1 – Sprint 8: {program_codes[], plan_kinds[], new_users_only, new_user_max_days, min_subtotal, trial_plan_code, credit_valid_days}
+  stackable       boolean NOT NULL DEFAULT false,       -- v1.1 – Sprint 8: luôn false (một mã/đơn, không cộng dồn)
+  name            jsonb,                                -- v1.1 – Sprint 8: tên chiến dịch {vi,en}
+  created_at      timestamptz NOT NULL DEFAULT now(),   -- v1.1 – Sprint 8
+  updated_at      timestamptz NOT NULL DEFAULT now(),   -- v1.1 – Sprint 8
+  CONSTRAINT promotions_kind_check CHECK (kind IN ('percent','fixed','credit_bonus','trial_days'))
 );
+CREATE TRIGGER trg_promotions_updated BEFORE UPDATE ON billing.promotions FOR EACH ROW EXECUTE FUNCTION ops.set_updated_at();  -- v1.1 – Sprint 8
 
 CREATE TABLE billing.orders (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1216,8 +1230,33 @@ CREATE TABLE billing.invoices (
   pdf_url     text,
   raw         jsonb,
   issued_at   timestamptz,
-  created_at  timestamptz NOT NULL DEFAULT now()
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  buyer        jsonb,                                   -- v1.1 – Sprint 8: ảnh chụp người mua lúc phát hành {type, name, email, tax_code, company, address}
+  cancelled_at timestamptz,                             -- v1.1 – Sprint 8: huỷ khi hoàn tiền
+  updated_at   timestamptz NOT NULL DEFAULT now()       -- v1.1 – Sprint 8
 );
+CREATE INDEX ix_invoices_status ON billing.invoices(status, created_at);  -- v1.1 – Sprint 8: job invoice.retry
+CREATE TRIGGER trg_invoices_updated BEFORE UPDATE ON billing.invoices FOR EACH ROW EXECUTE FUNCTION ops.set_updated_at();  -- v1.1 – Sprint 8
+
+-- v1.1 – Sprint 8 (migration 0005): lượt dùng khuyến mãi – giữ lượt khi tạo đơn, đã dùng khi thanh toán/đổi mã, nhả khi đơn hết hạn
+CREATE TABLE billing.promotion_redemptions (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  promotion_id    uuid NOT NULL REFERENCES billing.promotions(id),
+  user_id         uuid NOT NULL REFERENCES iam.users(id),
+  order_id        uuid UNIQUE REFERENCES billing.orders(id),   -- NULL = đổi mã không qua đơn (trial_days, credit_bonus)
+  subscription_id uuid REFERENCES billing.subscriptions(id),   -- trial_days: subscription trialing đã cấp
+  kind            text NOT NULL,                        -- percent | fixed | credit_bonus | trial_days
+  status          text NOT NULL DEFAULT 'reserved',     -- reserved | redeemed | released
+  discount        numeric(14,2) NOT NULL DEFAULT 0,
+  credits         integer NOT NULL DEFAULT 0,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  redeemed_at     timestamptz,
+  released_at     timestamptz,
+  CHECK (status IN ('reserved','redeemed','released'))
+);
+CREATE INDEX ix_promotion_redemptions_promo_user ON billing.promotion_redemptions(promotion_id, user_id, status);
+CREATE INDEX ix_promotion_redemptions_user ON billing.promotion_redemptions(user_id, created_at DESC);
+CREATE UNIQUE INDEX ux_promotion_redemptions_trial_once ON billing.promotion_redemptions(user_id) WHERE kind = 'trial_days' AND status = 'redeemed';
 
 CREATE TABLE billing.reconciliation_runs (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1286,13 +1325,16 @@ CREATE TABLE ops.notifications (
 );
 CREATE INDEX ix_notifications_user_status ON ops.notifications(user_id, status, scheduled_at DESC);
 CREATE INDEX ix_notifications_due ON ops.notifications(scheduled_at) WHERE status = 'scheduled';
+CREATE INDEX ix_notifications_dedupe ON ops.notifications(user_id, template_code, ((payload ->> 'dedupe_key'))) WHERE payload ? 'dedupe_key';  -- v1.1 – Sprint 8
 
 CREATE TABLE ops.notification_preferences (
   user_id     uuid PRIMARY KEY REFERENCES iam.users(id) ON DELETE CASCADE,
   channels    jsonb NOT NULL DEFAULT '{"email":true,"push":true,"zalo":false,"inapp":true}',
   quiet_hours jsonb NOT NULL DEFAULT '{"start":"22:00","end":"07:00"}',
   reminder_times text[] NOT NULL DEFAULT '{"20:00"}',
-  updated_at  timestamptz NOT NULL DEFAULT now()
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  -- v1.1 – Sprint 8: tuỳ chọn theo loại × kênh (marketing mặc định tắt email/push – cần đồng ý)
+  categories  jsonb NOT NULL DEFAULT '{"learning":{"email":true,"push":true,"inapp":true},"billing":{"email":true,"push":true,"inapp":true},"marketing":{"email":false,"push":false,"inapp":true}}'
 );
 
 -- v1.1 – Sprint 6 (migration 0004): đăng ký Web Push (VAPID) theo thiết bị; endpoint duy nhất toàn hệ thống

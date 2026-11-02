@@ -177,13 +177,24 @@ const BADGES = [
   { code: 'score_up_50', name: { vi: 'Tăng 50 điểm', en: '+50 points' }, rule: { score_delta: 50 } },
 ];
 
+/** Cấu hình referral mặc định (S8) – ghi vào `ff.growth.referral.rules.config`; API dùng REFERRAL_DEFAULTS khi thiếu */
+const REFERRAL_FLAG_RULES = {
+  config: {
+    rewards: { started: { referrer: 200, referee: 200 }, upgraded: { referrer: 500, referee: 500 } },
+    monthly_cap: 20,
+    abuse_window_hours: 24,
+    require_verified_email: true,
+  },
+};
+
 const FLAGS: Array<{ key: string; enabled: boolean; rules?: Record<string, unknown> }> = [
   { key: 'ff.ai.explain', enabled: true },
   { key: 'ff.ai.tutor', enabled: true },
   { key: 'ff.ai.diagnose', enabled: false },
   // S7: checkout bật mặc định cho DB mới (seed onConflictDoNothing – DB đã có giữ giá trị hiện tại); tắt bằng PUT /admin/flags
   { key: 'ff.billing.checkout', enabled: true },
-  { key: 'ff.growth.referral', enabled: false },
+  // S8: referral bật mặc định cho DB mới (DB đã có giữ giá trị – bật bằng PUT /admin/flags/ff.growth.referral)
+  { key: 'ff.growth.referral', enabled: true, rules: REFERRAL_FLAG_RULES },
   { key: 'ff.growth.beta_gate', enabled: false },
   { key: 'ff.learning.study_plan', enabled: false },
   { key: 'ff.catalog.program.ielts', enabled: false },
@@ -192,14 +203,80 @@ const FLAGS: Array<{ key: string; enabled: boolean; rules?: Record<string, unkno
 ];
 
 /**
- * Mã khuyến mãi cố định S7 (POST /promotions/validate, POST /orders). Chỉ validate điều kiện cơ bản; S8 làm đầy đủ.
- * `plans`: mã gói áp dụng (rỗng = mọi gói). Seed cập nhật định nghĩa nhưng KHÔNG đặt lại `used_count`.
+ * Mã khuyến mãi seed (S7 cố định + S8 đầy đủ – ADR-0030). `kind`: percent | fixed | credit_bonus | trial_days;
+ * `conditions`: program_codes, plan_kinds, new_users_only (+ new_user_max_days), min_subtotal, trial_plan_code, standalone,
+ * credit_valid_days. Không cộng dồn (stackable = false). `plans`: mã gói áp dụng (rỗng = mọi gói).
+ * Seed cập nhật định nghĩa nhưng KHÔNG đặt lại `used_count`.
  */
-export const PROMOTIONS: Array<{ code: string; kind: 'percent' | 'amount'; value: number; plans: string[]; validFrom: string; validTo: string; maxUses: number | null; perUserLimit: number }> = [
+export type PromotionSeed = {
+  code: string;
+  kind: 'percent' | 'fixed' | 'credit_bonus' | 'trial_days';
+  value: number;
+  plans: string[];
+  validFrom: string;
+  validTo: string;
+  maxUses: number | null;
+  perUserLimit: number;
+  conditions?: Record<string, unknown>;
+  name?: { vi: string; en: string };
+};
+export const PROMOTIONS: PromotionSeed[] = [
   { code: 'WELCOME10', kind: 'percent', value: 10, plans: [], validFrom: '2026-01-01T00:00:00+07:00', validTo: '2028-01-01T00:00:00+07:00', maxUses: 10_000, perUserLimit: 1 },
-  { code: 'TOEIC50K', kind: 'amount', value: 50_000, plans: ['toeic_pro_monthly', 'toeic_pro_yearly', 'toeic_pro_lifetime'], validFrom: '2026-01-01T00:00:00+07:00', validTo: '2028-01-01T00:00:00+07:00', maxUses: 1000, perUserLimit: 1 },
+  { code: 'TOEIC50K', kind: 'fixed', value: 50_000, plans: ['toeic_pro_monthly', 'toeic_pro_yearly', 'toeic_pro_lifetime'], validFrom: '2026-01-01T00:00:00+07:00', validTo: '2028-01-01T00:00:00+07:00', maxUses: 1000, perUserLimit: 1 },
   { code: 'YEARLY20', kind: 'percent', value: 20, plans: ['toeic_pro_yearly', 'ielts_pro_yearly', 'jlpt_pro_yearly', 'hsk_pro_yearly', 'combo_all_yearly'], validFrom: '2026-01-01T00:00:00+07:00', validTo: '2028-01-01T00:00:00+07:00', maxUses: null, perUserLimit: 2 },
   { code: 'EXPIRED2025', kind: 'percent', value: 30, plans: [], validFrom: '2025-01-01T00:00:00+07:00', validTo: '2026-01-01T00:00:00+07:00', maxUses: null, perUserLimit: 1 },
+  // S8: 20 % cho người dùng mới (tài khoản ≤ 30 ngày, chưa có đơn đã thanh toán), 1 lần/người, mọi gói trả phí trừ gói credit
+  {
+    code: 'WELCOME20',
+    kind: 'percent',
+    value: 20,
+    plans: [],
+    validFrom: '2026-01-01T00:00:00+07:00',
+    validTo: '2028-01-01T00:00:00+07:00',
+    maxUses: null,
+    perUserLimit: 1,
+    conditions: { new_users_only: true, new_user_max_days: 30, plan_kinds: ['monthly', 'yearly', 'lifetime', 'combo'] },
+    name: { vi: 'Chào bạn mới – giảm 20 %', en: 'Welcome – 20% off' },
+  },
+  // S8: dùng thử Pro 7 ngày (POST /promotions/redeem) – subscription trialing, một lần/người
+  {
+    code: 'PRO7DAY',
+    kind: 'trial_days',
+    value: 7,
+    plans: [],
+    validFrom: '2026-01-01T00:00:00+07:00',
+    validTo: '2028-01-01T00:00:00+07:00',
+    maxUses: null,
+    perUserLimit: 1,
+    conditions: { program_codes: ['toeic', 'ielts', 'jlpt', 'hsk'] },
+    name: { vi: 'Dùng thử Pro 7 ngày', en: '7-day Pro trial' },
+  },
+  // S8: tặng thêm 500 credit khi mua gói năm (cộng khi thanh toán, lô hết hạn sau 12 tháng)
+  {
+    code: 'BONUS500',
+    kind: 'credit_bonus',
+    value: 500,
+    plans: [],
+    validFrom: '2026-01-01T00:00:00+07:00',
+    validTo: '2028-01-01T00:00:00+07:00',
+    maxUses: 5000,
+    perUserLimit: 1,
+    conditions: { plan_kinds: ['yearly', 'combo'], credit_valid_days: 365 },
+    name: { vi: 'Tặng 500 credit cho gói năm', en: '500 bonus credits with yearly plans' },
+  },
+  // S8: mã quà tặng 200 credit không cần mua (POST /promotions/redeem)
+  {
+    code: 'GIFT200',
+    kind: 'credit_bonus',
+    value: 200,
+    plans: [],
+    validFrom: '2026-01-01T00:00:00+07:00',
+    validTo: '2028-01-01T00:00:00+07:00',
+    maxUses: 1000,
+    perUserLimit: 1,
+    conditions: { standalone: true, credit_valid_days: 90 },
+    name: { vi: 'Quà tặng 200 credit', en: '200 gift credits' },
+  },
 ];
 
 export async function seedBilling(db: Db): Promise<void> {
@@ -285,13 +362,16 @@ export async function seedBilling(db: Db): Promise<void> {
       maxUses: p.maxUses,
       perUserLimit: p.perUserLimit,
       isActive: true,
+      conditions: p.conditions ?? {},
+      name: p.name ?? null,
+      stackable: false,
     };
     await db
       .insert(billingPromotions)
       .values(values)
       .onConflictDoUpdate({
         target: billingPromotions.code,
-        set: { kind: values.kind, value: values.value, planIds: values.planIds, validFrom: values.validFrom, validTo: values.validTo, maxUses: values.maxUses, perUserLimit: values.perUserLimit },
+        set: { kind: values.kind, value: values.value, planIds: values.planIds, validFrom: values.validFrom, validTo: values.validTo, maxUses: values.maxUses, perUserLimit: values.perUserLimit, conditions: values.conditions, name: values.name, stackable: false },
       });
   }
 

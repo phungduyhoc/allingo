@@ -18,6 +18,7 @@ import {
   check,
   bigserial,
   primaryKey,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { LocalizedText } from '@allingo/schemas';
@@ -193,8 +194,47 @@ export const billingPromotions = billing.table(
     usedCount: integer('used_count').default(0).notNull(),
     perUserLimit: smallint('per_user_limit').default(1).notNull(),
     isActive: boolean('is_active').default(true).notNull(),
+    // v1.1 – Sprint 8 (migration 0005): điều kiện, không cộng dồn, tên chiến dịch
+    conditions: jsonb().default({}).notNull(),
+    stackable: boolean().default(false).notNull(),
+    name: jsonb().$type<LocalizedText>(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
   },
-  (table) => [unique('promotions_code_key').on(table.code)],
+  (table) => [
+    unique('promotions_code_key').on(table.code),
+    check('promotions_kind_check', sql`kind = ANY (ARRAY['percent'::text, 'fixed'::text, 'credit_bonus'::text, 'trial_days'::text])`),
+  ],
+);
+
+// v1.1 – Sprint 8 (migration 0005): lượt dùng khuyến mãi (giữ lượt khi tạo đơn / đã dùng / nhả)
+export const billingPromotionRedemptions = billing.table(
+  'promotion_redemptions',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    promotionId: uuid('promotion_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    orderId: uuid('order_id'),
+    subscriptionId: uuid('subscription_id'),
+    kind: text().notNull(),
+    status: text().default('reserved').notNull(),
+    discount: numeric({ precision: 14, scale: 2 }).default('0').notNull(),
+    credits: integer().default(0).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    redeemedAt: timestamp('redeemed_at', { withTimezone: true, mode: 'date' }),
+    releasedAt: timestamp('released_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [
+    index('ix_promotion_redemptions_promo_user').using('btree', table.promotionId.asc().nullsLast(), table.userId.asc().nullsLast(), table.status.asc().nullsLast()),
+    index('ix_promotion_redemptions_user').using('btree', table.userId.asc().nullsLast(), table.createdAt.desc().nullsFirst()),
+    uniqueIndex('ux_promotion_redemptions_trial_once').using('btree', table.userId.asc().nullsLast()).where(sql`((kind = 'trial_days'::text) AND (status = 'redeemed'::text))`),
+    foreignKey({ columns: [table.promotionId], foreignColumns: [billingPromotions.id], name: 'promotion_redemptions_promotion_id_fkey' }),
+    foreignKey({ columns: [table.userId], foreignColumns: [iamUsers.id], name: 'promotion_redemptions_user_id_fkey' }),
+    foreignKey({ columns: [table.orderId], foreignColumns: [billingOrders.id], name: 'promotion_redemptions_order_id_fkey' }),
+    foreignKey({ columns: [table.subscriptionId], foreignColumns: [billingSubscriptions.id], name: 'promotion_redemptions_subscription_id_fkey' }),
+    unique('promotion_redemptions_order_id_key').on(table.orderId),
+    check('promotion_redemptions_status_check', sql`status = ANY (ARRAY['reserved'::text, 'redeemed'::text, 'released'::text])`),
+  ],
 );
 
 export const billingPayments = billing.table(
@@ -385,8 +425,13 @@ export const billingInvoices = billing.table(
     raw: jsonb(),
     issuedAt: timestamp('issued_at', { withTimezone: true, mode: 'date' }),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    // v1.1 – Sprint 8 (migration 0005)
+    buyer: jsonb(),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true, mode: 'date' }),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
   },
   (table) => [
+    index('ix_invoices_status').using('btree', table.status.asc().nullsLast(), table.createdAt.asc().nullsLast()),
     foreignKey({
       columns: [table.orderId],
       foreignColumns: [billingOrders.id],

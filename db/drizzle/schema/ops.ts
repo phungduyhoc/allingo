@@ -26,6 +26,9 @@ export const opsNotifications = ops.table(
     index('ix_notifications_due')
       .using('btree', table.scheduledAt.asc().nullsLast().op('timestamptz_ops'))
       .where(sql`(status = 'scheduled'::text)`),
+    index('ix_notifications_dedupe')
+      .using('btree', table.userId.asc().nullsLast(), table.templateCode.asc().nullsLast(), sql`((payload ->> 'dedupe_key'::text))`)
+      .where(sql`(payload ? 'dedupe_key'::text)`),
     index('ix_notifications_user_status').using(
       'btree',
       table.userId.asc().nullsLast().op('timestamptz_ops'),
@@ -48,6 +51,10 @@ export const opsNotificationPreferences = ops.table(
     quietHours: jsonb('quiet_hours').default({ end: '07:00', start: '22:00' }).notNull(),
     reminderTimes: text('reminder_times').array().default(['20:00']).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    // v1.1 – Sprint 8 (migration 0005): tuỳ chọn theo loại × kênh
+    categories: jsonb()
+      .default({ learning: { email: true, push: true, inapp: true }, billing: { email: true, push: true, inapp: true }, marketing: { email: false, push: false, inapp: true } })
+      .notNull(),
   },
   (table) => [
     foreignKey({

@@ -55,8 +55,10 @@ export const iamUsers = iam.table(
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
     deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
+    // v1.1 – Sprint 8 (migration 0005): mã giới thiệu (cấp lười)
+    referralCode: text('referral_code'),
   },
-  (table) => [unique('users_email_key').on(table.email), unique('users_phone_key').on(table.phone)],
+  (table) => [unique('users_email_key').on(table.email), unique('users_phone_key').on(table.phone), unique('users_referral_code_key').on(table.referralCode)],
 );
 
 export const iamAuthIdentities = iam.table(
@@ -166,9 +168,16 @@ export const iamReferrals = iam.table(
     creditedJoinAt: timestamp('credited_join_at', { withTimezone: true, mode: 'date' }),
     creditedUpgradeAt: timestamp('credited_upgrade_at', { withTimezone: true, mode: 'date' }),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    // v1.1 – Sprint 8 (migration 0005): chống lạm dụng + mốc trạng thái
+    blockedReason: text('blocked_reason'),
+    metadata: jsonb().default({}).notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true, mode: 'date' }),
+    upgradedAt: timestamp('upgraded_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
     index('ix_referrals_referrer').using('btree', table.referrerUserId.asc().nullsLast().op('uuid_ops')),
+    index('ix_referrals_fingerprint').using('btree', table.deviceFingerprint.asc().nullsLast(), table.createdAt.asc().nullsLast()).where(sql`(device_fingerprint IS NOT NULL)`),
+    index('ix_referrals_ip').using('btree', table.ip.asc().nullsLast(), table.createdAt.asc().nullsLast()).where(sql`(ip IS NOT NULL)`),
     foreignKey({
       columns: [table.referrerUserId],
       foreignColumns: [iamUsers.id],

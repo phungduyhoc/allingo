@@ -131,6 +131,16 @@ export const DOMAIN_EVENTS = {
   /** S7: hết kỳ → hạ Free (growth thông báo) */
   SUBSCRIPTION_EXPIRED: 'subscription.expired',
   SUBSCRIPTION_CANCELLED: 'subscription.cancelled',
+  /** S8: dùng thử Pro (trial_days) – subscription `trialing` */
+  SUBSCRIPTION_TRIAL_STARTED: 'subscription.trial_started',
+  /** S8: mã khuyến mãi được dùng (đơn đã thanh toán hoặc đổi mã trial/credit) */
+  PROMOTION_REDEEMED: 'promotion.redeemed',
+  /** S8: hoá đơn điện tử phát hành / thất bại hết lượt thử (dead-letter) / huỷ khi hoàn tiền */
+  INVOICE_ISSUED: 'invoice.issued',
+  INVOICE_FAILED: 'invoice.failed',
+  INVOICE_CANCELLED: 'invoice.cancelled',
+  /** S8: thưởng referral (mỗi mốc started/upgraded) */
+  REFERRAL_REWARDED: 'referral.rewarded',
   CONTENT_PUBLISHED: 'content.published',
   CONTENT_RETIRED: 'content.retired',
 } as const;
@@ -155,6 +165,14 @@ export const JOB_NAMES = {
   CREDIT_GRANT_MONTHLY: 'credit.grant_monthly',
   CREDIT_EXPIRE: 'credit.expire',
   BILLING_RECONCILE: 'billing.reconcile',
+  /** S8 – Free cấp lại credit hằng tháng (idempotent theo (user, kỳ tháng VN)) */
+  CREDIT_GRANT_FREE_MONTHLY: 'credit.grant_free_monthly',
+  /** S8 – hoá đơn điện tử: phát hành sau order.paid, huỷ khi hoàn tiền, quét thử lại theo backoff */
+  INVOICE_ISSUE: 'invoice.issue',
+  INVOICE_CANCEL: 'invoice.cancel',
+  INVOICE_RETRY: 'invoice.retry',
+  /** S8 – gửi thông báo đã hẹn giờ (giờ yên lặng) */
+  NOTIFICATION_DISPATCH: 'notification.dispatch',
 } as const;
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
 

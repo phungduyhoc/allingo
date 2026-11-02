@@ -186,6 +186,18 @@ export type Note = z.infer<typeof noteSchema>;
 // ----------------------------------------------------------------------------- Thông báo & Web Push
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'HH:MM');
 export const NOTIFICATION_CHANNELS = ['email', 'push', 'zalo', 'sms', 'inapp'] as const;
+/** Loại thông báo người dùng tự bật/tắt (v1.1 – S8); `system` (cảnh báo vận hành) không cấu hình được */
+export const NOTIFICATION_CATEGORIES = ['learning', 'billing', 'marketing'] as const;
+export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
+/** Kênh giao thông báo của NotificationService (zalo/sms: GĐ4) */
+export const DELIVERY_CHANNELS = ['email', 'push', 'inapp'] as const;
+export type DeliveryChannel = (typeof DELIVERY_CHANNELS)[number];
+export const categoryChannelsSchema = z.object({ email: z.boolean(), push: z.boolean(), inapp: z.boolean() });
+export const notificationCategoriesSchema = z.object({ learning: categoryChannelsSchema, billing: categoryChannelsSchema, marketing: categoryChannelsSchema });
+export type NotificationCategories = z.infer<typeof notificationCategoriesSchema>;
+/** Giới hạn tần suất (không cấu hình bởi người dùng): ≤ 1 email marketing / 7 ngày, ≤ 2 push không giao dịch / ngày (giờ VN) */
+export const NOTIFICATION_FREQUENCY = { marketing_email_per_week: 1, push_per_day: 2 } as const;
+
 export const notificationPreferencesSchema = z.object({
   channels: z.partialRecord(z.enum(NOTIFICATION_CHANNELS), z.boolean()),
   quiet_hours: z.object({ start: hhmm, end: hhmm }),
@@ -194,12 +206,20 @@ export const notificationPreferencesSchema = z.object({
   updated_at: z.string().optional(),
   /** v1.1 – S6: số thiết bị đã đăng ký Web Push */
   push_subscriptions: z.number().int().optional(),
+  /** v1.1 – S8: bật/tắt theo loại × kênh; kênh tắt ở `channels` thắng. Email giao dịch (biên lai, hoá đơn) luôn gửi */
+  categories: notificationCategoriesSchema.optional(),
+  /** v1.1 – S8: giới hạn tần suất áp dụng (chỉ đọc) */
+  frequency: z.object({ marketing_email_per_week: z.number().int(), push_per_day: z.number().int() }).optional(),
+  /** v1.1 – S8: múi giờ của giờ yên lặng (chỉ đọc – luôn Asia/Ho_Chi_Minh) */
+  timezone: z.string().optional(),
 });
 export type NotificationPreferences = z.infer<typeof notificationPreferencesSchema>;
 export const notificationPreferencesPatchSchema = z.object({
   channels: z.partialRecord(z.enum(NOTIFICATION_CHANNELS), z.boolean()).optional(),
   quiet_hours: z.object({ start: hhmm, end: hhmm }).optional(),
   reminder_times: z.array(hhmm).max(5).optional(),
+  /** v1.1 – S8: cập nhật một phần theo loại/kênh */
+  categories: z.object({ learning: categoryChannelsSchema.partial(), billing: categoryChannelsSchema.partial(), marketing: categoryChannelsSchema.partial() }).partial().optional(),
 });
 export type NotificationPreferencesPatch = z.infer<typeof notificationPreferencesPatchSchema>;
 
@@ -233,7 +253,8 @@ export const PUSH_TEMPLATES = ['study_reminder', 'test'] as const;
 export const pushPayloadSchema = z.object({
   v: z.literal(1),
   notification_id: uuidSchema,
-  template_code: z.enum(PUSH_TEMPLATES),
+  /** S6: study_reminder | test; v1.1 – S8: mọi mã template của NotificationService (title/body đã dựng sẵn) */
+  template_code: z.string(),
   title: z.string().nullable(),
   body: z.string().nullable(),
   /** Đường dẫn tương đối trong web (mở khi bấm) */

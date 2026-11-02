@@ -50,12 +50,12 @@ afterAll(async () => {
 });
 
 describe('migration 0001', () => {
-  it('tạo đủ 6 schema và 98 bảng như docs/spec/allingo-schema.sql (v1.1 – S6: + ops.push_subscriptions)', async () => {
+  it('tạo đủ 6 schema và 99 bảng như docs/spec/allingo-schema.sql (v1.1 – S6: + ops.push_subscriptions; S8: + billing.promotion_redemptions)', async () => {
     const rows = await raw<{ n: string }[]>`
       select count(*)::text as n from pg_tables
       where schemaname in ('iam','catalog','learn','ai','billing','ops')
         and tablename !~ '_20[0-9]{4}$'`;
-    expect(Number(rows[0]?.n)).toBe(98);
+    expect(Number(rows[0]?.n)).toBe(99);
     const ext = await raw<{ extname: string }[]>`select extname from pg_extension`;
     const names = ext.map((e) => e.extname);
     expect(names).toEqual(expect.arrayContaining(['vector', 'citext', 'pg_trgm']));
