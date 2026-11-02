@@ -8,6 +8,7 @@ export * from './media.js';
 export * from './learning-tools.js';
 export * from './billing.js';
 export * from './growth.js';
+export * from './learning-plan.js';
 
 // ----------------------------------------------------------------------------- Auth / Me
 export const registerInputSchema = z.object({
@@ -405,9 +406,20 @@ export const statsSchema = z.object({
   by_section: z.record(z.string(), z.unknown()),
   by_question_type: z.record(z.string(), z.unknown()),
   weakest: z.array(z.string()),
-  streak: z.object({ current: z.number().int(), longest: z.number().int(), freeze_available: z.boolean() }),
-  xp: z.object({ total: z.number().int(), this_week: z.number().int() }),
+  /** v1.1 – S9: chuỗi theo múi giờ người học (`current` = 0 nếu đã đứt), `at_risk` = chưa học hôm nay, đóng băng Pro */
+  streak: z.object({
+    current: z.number().int(),
+    longest: z.number().int(),
+    freeze_available: z.boolean(),
+    at_risk: z.boolean().optional(),
+    last_active_date: z.string().nullable().optional(),
+    freezes_used: z.number().int().optional(),
+  }),
+  xp: z.object({ total: z.number().int(), this_week: z.number().int(), today: z.number().int().optional(), level: z.number().int().optional(), next_level_at: z.number().int().optional() }),
   minutes_this_week: z.number().int(),
+  /** v1.1 – S9 */
+  badges: z.object({ earned: z.number().int(), total: z.number().int(), latest: z.array(z.object({ code: z.string(), earned_at: z.string() })) }).optional(),
+  plan: z.object({ plan_id: z.string(), week_pct: z.number(), forecast: z.string(), days_to_exam: z.number().int().nullable() }).nullable().optional(),
 });
 export type Stats = z.infer<typeof statsSchema>;
 

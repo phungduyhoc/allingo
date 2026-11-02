@@ -39,7 +39,8 @@ export type GateCreditTask =
   | 'grade_writing_ielts'
   | 'grade_writing_toeic'
   | 'grade_speaking_ielts'
-  | 'grade_speaking_toeic';
+  | 'grade_speaking_toeic'
+  | 'plan_adjust';
 
 export interface FeatureGate {
   /** Quyền phải có (Free lấy từ `plans.features` của gói `free`, Pro từ `billing.v_active_entitlements`); null = ai cũng dùng được */
@@ -138,8 +139,21 @@ export const FEATURE_GATES = {
   study_plan: {
     entitlement: 'study_plan',
     quota: null,
-    endpoints: ['GET /me/plan – S9'],
-    note: 'Lộ trình thích ứng',
+    endpoints: ['POST /me/plan', 'POST /me/plan/regenerate', 'GET /me/plan (Free: chỉ tuần hiện tại)', 'POST /me/plan/checkin'],
+    note: 'Lộ trình thích ứng (S9) – Free & Pro; Free chỉ xem tuần hiện tại, full test 1 lần/4 tuần (Pro 2 tuần)',
+  },
+  plan_adjust: {
+    entitlement: 'study_plan',
+    quota: null,
+    creditTask: 'plan_adjust',
+    endpoints: ['POST /me/plan/adjust (câu lệnh tự nhiên)'],
+    note: 'Chỉnh lịch bằng ngôn ngữ tự nhiên (AI plan_adjust) – tính credit; điều chỉnh sau check-in tuần là tác vụ hệ thống, không tính credit (A137)',
+  },
+  streak_freeze: {
+    entitlement: 'streak_freeze',
+    quota: null,
+    endpoints: ['learning: tự dùng "đóng băng" khi lỡ 1 ngày (attempt.graded / hoạt động học) – GET /me/stats.streak.freeze_available'],
+    note: 'Đóng băng chuỗi ngày học – chỉ Pro, tối đa 1 lần / 7 ngày (A139)',
   },
   notes: {
     entitlement: null,

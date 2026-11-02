@@ -1,3 +1,4 @@
+import { XP_TABLE } from './xp.js';
 /**
  * Hằng số sản phẩm dùng chung API/web/CMS (không chứa giá – giá nằm trong billing.plans/prices seed).
  */
@@ -65,18 +66,12 @@ export const DEFAULT_QUOTAS: ReadonlyArray<{ plan_kind: 'free' | 'monthly' | 'ye
   { plan_kind: 'combo', feature: 'srs_new_cards', period: 'day', limit: 40 },
 ];
 
-/** Điểm XP theo hành động (learn.xp_events.kind) */
-export const XP_RULES = {
-  attempt_submitted: 20,
-  attempt_full_test_submitted: 100,
-  question_correct: 2,
-  lesson_completed: 30,
-  srs_review: 1,
-  streak_day: 10,
-  diagnostic_completed: 50,
-  explain_viewed: 0,
-} as const;
-export type XpKind = keyof typeof XP_RULES;
+/**
+ * Điểm XP theo hành động (learn.xp_events.kind) – S9: nguồn là `packages/config/xp.ts` (bundle như entitlements.ts);
+ * `XP_RULES` giữ tên cũ để tương thích (web mock, test-engine).
+ */
+export { XP_TABLE, XP_KINDS, attemptXp, levelForXp, type XpKind } from './xp.js';
+export const XP_RULES = XP_TABLE;
 
 /** Thời gian ân hạn nộp bài sau khi hết giờ (giây) */
 export const ATTEMPT_GRACE_SECONDS = 30;
@@ -143,6 +138,16 @@ export const DOMAIN_EVENTS = {
   REFERRAL_REWARDED: 'referral.rewarded',
   CONTENT_PUBLISHED: 'content.published',
   CONTENT_RETIRED: 'content.retired',
+  /** S9: lộ trình (PlanGenerator) – sinh/sinh lại, đề xuất điều chỉnh sẵn sàng, đã áp dụng; WS `plan.updated` */
+  PLAN_GENERATED: 'plan.generated',
+  PLAN_ADJUST_PROPOSED: 'plan.adjust_proposed',
+  PLAN_ADJUSTED: 'plan.adjusted',
+  /** S9: task lộ trình hoàn thành (tự động từ attempt.graded/lesson.completed hoặc người học đánh dấu) */
+  PLAN_TASK_COMPLETED: 'plan_task.completed',
+  /** S9: huy hiệu mới (rule engine) → growth gửi thông báo in-app */
+  BADGE_AWARDED: 'badge.awarded',
+  /** S9: bài học hoàn thành (producer ở sprint bài học; learning đã nghe để tự done task lesson/grammar) */
+  LESSON_COMPLETED: 'lesson.completed',
 } as const;
 export type DomainEvent = (typeof DOMAIN_EVENTS)[keyof typeof DOMAIN_EVENTS];
 
@@ -173,6 +178,14 @@ export const JOB_NAMES = {
   INVOICE_RETRY: 'invoice.retry',
   /** S8 – gửi thông báo đã hẹn giờ (giờ yên lặng) */
   NOTIFICATION_DISPATCH: 'notification.dispatch',
+  /** S9 – sinh lại lộ trình (POST /me/plan/regenerate → 202) */
+  PLAN_GENERATE: 'plan.generate',
+  /** S9 – plan_adjust (AI) sau check-in / câu lệnh tự nhiên → đề xuất có kiểm tra ràng buộc */
+  PLAN_ADJUST: 'plan.adjust',
+  /** S9 – task pending quá hạn 3 ngày (giờ người học) → expired; đề xuất hết hạn → expired */
+  PLAN_EXPIRE_TASKS: 'plan.expire_tasks',
+  /** S9 – nhắc học theo giờ ưa thích + nhắc chuỗi sắp mất 20:00 (giờ người học) */
+  STUDY_REMINDER: 'notify.study_reminder',
 } as const;
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
 

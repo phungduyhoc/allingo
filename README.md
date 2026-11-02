@@ -41,7 +41,8 @@ Definition of Done cho mỗi task: `CLAUDE.md` §8.
 apps/web        Next.js 16 App Router, next-intl, Tailwind 4, TanStack Query, PWA           → apps/web/README.md
 apps/api        NestJS 12 trên Fastify: iam, catalog, test-engine, learning, billing, ai-gateway… + worker BullMQ
 apps/cms        Payload CMS 3 (schema `cms`), phát hành sang catalog qua API nội bộ          → apps/cms/README.md
-packages/       schemas (Zod, nguồn sự thật kiểu), api-client (openapi-fetch + hooks), ui, i18n, scoring, fsrs, config
+packages/       schemas (Zod, nguồn sự thật kiểu), api-client (openapi-fetch + hooks), ui, i18n, scoring (quy đổi điểm, chẩn đoán thích ứng),
+                planner (PlanGenerator lộ trình thuần – S9, ADR-0032), fsrs, config (ESLint/TS + bảng gating entitlements.ts, XP xp.ts)
 db/             Drizzle schema 6 schema, migrations, seed core/demo, db:diff
 docs/           spec (DDL, OpenAPI, prompts, promptfoo), adr, prompts (master/sprint), ASSUMPTIONS, SPEC-ISSUES, HANDOFF, VERSIONS, LICENSES
 infra/          docker compose dev, terraform (khung), .github/workflows (CI: lint/typecheck/unit, integration+diff+build, e2e, security)

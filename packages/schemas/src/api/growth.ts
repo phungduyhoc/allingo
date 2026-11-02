@@ -20,6 +20,10 @@ export const NOTIFICATION_TEMPLATE_CODES = [
   'growth.referral_rewarded',
   'learning.study_reminder',
   'learning.weekly_summary',
+  /** S9 */
+  'learning.streak_at_risk',
+  'learning.badge_awarded',
+  'learning.plan_adjust_ready',
   'admin.invoice_failed',
 ] as const;
 export type NotificationTemplateCode = (typeof NOTIFICATION_TEMPLATE_CODES)[number];

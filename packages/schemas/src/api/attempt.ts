@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { diagnosticStateSchema } from './learning-plan.js';
 import { localizedTextSchema, programCodeSchema, uuidSchema } from '../common.js';
 import { answerInputSchema } from '../question/answer.js';
 import { questionTypeCodeSchema } from '../question/content.js';
@@ -97,6 +98,8 @@ export const attemptDraftStateSchema = z.object({
   audio_plays: z.record(z.string(), z.number().int().min(0)).default({}),
   answered_count: z.number().int().default(0),
   last_saved_at: z.string().nullable().default(null),
+  /** v1.1 – S9: trạng thái bài chẩn đoán thích ứng (mode = diagnostic) – câu đã phục vụ, mức, chuỗi đúng/sai */
+  adaptive: diagnosticStateSchema.nullable().optional(),
 });
 export type AttemptDraftState = z.infer<typeof attemptDraftStateSchema>;
 
