@@ -594,8 +594,12 @@ describe('S7 billing (integration)', () => {
       expect(detail.body).toMatchObject({ source: 'csv', matched_count: 19 });
       const q = await app.get(ReconciliationService).run({ provider: 'mock', for_date: d, source: 'query' }, null);
       expect(q).toMatchObject({ status: 'matched', matched_count: 20 });
+      // Danh sách sắp theo for_date giảm dần – DB test dùng lại tích luỹ lần chạy cũ với ngày ngẫu nhiên muộn hơn, nên chỉ kiểm thứ tự
+      // (trước S9: kiểm `some(id)` trong 5 dòng đầu → chập chờn)
       const list = await admin.call('GET', '/admin/billing/reconciliations?provider=mock&limit=5');
-      expect(list.body.some((r: { id: string }) => r.id === ok.body.id)).toBe(true);
+      expect(list.body.length).toBeGreaterThan(0);
+      const dates = (list.body as Array<{ for_date: string }>).map((r) => r.for_date);
+      expect([...dates].sort().reverse()).toEqual(dates);
       const orders = await admin.call('GET', `/admin/billing/orders?status=paid&provider=mock&limit=3`);
       expect(orders.body.data).toHaveLength(3);
       expect(orders.body.data[0].payments[0]).toHaveProperty('provider_txn_id');

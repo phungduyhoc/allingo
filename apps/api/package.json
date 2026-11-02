@@ -34,6 +34,7 @@
     "@ai-sdk/openai": "^4.0.106",
     "@allingo/db": "workspace:*",
     "@allingo/fsrs": "workspace:*",
+    "@allingo/planner": "workspace:*",
     "@allingo/schemas": "workspace:*",
     "@allingo/scoring": "workspace:*",
     "@aws-sdk/client-s3": "^3.1161.0",

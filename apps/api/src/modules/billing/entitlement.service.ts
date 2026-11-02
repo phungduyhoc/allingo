@@ -37,8 +37,9 @@ export class EntitlementService {
   async getContext(userId: string, program: string): Promise<EntitlementContext> {
     const cached = await this.redis.safe((r) => r.get(this.key(userId, program)));
     if (cached) {
-      const parsed = JSON.parse(cached) as { isPro: boolean; planKind: PlanKind; features: string[] };
-      return { userId, program, isPro: parsed.isPro, planKind: parsed.planKind, features: new Set(parsed.features) };
+      const parsed = JSON.parse(cached) as { isPro?: boolean; planKind?: PlanKind; features?: string[] };
+      // Bản cache thiếu planKind/features (định dạng cũ) → bỏ qua, tính lại (S9: tránh hạn mức theo phạm vi = null)
+      if (parsed.planKind && Array.isArray(parsed.features)) return { userId, program, isPro: !!parsed.isPro, planKind: parsed.planKind, features: new Set(parsed.features) };
     }
     const rows = await this.dbs.db
       .select({ feature: billingVActiveEntitlements.featureCode })

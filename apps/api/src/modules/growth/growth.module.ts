@@ -3,10 +3,13 @@ import { ENV, type Env } from '../../config/env.js';
 import { getLogger } from '../../shared/telemetry/logger.js';
 import { BillingModule } from '../billing/index.js';
 import { IamModule } from '../iam/index.js';
+import { LearningModule } from '../learning/index.js';
 import { AdminNotificationsController, MeNotificationsController, NotificationLinksController, PushPublicController } from './notifications.controller.js';
 import { NotificationsService } from './notifications.service.js';
 import { BillingNotificationsListener } from './billing-notifications.listener.js';
 import { GrowthJobsService } from './growth-jobs.service.js';
+import { LearningNotificationsListener } from './learning-notifications.listener.js';
+import { StudyRemindersService } from './study-reminders.service.js';
 import { NotificationService } from './notify/notification.service.js';
 import { MemoryPushSender, PUSH_SENDER, WebPushSender, type PushSender } from './push/push-sender.js';
 import { ReferralController } from './referral/referral.controller.js';
@@ -27,12 +30,13 @@ export function createPushSender(env: Env): PushSender | null {
 
 /**
  * growth (tầng 4): thông báo & Web Push (S6), NotificationService đa kênh + mẫu vi/en + tuỳ chọn theo loại + huỷ đăng ký ký HMAC,
- * thông báo billing/hoá đơn/dùng thử (S7→S8), referral (S8 – ADR-0030). Xem README.md.
+ * thông báo billing/hoá đơn/dùng thử (S7→S8), referral (S8 – ADR-0030); S9: thông báo huy hiệu/đề xuất lộ trình, nhắc học
+ * theo giờ người học + nhắc chuỗi 20:00 (job notify.study_reminder). Xem README.md.
  */
 @Module({
-  imports: [IamModule, BillingModule],
+  imports: [IamModule, BillingModule, LearningModule],
   controllers: [MeNotificationsController, PushPublicController, AdminNotificationsController, NotificationLinksController, ReferralController],
-  providers: [NotificationsService, NotificationService, BillingNotificationsListener, ReferralService, ReferralListener, GrowthJobsService, { provide: PUSH_SENDER, inject: [ENV], useFactory: createPushSender }],
-  exports: [NotificationsService, NotificationService, ReferralService, PUSH_SENDER],
+  providers: [NotificationsService, NotificationService, BillingNotificationsListener, ReferralService, ReferralListener, GrowthJobsService, LearningNotificationsListener, StudyRemindersService, { provide: PUSH_SENDER, inject: [ENV], useFactory: createPushSender }],
+  exports: [NotificationsService, NotificationService, ReferralService, StudyRemindersService, PUSH_SENDER],
 })
 export class GrowthModule {}

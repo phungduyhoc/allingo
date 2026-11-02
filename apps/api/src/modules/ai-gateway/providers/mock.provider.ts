@@ -77,6 +77,16 @@ const parseJson = <T>(s: string | undefined, fallback: T): T => {
   }
 };
 
+/** Số phút người học nói mình có (mock plan_adjust): ưu tiên "Tuần tới có thể học: N phút", rồi "chỉ N giờ|tiếng|phút", "only N hours|minutes" */
+export function mockAvailableMinutes(text: string): number | null {
+  const t = text.toLowerCase();
+  const avail = /(?:có thể học|available next week)[^0-9]{0,12}(\d+(?:[.,]\d+)?)\s*(phút|minutes?|giờ|tiếng|hours?|h)(?!\p{L})/u.exec(t);
+  const only = avail ?? /(?:chỉ(?: còn| có)?|only)\s*(\d+(?:[.,]\d+)?)\s*(phút|minutes?|giờ|tiếng|hours?|h)(?!\p{L})/u.exec(t);
+  if (!only) return null;
+  const n = Number(only[1]!.replace(',', '.'));
+  return Math.round(/^(phút|min)/.test(only[2]!) ? n : n * 60);
+}
+
 export function buildMock(taskCode: AiTaskCode, user: string): unknown {
   const v = extractVars(user);
   switch (taskCode) {
@@ -250,8 +260,18 @@ export function buildMock(taskCode: AiTaskCode, user: string): unknown {
       const sentences = parseJson<Array<{ index: number; text: string }> | string[]>(v.sentences, []);
       return { translations: sentences.map((s, i) => ({ index: typeof s === 'string' ? i : s.index, text: `(mock dịch) ${typeof s === 'string' ? s : s.text}`.slice(0, 600), needs_review: false })) };
     }
-    case 'plan_adjust':
-      return { summary: 'Giảm tải tuần tới 30% theo yêu cầu (mock).', operations: [{ op: 'reduce_load_week', task_id: null, from_date: null, to_date: null, minutes: 90, window: null, note: 'mock' }], needs_clarification: false, clarifying_question: null };
+    case 'plan_adjust': {
+      // Bám câu lệnh/check-in: "Tuần tới có thể học: N phút" | "chỉ N giờ/tiếng/phút" | "only N hours/minutes" → giảm tải tuần tới;
+      // không có con số → giữ nguyên (op none). Ngày đầu tuần đích lấy từ next_week_tasks (hoặc current_week_tasks).
+      const text = userInputOf(user);
+      const target = parseJson<Array<{ date?: string; est_minutes?: number; status?: string }>>(v.next_week_tasks, []);
+      const tasks = target.length ? target : parseJson<Array<{ date?: string; est_minutes?: number; status?: string }>>(v.current_week_tasks, []);
+      const minutes = mockAvailableMinutes(text);
+      const load = tasks.filter((t) => t.status !== 'skipped' && t.status !== 'expired').reduce((a, t) => a + (t.est_minutes ?? 0), 0);
+      const from = tasks.map((t) => t.date).filter((d): d is string => !!d).sort()[0] ?? null;
+      if (minutes !== null && minutes < load) return { summary: `Giảm tải tuần tới từ ${load} xuống tối đa ${minutes} phút theo yêu cầu (mock).`, operations: [{ op: 'reduce_load_week', task_id: null, from_date: from, to_date: null, minutes, window: null, note: 'mock' }], needs_clarification: false, clarifying_question: null };
+      return { summary: 'Giữ nguyên kế hoạch tuần tới (mock).', operations: [{ op: 'none', task_id: null, from_date: null, to_date: null, minutes: null, window: null, note: 'mock' }], needs_clarification: false, clarifying_question: null };
+    }
     default:
       return {};
   }

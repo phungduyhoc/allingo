@@ -70,9 +70,14 @@ export class FeatureGateService {
   }
 
   /** Giới hạn quota theo phạm vi (vd lượt/thread gia sư) cho gói hiện tại; null = không giới hạn */
-  async scopedLimit(planKind: EntitlementContext['planKind'], gate: GateKey): Promise<number | null> {
+  async scopedLimit(planKind: EntitlementContext['planKind'] | undefined, gate: GateKey): Promise<number | null> {
     const g = FEATURE_GATES[gate] as { scopedQuota?: FeatureCode };
     if (!g.scopedQuota) return null;
-    return (await this.quotas.limitFor(planKind, g.scopedQuota))?.limit ?? null;
+    const own = planKind ? await this.quotas.limitFor(planKind, g.scopedQuota) : null;
+    if (own) return own.limit;
+    // S9 (sửa lỗi turns.limit = null): gói không có dòng quota theo phạm vi (b2b_seat, credit_pack, ngữ cảnh cache cũ thiếu
+    // planKind…) KHÔNG được coi là không giới hạn – áp hạn mức của gói tương đương: gói trả phí → monthly, còn lại → free.
+    const fallback: EntitlementContext['planKind'] = planKind && planKind !== 'free' && planKind !== 'credit_pack' ? 'monthly' : 'free';
+    return (await this.quotas.limitFor(fallback, g.scopedQuota))?.limit ?? null;
   }
 }

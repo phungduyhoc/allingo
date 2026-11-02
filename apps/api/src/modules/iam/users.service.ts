@@ -183,6 +183,13 @@ export class UsersService implements OnModuleInit {
     return row!;
   }
 
+  /** S9 – múi giờ + ngôn ngữ của nhiều người dùng (nhắc học/chuỗi theo giờ người học; learning không đọc iam.users) */
+  async timezonesFor(userIds: string[]): Promise<Map<string, { timezone: string; uiLocale: string; status: string; isGuest: boolean }>> {
+    if (!userIds.length) return new Map();
+    const rows = await this.dbs.db.select({ id: iamUsers.id, timezone: iamUsers.timezone, uiLocale: iamUsers.uiLocale, status: iamUsers.status, isGuest: iamUsers.isGuest }).from(iamUsers).where(inArray(iamUsers.id, [...new Set(userIds)]));
+    return new Map(rows.map((r) => [r.id, { timezone: r.timezone, uiLocale: r.uiLocale, status: r.status, isGuest: r.isGuest }]));
+  }
+
   async update(userId: string, patch: Partial<Pick<UserRow, 'displayName' | 'avatarUrl' | 'uiLocale' | 'explainLocale' | 'timezone'>>): Promise<UserRow> {
     const [row] = await this.dbs.db
       .update(iamUsers)

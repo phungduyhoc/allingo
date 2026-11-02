@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import type { Enrollment, EnrollmentInput, ProgramCode } from '@allingo/schemas';
 import { DbService, type DbOrTx } from '../../shared/db/db.module.js';
@@ -50,6 +50,21 @@ export class EnrollmentsService {
     const existing = await this.get(userId, program);
     if (!existing) throw new NotFound('enrollment', program);
     return this.upsert(userId, { ...input, program });
+  }
+
+  /** S9 – ghi mức hiện tại ước tính (kết quả bài chẩn đoán) vào `current_level` (gộp với giá trị cũ, vd self_assessed) */
+  async setCurrentLevel(userId: string, program: ProgramCode, level: Record<string, unknown>, db: DbOrTx = this.dbs.db): Promise<void> {
+    const row = await this.ensure(userId, program, db);
+    await db
+      .update(learnEnrollments)
+      .set({ currentLevel: { ...((row.currentLevel) ?? {}), ...level }, updatedAt: new Date() })
+      .where(eq(learnEnrollments.id, row.id));
+  }
+
+  /** S9 – nhiều enrollment theo id (learning: người học của các lộ trình cần nhắc) */
+  async byIds(ids: string[]): Promise<Row[]> {
+    if (!ids.length) return [];
+    return this.dbs.db.select().from(learnEnrollments).where(inArray(learnEnrollments.id, [...new Set(ids)]));
   }
 
   async ensure(userId: string, program: ProgramCode, db: DbOrTx = this.dbs.db): Promise<Row> {

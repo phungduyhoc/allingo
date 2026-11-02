@@ -5,9 +5,10 @@ import { RedisService } from '../../shared/cache/redis.module.js';
 import { JobsService } from '../../shared/queue/jobs.service.js';
 import { getLogger } from '../../shared/telemetry/logger.js';
 import { NotificationService } from './notify/notification.service.js';
+import { StudyRemindersService } from './study-reminders.service.js';
 
 /**
- * Job growth (S8): `notification.dispatch` mỗi phút – giao thông báo đã hẹn giờ (giờ yên lặng). Đăng ký JobsService (hàng `notify`)
+ * Job growth (S8): `notification.dispatch` mỗi phút – giao thông báo đã hẹn giờ (giờ yên lặng); S9: `notify.study_reminder` cùng nhịp. Đăng ký JobsService (hàng `notify`)
  * + bộ lập lịch như billing (worker luôn; API khi JOBS_INLINE/BILLING_SCHEDULER_IN_API; không bao giờ ở APP_ENV=test),
  * khoá Redis theo nhịp chống chạy trùng giữa replica.
  */
@@ -22,6 +23,7 @@ export class GrowthJobsService implements OnModuleInit, OnApplicationBootstrap, 
     private readonly jobs: JobsService,
     private readonly redis: RedisService,
     private readonly notify: NotificationService,
+    private readonly reminders: StudyRemindersService,
   ) {}
 
   onModuleInit(): void {
@@ -50,6 +52,8 @@ export class GrowthJobsService implements OnModuleInit, OnApplicationBootstrap, 
       if (lock !== null && lock !== 'OK') return false;
       const r = await this.notify.dispatchDue(now);
       if (r.sent || r.failed) this.logger.info(r, 'notification.dispatch');
+      // S9: nhắc học theo giờ người học + nhắc chuỗi 20:00 (cùng nhịp phút, cùng khoá)
+      await this.reminders.run(now).catch((err: Error) => this.logger.error({ err: err.message.slice(0, 200) }, 'notify.study_reminder failed'));
       return true;
     } catch (err) {
       this.logger.error({ err: (err as Error).message.slice(0, 200) }, 'notification.dispatch failed');

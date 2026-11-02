@@ -23,6 +23,8 @@ export interface LoadedQuestion {
   passage: { id: string; kind: string; title: string | null; body: string | null; media_asset_id: string | null } | null;
   topic_code: string | null;
   subskill_codes: string[];
+  /** catalog.questions.difficulty_target (A2/B1/B2…) – S9: mức khó bài chẩn đoán thích ứng */
+  difficulty: string | null;
   exposure_count: number;
   correct_count: number;
   /** Thời gian trung bình cộng đồng (catalog.questions.avg_time_ms) – cập nhật khi chấm */
@@ -447,6 +449,7 @@ export class CatalogQueryService {
       passage: p ? { id: p.id, kind: p.kind, title: p.title ?? null, body: p.body ?? null, media_asset_id: p.mediaAssetId ?? null } : null,
       topic_code: topic,
       subskill_codes: subskills,
+      difficulty: q.difficultyTarget ?? null,
       exposure_count: q.exposureCount,
       correct_count: q.correctCount,
       avg_time_ms: q.avgTimeMs ?? null,
@@ -584,6 +587,59 @@ export class CatalogQueryService {
                            else ((q.avg_time_ms::bigint * q.exposure_count + v.t * v.n) / (q.exposure_count + v.n))::int end
       from (values ${values}) as v(id, n, c, t)
       where q.id = v.id`);
+  }
+
+  /**
+   * Nội dung có thật cho PlanGenerator (S9): section có câu đã phát hành (số câu), đề đã phát hành theo loại (full/mini/part_drill –
+   * không gồm diagnostic/topic_pack) kèm thời lượng & section, bài học đã phát hành, bộ từ vựng. Catalog không biết về lộ trình –
+   * learning ánh xạ sang `ContentInventory` của @allingo/planner.
+   */
+  async planContent(program: string) {
+    const sectionRows = await this.dbs.db.execute<{ id: string; code: string; skill: string; skill_id: string; name: LocalizedText; sort_order: number; published: number }>(sql`
+      select s.id, s.code, k.code as skill, k.id as skill_id, s.name, s.sort_order,
+             (select count(*)::int from catalog.questions q where q.section_id = s.id and q.status = 'published') as published
+      from catalog.sections s join catalog.skills k on k.id = s.skill_id
+      where s.program_code = ${program}
+      order by s.sort_order`);
+    const testSets = await this.dbs.db.execute<{ id: string; code: string; kind: string; title: LocalizedText; duration_sec: number | null; is_free: boolean; question_count: number; sections: string[] }>(sql`
+      select ts.id, ts.code, ts.kind, ts.title, ts.duration_sec, ts.is_free,
+             (select count(*)::int from catalog.test_set_items i where i.test_set_id = ts.id) as question_count,
+             coalesce((select array_agg(s.code order by tss.sort_order) from catalog.test_set_sections tss join catalog.sections s on s.id = tss.section_id where tss.test_set_id = ts.id), '{}') as sections
+      from catalog.test_sets ts
+      where ts.program_code = ${program} and ts.status = 'published' and ts.kind in ('full','mini','part_drill')
+      order by ts.code`);
+    const lessons = await this.dbs.db.execute<{ id: string; section_code: string | null; kind: string; title: LocalizedText; est_minutes: number | null }>(sql`
+      select l.id, s.code as section_code, l.kind, l.title, l.est_minutes
+      from catalog.lessons l left join catalog.sections s on s.id = l.section_id
+      where l.program_code = ${program} and l.status = 'published'
+      order by l.sort_order, l.id`);
+    const vocabLists = await this.dbs.db.execute<{ id: string; title: LocalizedText }>(sql`
+      select v.id, v.title from catalog.vocab_lists v where v.program_code = ${program} order by v.sort_order, v.id`);
+    return {
+      sections: [...sectionRows].map((r) => ({ id: r.id, code: r.code, skill: r.skill, skill_id: r.skill_id, name: r.name, sort_order: r.sort_order, published_questions: Number(r.published) })),
+      testSets: [...testSets].map((r) => ({ id: r.id, code: r.code, kind: r.kind as 'full' | 'mini' | 'part_drill', title: r.title, duration_sec: r.duration_sec, is_free: r.is_free, question_count: Number(r.question_count), sections: r.sections ?? [] })),
+      lessons: [...lessons].map((r) => ({ id: r.id, section_code: r.section_code, kind: r.kind as 'lesson' | 'grammar' | 'pronunciation' | 'strategy', title: r.title, est_minutes: r.est_minutes })),
+      vocabLists: [...vocabLists].map((r) => ({ id: r.id, title: r.title })),
+    };
+  }
+
+  /** Subskill của chương trình + kỹ năng + các section có câu đã phát hành đo subskill đó (S9: mastery → trọng số Part) */
+  async subskillSections(program: string): Promise<Map<string, { code: string; skill: string; sections: string[] }>> {
+    const rows = await this.dbs.db.execute<{ id: string; code: string; skill: string; sections: string[] | null }>(sql`
+      select ss.id, ss.code, k.code as skill,
+             (select array_agg(distinct s.code) from catalog.question_subskills qs
+                join catalog.questions q on q.id = qs.question_id and q.status = 'published'
+                join catalog.sections s on s.id = q.section_id
+               where qs.subskill_id = ss.id) as sections
+      from catalog.subskills ss join catalog.skills k on k.id = ss.skill_id
+      where ss.program_code = ${program}`);
+    return new Map([...rows].map((r) => [r.id, { code: r.code, skill: r.skill, sections: r.sections ?? [] }]));
+  }
+
+  /** id subskill theo mã (ghi mastery sau chẩn đoán) */
+  async subskillIdsByCode(program: string): Promise<Map<string, string>> {
+    const rows = await this.dbs.db.select({ id: catalogSubskills.id, code: catalogSubskills.code }).from(catalogSubskills).where(eq(catalogSubskills.programCode, program));
+    return new Map(rows.map((r) => [r.code, r.id]));
   }
 
   async requireTestSetPublished(id: string) {

@@ -9,3 +9,6 @@ export { renderNotification, decideDelivery, inQuietHours, quietHoursEnd, makeUn
 export { ReferralService, REFERRAL_FLAG } from './referral/referral.service.js';
 export { detectReferralAbuse, referralRewardDecision, resolveReferralConfig, maskName } from './referral/referral-rules.js';
 export { GrowthJobsService } from './growth-jobs.service.js';
+// S9
+export { StudyRemindersService, REMINDER_WINDOW_MINUTES, STREAK_RISK_TIME, type ReminderRunResult } from './study-reminders.service.js';
+export { LearningNotificationsListener } from './learning-notifications.listener.js';

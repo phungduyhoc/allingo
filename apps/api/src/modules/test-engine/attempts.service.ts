@@ -7,6 +7,7 @@ import {
   AUDIO_PLAY_EVENT_TYPES,
   DOMAIN_EVENTS,
   XP_RULES,
+  attemptXp,
   gateForTestSetKind,
   attemptDraftStateSchema,
   grade,
@@ -185,7 +186,9 @@ export class AttemptsService {
   private async assemble(userId: string, attemptId: string, questions: LoadedQuestion[], opts: { testSet: TestSetInfo; row?: AttemptRow }): Promise<Attempt> {
     const row = opts.row ?? (await this.ownedAttempt(userId, attemptId));
     const draft = this.draftOf(row);
-    const publicQs = await this.catalog.toPublic(questions, { revealTranscript: false });
+    // S9: bài chẩn đoán thích ứng chỉ lộ các câu ĐÃ phục vụ (câu kế tiếp lấy qua POST /me/diagnostic/{id}/next)
+    const servedIds = row.mode === 'diagnostic' ? new Set((draft.adaptive?.served ?? []).map((x) => x.question_id)) : null;
+    const publicQs = await this.catalog.toPublic(servedIds ? questions.filter((q) => servedIds.has(q.question_id)) : questions, { revealTranscript: false });
     const answers = await this.dbs.db.select().from(learnAttemptAnswers).where(eq(learnAttemptAnswers.attemptId, attemptId));
     const draftAnswers: AttemptAnswerInput[] = answers.filter((a) => a.answer).map((a) => ({ question_id: a.questionId, answer: a.answer as AnswerInput, time_spent_ms: a.timeSpentMs ?? undefined, flagged: a.flagged }));
     const sectionCodes = [...new Set(draft.question_order.map((q) => q.section_code))];
@@ -357,7 +360,10 @@ export class AttemptsService {
       const row = await this.ownedAttempt(userId, attemptId, tx, true);
       if (row.status === 'graded' || row.status === 'submitted') return this.resultFromRow(row, tx);
       if (row.status !== 'in_progress') throw new Conflict('Attempt cannot be submitted', { status: row.status });
-      const draft = this.draftOf(row);
+      const draft0 = this.draftOf(row);
+      // S9: bài chẩn đoán thích ứng – chỉ chấm các câu ĐÃ phục vụ (câu dự trữ của ngân hàng không tính là bỏ trống/sai)
+      const served = row.mode === 'diagnostic' && draft0.adaptive?.served?.length ? new Set(draft0.adaptive.served.map((x) => x.question_id)) : null;
+      const draft: AttemptDraftState = served ? { ...draft0, question_order: draft0.question_order.filter((o) => served.has(o.question_id)) } : draft0;
       const versions = await this.catalog.loadByVersionIds(draft.question_order.map((q) => q.question_version_id), tx);
       const answers = await tx.select().from(learnAttemptAnswers).where(eq(learnAttemptAnswers.attemptId, attemptId));
       const answerByQ = new Map(answers.map((a) => [a.questionId, a]));
@@ -452,7 +458,8 @@ export class AttemptsService {
       const diagnosis = diagnoseAttempt(diagInput, { autoSubmitted: !!opts.auto });
       const breakdown: ScoreBreakdown = { by_section: bySection, by_question_type: byType, by_subskill: bySub, by_topic: byTopic, unanswered, scale: scaled.scale, timeout_wrong: diagnosis.timeout_wrong, diagnosis: diagnosis as unknown as Record<string, unknown>, auto_submitted: !!opts.auto, by_skill: bySkill, scaled: scaled.scaled };
       const timeSpent = Math.max(0, Math.round((Date.now() - row.startedAt.getTime()) / 1000));
-      const xp = (row.mode === 'exam' && draft.question_order.length >= 100 ? XP_RULES.attempt_full_test_submitted : XP_RULES.attempt_submitted) + correctCount * XP_RULES.question_correct;
+      // Bảng XP: packages/config/xp.ts (S9) – chẩn đoán nhận thưởng hoàn thành chẩn đoán thay cho thưởng bài thường
+      const xp = row.mode === 'diagnostic' ? XP_RULES.diagnostic_completed + correctCount * XP_RULES.question_correct : attemptXp({ mode: row.mode, questionCount: draft.question_order.length, correct: correctCount });
       breakdown.xp_earned = xp;
 
       await tx
@@ -462,7 +469,9 @@ export class AttemptsService {
       const answerById = new Map(answers.map((a) => [a.id, a.questionId]));
       // Câu sai (đã trả lời sai + bỏ trống) – trước Sprint 4 luôn rỗng vì đọc is_correct trước khi chấm (SPEC-ISSUES S36)
       const wrongIds = [...gradedRows.filter((r) => r.is_correct === false).map((r) => answerById.get(r.id)!), ...missingRows.filter((r) => r.isCorrect === false).map((r) => r.questionId)];
-      const payload = { attempt_id: attemptId, user_id: userId, program: row.programCode, mode: row.mode, test_set_id: row.testSetId, raw_score: rawScore, max_score: maxScore, scaled_score: scaled.value, correct: correctCount, total: draft.question_order.length, xp_earned: xp, auto_submitted: !!opts.auto, time_spent_sec: timeSpent, wrong_question_ids: wrongIds };
+      const testSetKind = row.testSetId ? ((await tx.select({ kind: catalogTestSets.kind }).from(catalogTestSets).where(eq(catalogTestSets.id, row.testSetId)).limit(1))[0]?.kind ?? null) : null;
+      // v1.1 – S9: plan_task_id / section_id / test_set_kind / answered cho learning (task tự done, huy hiệu)
+      const payload = { attempt_id: attemptId, user_id: userId, program: row.programCode, mode: row.mode, test_set_id: row.testSetId, section_id: row.sectionId, test_set_kind: testSetKind, plan_task_id: row.planTaskId, answered: draft.question_order.length - unanswered, raw_score: rawScore, max_score: maxScore, scaled_score: scaled.value, correct: correctCount, total: draft.question_order.length, xp_earned: xp, auto_submitted: !!opts.auto, time_spent_sec: timeSpent, wrong_question_ids: wrongIds };
       await this.outbox.write(tx, { aggregateType: 'attempt', aggregateId: attemptId, eventType: DOMAIN_EVENTS.ATTEMPT_GRADED, payload });
       const previous = await this.previousScaled(tx, userId, row.programCode, attemptId, row.testSetId, scaled.value);
       // Thống kê cộng đồng (exposure/correct/avg_time_ms) cập nhật trong CÙNG transaction với kết quả (A39) – câu lệnh cuối,
@@ -732,6 +741,83 @@ export class AttemptsService {
         from learn.attempts a
        where a.id = ${attemptId}::uuid and a.user_id = ${userId}::uuid and a.program_code = ${program} and a.status = 'graded'`);
     return rows[0]?.pos ?? null;
+  }
+
+  /**
+   * S9 – một bước bài chẩn đoán thích ứng (learning gọi): trong MỘT transaction khoá hàng attempt (chống bấm đúp), nạp câu theo
+   * snapshot, gọi `step` (thuần – learning quyết định câu kế tiếp) rồi lưu câu trả lời (nếu có) + `draft_state.adaptive`.
+   * Chỉ mode `diagnostic`; attempt đã nộp → `step` vẫn được gọi với `open = false` để trả kết quả, mọi ghi bị từ chối.
+   */
+  async adaptiveStep<T>(
+    userId: string,
+    attemptId: string,
+    step: (ctx: { attempt: { id: string; program: string; status: string; testSetId: string | null; open: boolean }; draft: AttemptDraftState; questions: Map<string, LoadedQuestion> }) => { answer?: AttemptAnswerInput; adaptive?: AttemptDraftState['adaptive']; result: T },
+  ): Promise<T> {
+    return this.dbs.db.transaction(async (tx) => {
+      const row = await this.ownedAttempt(userId, attemptId, tx, true);
+      if (row.mode !== 'diagnostic') throw new ValidationFailed({ issues: [{ path: 'attemptId', message: 'attempt is not a diagnostic attempt' }] });
+      const draft = this.draftOf(row);
+      const loaded = await this.catalog.loadByVersionIds(draft.question_order.map((q) => q.question_version_id), tx);
+      const questions = new Map<string, LoadedQuestion>();
+      for (const o of draft.question_order) {
+        const q = loaded.get(o.question_version_id);
+        if (q) questions.set(o.question_id, { ...q, group_key: o.group_key, order_no: o.order_no, section_code: o.section_code });
+      }
+      const open = row.status === 'in_progress';
+      const out = step({ attempt: { id: row.id, program: row.programCode, status: row.status, testSetId: row.testSetId, open }, draft, questions });
+      if (!out.answer && out.adaptive === undefined) return out.result;
+      if (!open) throw new Conflict('Attempt is not in progress', { status: row.status });
+      if (out.answer) {
+        const a = out.answer;
+        const o = draft.question_order.find((x) => x.question_id === a.question_id);
+        if (!o) throw new ValidationFailed({ issues: [{ path: 'question_id', message: 'question not in attempt' }] });
+        const q = questions.get(a.question_id);
+        if (q && q.question_type !== a.answer.type) throw new ValidationFailed({ issues: [{ path: 'answer', message: `answer type ${a.answer.type} does not match question type ${q.question_type}` }] });
+        const [existing] = await tx.select({ id: learnAttemptAnswers.id }).from(learnAttemptAnswers).where(and(eq(learnAttemptAnswers.attemptId, attemptId), eq(learnAttemptAnswers.questionId, a.question_id))).limit(1);
+        if (existing) await tx.update(learnAttemptAnswers).set({ answer: a.answer, timeSpentMs: a.time_spent_ms ?? undefined }).where(eq(learnAttemptAnswers.id, existing.id));
+        else await tx.insert(learnAttemptAnswers).values({ attemptId, questionId: a.question_id, questionVersionId: o.question_version_id, answer: a.answer, timeSpentMs: a.time_spent_ms ?? null, flagged: false });
+      }
+      const answered = out.adaptive?.served.filter((x) => x.correct !== null).length ?? draft.answered_count;
+      await tx.update(learnAttempts).set({ draftState: { ...draft, adaptive: out.adaptive ?? draft.adaptive ?? null, answered_count: answered, last_saved_at: new Date().toISOString() } }).where(eq(learnAttempts.id, attemptId));
+      return out.result;
+    });
+  }
+
+  /** Attempt rút gọn của người dùng (learning: gắn kết quả vào task lộ trình) – null nếu không thuộc người dùng */
+  async brief(userId: string, attemptId: string): Promise<{ id: string; program: string; mode: string; status: string; testSetId: string | null; sectionId: string | null; planTaskId: string | null; submittedAt: Date | null } | null> {
+    const [r] = await this.dbs.db
+      .select({ id: learnAttempts.id, userId: learnAttempts.userId, program: learnAttempts.programCode, mode: learnAttempts.mode, status: learnAttempts.status, testSetId: learnAttempts.testSetId, sectionId: learnAttempts.sectionId, planTaskId: learnAttempts.planTaskId, submittedAt: learnAttempts.submittedAt })
+      .from(learnAttempts)
+      .where(eq(learnAttempts.id, attemptId))
+      .limit(1);
+    if (!r || r.userId !== userId) return null;
+    return { id: r.id, program: r.program, mode: r.mode, status: r.status, testSetId: r.testSetId ?? null, sectionId: r.sectionId ?? null, planTaskId: r.planTaskId ?? null, submittedAt: r.submittedAt ?? null };
+  }
+
+  /** Tổng số câu đã trả lời trong các bài đã chấm (huy hiệu 1.000 câu – S9) */
+  async answeredTotal(userId: string): Promise<number> {
+    const rows = await this.dbs.db.execute<{ n: number }>(sql`
+      select count(*)::int as n from learn.attempt_answers aa join learn.attempts a on a.id = aa.attempt_id
+       where a.user_id = ${userId}::uuid and a.status = 'graded' and aa.answer is not null`);
+    return Number(rows[0]?.n ?? 0);
+  }
+
+  /** Số bài đã chấm theo loại đề (huy hiệu đề full đầu tiên – S9) */
+  async gradedCountByKind(userId: string, kind: string): Promise<number> {
+    const rows = await this.dbs.db.execute<{ n: number }>(sql`
+      select count(*)::int as n from learn.attempts a join catalog.test_sets ts on ts.id = a.test_set_id
+       where a.user_id = ${userId}::uuid and a.status = 'graded' and ts.kind = ${kind}::catalog.test_set_kind`);
+    return Number(rows[0]?.n ?? 0);
+  }
+
+  /** Đã có bài đã chấm hoặc câu trả lời được lưu trong ngày [from, to) – "đã học hôm nay" cho nhắc học (S9) */
+  async activeBetween(userId: string, from: Date, to: Date): Promise<boolean> {
+    const rows = await this.dbs.db.execute<{ hit: number }>(sql`
+      select 1 as hit from learn.attempts a
+       where a.user_id = ${userId}::uuid and ((a.submitted_at >= ${from.toISOString()}::timestamptz and a.submitted_at < ${to.toISOString()}::timestamptz)
+          or ((a.draft_state ->> 'last_saved_at') is not null and (a.draft_state ->> 'last_saved_at')::timestamptz >= ${from.toISOString()}::timestamptz and (a.draft_state ->> 'last_saved_at')::timestamptz < ${to.toISOString()}::timestamptz))
+       limit 1`);
+    return rows.length > 0;
   }
 
   async statsSource(userId: string, program: string) {

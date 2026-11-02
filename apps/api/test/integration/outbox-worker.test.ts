@@ -31,7 +31,14 @@ describe('outbox relay (integration)', () => {
         throw new Error('rollback');
       }),
     ).rejects.toThrow('rollback');
-    const n = await outbox.relayBatch(500);
+    // S9: consumer có thể sinh sự kiện mới khi relay (attempt.graded → plan_task.completed / badge.awarded; DB test dùng lại có
+    // tồn đọng của file test khác) → relay tới khi hết hàng chờ
+    let n = 0;
+    for (let i = 0; i < 50; i++) {
+      const k = await outbox.relayBatch(500);
+      n += k;
+      if (k === 0) break;
+    }
     expect(n).toBeGreaterThan(0);
     expect(received).toContain('v1');
     expect(received).not.toContain('rolled-back');
