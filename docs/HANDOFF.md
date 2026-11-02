@@ -1,6 +1,6 @@
-# HANDOFF — Sprint 1 → Sprint 5 (02/11/2026)
+# HANDOFF — Sprint 1 → Sprint 6 (02/11/2026)
 
-Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1–5 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A39), `docs/SPEC-ISSUES.md` (S1–S29), ADR 0001–0025. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
+Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1–6 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A39), `docs/SPEC-ISSUES.md` (S1–S29), ADR 0001–0025. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
 
 Repo chưa push (theo yêu cầu: làm tiếp trên phiên, push sau). Mọi kiểm tra dưới đây chạy trong phiên cloud: Postgres 16 + pgvector, Valkey/Redis cục bộ, không Docker, không Meilisearch/MinIO/Azure/khoá AI thật (A1, A25).
 
@@ -69,6 +69,20 @@ Phiên không có khoá AI/Langfuse thật – mọi kiểm chứng chạy với
 
 Chi phí ước tính ≈ 1,0 USD / 1.000 explain (Gemini 2.5 Flash, token ước lượng) – có thể 1,7–1,9 USD với đầu ra tiếng Việt dài và token "thinking"; cần đo thật. Sửa lỗi nghiêm trọng: adapter AI SDK 7 từ chối message `system` (adapter thật sẽ hỏng ngay khi có khoá).
 
+### Sprint 6 — Tutor chat SSE, tra từ, ghi chú, PWA
+
+| # | Tiêu chí | Kết quả | Ghi chú |
+| --- | --- | --- | --- |
+| 1 | Review hỏi "Vì sao đáp án C sai?" → stream đúng câu, có trích dẫn; xin đáp án đề đang thi → 403 | ĐẠT (AI mock) | `e2e/tutor.spec.ts` mock + API thật; ma trận khoá Exam Mode 4 trạng thái × 13 endpoint |
+| 2 | Prompt injection bị guard từ chối, `status=refused`, không gọi model chính | ĐẠT | Luật guard cục bộ + guard model; guard lỗi → chặn (fail-closed) |
+| 3 | Tra "invoice" < 200 ms (cache); câu dài dịch AI, lần 2 cache hit | ĐẠT | Từ điển tự biên soạn 1.750 mục, phủ 98,5 % từ nội dung ngân hàng demo |
+| 4 | Thêm 5 từ vào SRS từ passage; ghi chú hiện lại ở Review | ĐẠT | `e2e/dictionary.spec.ts`, `e2e/notes.spec.ts` |
+| 5 | Cài PWA; tắt mạng → trang offline + đề đã xem; nhận push thử | ĐẠT một phần | Installable (Lighthouse 11.7), offline + đề đã xem ĐẠT trên bản production; push: Chrome headless không cấp subscription thật → kiểm bằng PushManager giả + CDP `deliverPushMessage`; push thật cần thiết bị |
+| 6 | Lighthouse PWA installable, Performance ≥ 85, Accessibility ≥ 95 (`/toeic/dashboard`) | CHƯA (mobile) | Desktop: Perf 97, A11y 100; mobile: Perf 74–76 (TBT 1,2–1,6 s trên máy 2 vCPU dùng chung), A11y 100. Cần giảm JS client (giới hạn messages next-intl, dashboard RSC) – TODO T9 |
+| 7 | `api:diff`, `db:diff` xanh | ĐẠT | Migration 0004 |
+
+Phát hiện và sửa thêm: CMS production lỗi 500 khi tạo câu (schema `cms` thiếu cột mới vì production không push) → migration Payload ban đầu `apps/cms/migrations` + bước `payload migrate` trong runbook deploy.
+
 ## 2. Đã làm
 
 **Sprint 1.** `iam`: OAuth Google/Apple/Facebook tự triển khai bằng `jose` + JWKS (ADR-0022, không Better Auth), liên kết tài khoản cần mật khẩu/xác nhận (409 `link_required`), OTP email/SMS/Zalo (HMAC trong Redis, 5′, 5 lần sai khoá 30′, 3 yêu cầu/15′), thu hồi phiên tức thời, phát hiện tái sử dụng refresh, consents theo `POLICY_VERSION`, Turnstile, `DELETE /me` + job `iam.purge`, RBAC admin cấp vai trò. `packages/schemas`: đủ 12 dạng câu + `grade()` partial credit + JSON Schema. Web: đăng nhập mã email, nút Google, đồng ý điều khoản, trang Điều khoản/Chính sách. Infra: Dockerfile api/web/cms, Terraform phương án B (ADR-0023 Proposed), deploy-staging, runbooks.
@@ -121,6 +135,7 @@ node tests/load/attempt-flow.autocannon.mjs   # đo cục bộ; k6 run tests/loa
 | T6 | Outbox: retry + dead-letter cho consumer (S26) | S5 |
 | T7 | Bảng `passage_parts` cho Part 7 đa đoạn (S24); custom view kéo thả test set trong CMS (A26) | v1.2 |
 | T8 | Job xoá ghi âm hết hạn + lifecycle bucket; xử lý EXIF orientation ảnh | S6/S8 |
+| T9 | Lighthouse mobile Performance ≥ 85: giảm JS client (messages next-intl theo trang, dashboard RSC, tải lười recharts/tutor) | S11 |
 
 ## 6. Rủi ro & lưu ý
 
