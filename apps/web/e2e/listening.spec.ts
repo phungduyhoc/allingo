@@ -177,6 +177,35 @@ test('Exam Mode Listening: Bắt đầu nghe → phát một lần liên tục, 
   }
 });
 
+test('Vị trí chuỗi phát lưu lên server (ui_state.listening – S5): mất localStorage → tải lại vẫn tiếp tục đúng chỗ', async ({ page }) => {
+  test.setTimeout(120_000);
+  await startAsGuest(page);
+  const attemptId = await startTestSet(page, LISTENING, 'exam');
+  await page.getByTestId('start-listening').click();
+  // Audio tự chuyển sang câu 2 → lượt lưu nháp (PUT /answers) mang ui_state.listening
+  await expect(page.getByTestId('question-card')).toContainText(`Câu 2/${TOTAL}`, { timeout: 60_000 });
+  const serverCursor = async (): Promise<{ step: number; offset_ms: number } | null> => {
+    if (REAL) {
+      const res = await page.request.get(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/v1'}/attempts/${attemptId}`);
+      return ((await res.json()) as { ui_state?: { listening?: { step: number; offset_ms: number } } }).ui_state?.listening ?? null;
+    }
+    return page.evaluate((id) => {
+      const st = JSON.parse(window.localStorage.getItem('allingo.mock.v1') ?? '{}') as { attempts?: Record<string, { ui_state?: { listening?: { step: number; offset_ms: number } } }> };
+      return st.attempts?.[id]?.ui_state?.listening ?? null;
+    }, attemptId);
+  };
+  await expect.poll(async () => (await serverCursor())?.step ?? -1, { timeout: 30_000 }).toBeGreaterThan(0);
+  const saved = (await serverCursor())!;
+  expect(saved.offset_ms).toBeGreaterThanOrEqual(0);
+  // Mất lớp nhanh (localStorage) – như đổi thiết bị/xoá dữ liệu trình duyệt
+  await page.evaluate((id) => window.localStorage.removeItem(`allingo.listening.${id}`), attemptId);
+  await page.reload();
+  await expect(page.getByTestId('listening-gate')).toHaveAttribute('data-resumed', 'true');
+  await page.getByTestId('start-listening').click();
+  await expect(page.getByTestId('listening-bar')).toBeVisible();
+  expect(await barStep(page)).toBeGreaterThanOrEqual(saved.step);
+});
+
 test('URL ký 403 (hết hạn) giữa Listening → gia hạn qua /attempts/{id}/media rồi phát tiếp', async ({ page }) => {
   test.setTimeout(120_000);
   // Câu 2: lần tải đầu trả 403 (như URL ký đã hết hạn); URL gia hạn (sig khác) cho qua

@@ -1,11 +1,15 @@
 'use client';
 
 import * as React from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiError } from '@allingo/api-client';
+import { notifyQuotaExceeded } from './quota';
 
 function makeQueryClient(): QueryClient {
   return new QueryClient({
+    // 429 quota_exceeded ở bất kỳ query/mutation nào → toast chung (QuotaToastListener) với thời điểm reset + CTA nâng cấp
+    queryCache: new QueryCache({ onError: notifyQuotaExceeded }),
+    mutationCache: new MutationCache({ onError: notifyQuotaExceeded }),
     defaultOptions: {
       queries: {
         staleTime: 30_000,

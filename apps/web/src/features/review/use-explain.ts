@@ -1,87 +1,76 @@
 'use client';
 
 import * as React from 'react';
-import { ApiError } from '@allingo/api-client';
+import { useQueryClient } from '@tanstack/react-query';
 import { explanationSchema } from '@allingo/schemas';
 import { postJsonOrStream } from '@/lib/api';
+import { aiErrorToApiError, aiStreamReducer, consumeAiResponse, initialAiStream, toAiStreamError, type AiStreamState } from '@/lib/ai-stream';
+import { notifyQuotaExceeded } from '@/lib/quota';
+import { queryKeys } from '@/lib/queries';
 import type { ExplainInput, Explanation } from '@/lib/types';
 
-export interface ExplainState {
-  status: 'idle' | 'streaming' | 'done' | 'error';
-  /** Văn bản hiển thị dần từ các event `delta` */
-  streamText: string;
-  data: Explanation | null;
-  cached: boolean;
-  aiTaskId: string | null;
-  error: unknown;
-}
+export type ExplainState = AiStreamState<Explanation>;
 
-const INITIAL: ExplainState = { status: 'idle', streamText: '', data: null, cached: false, aiTaskId: null, error: null };
+/** Trường văn bản hiện dần khi đang stream (thứ tự trong JSON do model quyết định) */
+export const EXPLAIN_PREVIEW_FIELDS = ['why_correct', 'chosen_option_trap', 'why_others_wrong', 'how_to_spot'] as const;
 
-const STATUS_BY_CODE: Record<string, number> = { quota_exceeded: 429, insufficient_credits: 402, exam_mode_locked: 403, unauthorized: 401, rate_limited: 429 };
+const parseExplanation = (d: unknown): Explanation | null => {
+  const r = explanationSchema.safeParse(d);
+  return r.success ? r.data : null;
+};
 
 /**
- * POST /ai/explain: cache hit → JSON 200 (cached: true) hiển thị ngay; sinh mới → SSE
- * start → delta* → result → done (hoặc error). Validate `result` bằng Zod trước khi hiển thị.
+ * POST /ai/explain (v1.1 – S5): cache hit → JSON (cached: true, có ai_task_id) hiện ngay; sinh mới → SSE start → delta* →
+ * result → done; lỗi AI → error (quota đã hoàn). Kết quả validate bằng Zod trước khi hiển thị. Sinh mới thành công hoặc 429
+ * → làm mới /me/entitlements (thanh "Còn x lượt"); 429 → toast chung.
  */
 export function useExplain(initial?: Explanation | null) {
-  const [state, setState] = React.useState<ExplainState>(() => (initial ? { ...INITIAL, status: 'done', data: initial, cached: true, aiTaskId: initial.ai_task_id } : INITIAL));
+  const qc = useQueryClient();
+  const [state, dispatch] = React.useReducer(aiStreamReducer<Explanation>, initial ?? null, (init) => initialAiStream<Explanation>(init ? { data: init, aiTaskId: init.ai_task_id, cached: true } : null));
   const abortRef = React.useRef<AbortController | null>(null);
 
-  const run = React.useCallback(async (input: ExplainInput) => {
-    abortRef.current?.abort();
-    const ac = new AbortController();
-    abortRef.current = ac;
-    setState({ ...INITIAL, status: 'streaming' });
-    try {
-      const res = await postJsonOrStream('/ai/explain', input, ac.signal);
-      if (res.kind === 'json') {
-        const parsed = explanationSchema.safeParse(res.data);
-        if (!parsed.success) throw new ApiError(500, { error: { code: 'internal', message: 'Invalid explanation payload' } });
-        setState({ status: 'done', streamText: '', data: parsed.data, cached: parsed.data.cached, aiTaskId: parsed.data.ai_task_id, error: null });
-        return;
+  const run = React.useCallback(
+    async (input: ExplainInput) => {
+      abortRef.current?.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
+      dispatch({ type: 'request' });
+      let generated = false;
+      try {
+        const res = await postJsonOrStream('/ai/explain', input, ac.signal);
+        generated = res.kind === 'sse';
+        await consumeAiResponse(res, parseExplanation, dispatch, ac.signal);
+      } catch (err) {
+        const e = toAiStreamError(err);
+        if (!e || ac.signal.aborted) return;
+        dispatch({ type: 'error', error: e });
+        if (e.status === 429) notifyQuotaExceeded(aiErrorToApiError(e));
+      } finally {
+        if (generated && !ac.signal.aborted) void qc.invalidateQueries({ queryKey: queryKeys.entitlements });
       }
-      let text = '';
-      let aiTaskId: string | null = null;
-      let data: Explanation | null = null;
-      for await (const ev of res.events) {
-        if (ac.signal.aborted) return;
-        const d = (ev.data ?? {}) as Record<string, unknown>;
-        switch (ev.event) {
-          case 'start':
-            aiTaskId = typeof d.ai_task_id === 'string' ? d.ai_task_id : null;
-            setState((s) => ({ ...s, aiTaskId }));
-            break;
-          case 'delta':
-            text += typeof d.text === 'string' ? d.text : '';
-            setState((s) => ({ ...s, streamText: text }));
-            break;
-          case 'result': {
-            const parsed = explanationSchema.safeParse(d.data);
-            if (!parsed.success) throw new ApiError(500, { error: { code: 'internal', message: 'Invalid explanation payload' } });
-            data = parsed.data;
-            aiTaskId = (typeof d.ai_task_id === 'string' ? d.ai_task_id : null) ?? data.ai_task_id;
-            break;
-          }
-          case 'error': {
-            const code = typeof d.code === 'string' ? d.code : 'internal';
-            throw new ApiError(STATUS_BY_CODE[code] ?? 500, { error: { code, message: typeof d.message === 'string' ? d.message : 'AI error' } });
-          }
-          case 'done':
-            break;
-          default:
-            break;
-        }
-      }
-      if (!data) throw new ApiError(500, { error: { code: 'internal', message: 'Stream ended without result' } });
-      setState({ status: 'done', streamText: text, data, cached: false, aiTaskId, error: null });
-    } catch (err) {
-      if (ac.signal.aborted) return;
-      setState((s) => ({ ...s, status: 'error', error: err }));
-    }
-  }, []);
+    },
+    [qc],
+  );
+
+  /**
+   * ai_task_id để đánh giá: giải thích kèm trong Review có ai_task_id = null → gọi lại /ai/explain (trúng cache: JSON,
+   * không trừ quota/credit) để lấy ai_task_id của chính người học.
+   */
+  const resolveTaskId = React.useCallback(
+    async (input: ExplainInput): Promise<string | null> => {
+      if (state.aiTaskId) return state.aiTaskId;
+      const res = await postJsonOrStream('/ai/explain', input);
+      let id: string | null = null;
+      await consumeAiResponse(res, parseExplanation, (a) => {
+        if ((a.type === 'loaded' || a.type === 'result' || a.type === 'start') && a.aiTaskId) id = a.aiTaskId;
+        if (a.type === 'loaded' || a.type === 'result') dispatch(a.type === 'loaded' ? a : { ...a, type: 'loaded' });
+      });
+      return id;
+    },
+    [state.aiTaskId],
+  );
 
   React.useEffect(() => () => abortRef.current?.abort(), []);
 
-  return { state, run };
+  return { state, run, resolveTaskId };
 }

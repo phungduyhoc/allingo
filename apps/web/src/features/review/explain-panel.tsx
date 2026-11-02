@@ -1,24 +1,53 @@
 'use client';
 
 import * as React from 'react';
-import { Sparkles, ThumbsDown, ThumbsUp, TriangleAlert } from 'lucide-react';
+import { Lock, RotateCcw, Sparkles, TriangleAlert } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { toast } from 'sonner';
-import { Alert, AlertDescription, AlertTitle, Badge, Button, buttonVariants, cn, Skeleton } from '@allingo/ui';
-import { Link } from '@/i18n/navigation';
-import { useAiFeedback } from '@/lib/queries';
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Skeleton } from '@allingo/ui';
+import { aiErrorToApiError, streamPreview } from '@/lib/ai-stream';
 import { getErrorCode } from '@/lib/errors';
 import type { Explanation } from '@/lib/types';
-import { useExplain } from './use-explain';
+import { CreditsNotice, QuotaExceededNotice } from '@/features/quota/quota-ui';
+import { ExplainFeedback } from './explain-feedback';
+import { explanationKey } from './feedback-memory';
+import { EXPLAIN_PREVIEW_FIELDS, useExplain } from './use-explain';
 
-export function ExplainPanel({ questionVersionId, chosenOption, attemptId, initial }: { questionVersionId: string; chosenOption?: string; attemptId: string; initial: Explanation | null }) {
+export interface ExplainPanelProps {
+  questionVersionId: string;
+  chosenOption?: string;
+  attemptId: string;
+  initial: Explanation | null;
+  /** Đang có bài thi Exam Mode chưa nộp (biết trước qua /me/attempts hoặc sau một 403) → ẩn nút giải thích */
+  examLocked?: boolean;
+  onExamLocked?: () => void;
+}
+
+/**
+ * Giải thích AI trong Review (Sprint 5): bấm → POST /ai/explain; SSE hiện chữ dần từ `delta` (trích trường văn bản nếu model
+ * stream JSON), `result` thay bằng nội dung có cấu trúc; cache → nhãn "Giải thích có sẵn". Lỗi AI → thông báo + Thử lại;
+ * 429/402 → số lượt còn lại, giờ reset (giờ VN) + CTA nâng cấp; 403 Exam Mode → ẩn nút. Đánh giá 👍/👎/Sai ở cuối.
+ */
+export function ExplainPanel({ questionVersionId, chosenOption, attemptId, initial, examLocked = false, onExamLocked }: ExplainPanelProps) {
   const t = useTranslations('review');
   const te = useTranslations('errors');
-  const { state, run } = useExplain(initial);
-  const feedback = useAiFeedback();
-  const [rated, setRated] = React.useState<string | null>(null);
+  const { state, run, resolveTaskId } = useExplain(initial);
+  const input = React.useMemo(() => ({ question_version_id: questionVersionId, chosen_option: chosenOption, attempt_id: attemptId }), [attemptId, chosenOption, questionVersionId]);
+  const start = () => void run(input);
+  const errorCode = state.error?.code ?? null;
 
-  const start = () => void run({ question_version_id: questionVersionId, chosen_option: chosenOption, attempt_id: attemptId });
+  React.useEffect(() => {
+    if (errorCode === 'exam_mode_locked') onExamLocked?.();
+  }, [errorCode, onExamLocked]);
+
+  const locked = (examLocked && state.status !== 'done') || errorCode === 'exam_mode_locked';
+  if (locked) {
+    return (
+      <p className="flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground" data-testid="explain-locked">
+        <Lock className="mt-0.5 size-4 shrink-0" aria-hidden />
+        {t('explainLockedHint')}
+      </p>
+    );
+  }
 
   if (state.status === 'idle') {
     return (
@@ -29,31 +58,20 @@ export function ExplainPanel({ questionVersionId, chosenOption, attemptId, initi
     );
   }
 
-  if (state.status === 'error') {
-    const code = getErrorCode(state.error);
-    if (code === 'quota_exceeded' || code === 'insufficient_credits') {
-      return (
-        <Alert variant="gold" data-testid="explain-quota">
-          <TriangleAlert aria-hidden />
-          <AlertTitle>{code === 'quota_exceeded' ? t('quotaTitle') : t('creditsTitle')}</AlertTitle>
-          <AlertDescription>
-            {t('quotaDesc')}
-            <Link href="/settings" className={cn(buttonVariants({ variant: 'gold', size: 'sm' }), 'mt-2')}>
-              {t('quotaCta')}
-            </Link>
-          </AlertDescription>
-        </Alert>
-      );
-    }
+  if (state.status === 'error' && state.error) {
+    const err = aiErrorToApiError(state.error);
+    if (state.error.code === 'quota_exceeded') return <QuotaExceededNotice error={err} testId="explain-quota" />;
+    if (state.error.code === 'insufficient_credits') return <CreditsNotice error={err} />;
     return (
-      <Alert variant="destructive">
+      <Alert variant="destructive" data-testid="explain-error" data-code={state.error.code}>
         <TriangleAlert aria-hidden />
-        <AlertTitle>{code === 'exam_mode_locked' ? t('examLocked') : t('error')}</AlertTitle>
+        <AlertTitle>{t('explainErrorTitle')}</AlertTitle>
         <AlertDescription>
-          {te(`codes.${code}`)}
+          {te(`codes.${getErrorCode(err)}`)}
           <div className="mt-2">
-            <Button variant="outline" size="sm" onClick={start}>
-              {t('explain')}
+            <Button variant="outline" size="sm" onClick={start} data-testid="explain-retry">
+              <RotateCcw aria-hidden />
+              {t('explainRetry')}
             </Button>
           </div>
         </AlertDescription>
@@ -62,33 +80,36 @@ export function ExplainPanel({ questionVersionId, chosenOption, attemptId, initi
   }
 
   const d = state.data;
+  const live = state.status === 'connecting' || state.status === 'streaming';
+  const preview = live ? streamPreview(state.text, EXPLAIN_PREVIEW_FIELDS) : null;
   return (
-    <div className="rounded-xl border border-accent/60 bg-accent/10 p-4" data-testid="explanation" data-cached={state.cached} aria-live="polite">
+    <div className="rounded-xl border border-accent/60 bg-accent/10 p-4" data-testid="explanation" data-status={state.status} data-cached={state.cached} aria-live="polite" aria-busy={live}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Sparkles className="size-4 text-accent-foreground dark:text-accent" aria-hidden />
         <span className="font-semibold">{t('explanationTitle')}</span>
-        {state.status === 'streaming' ? <Badge variant="muted">{t('explaining')}</Badge> : null}
-        {state.cached ? <Badge variant="outline">{t('fromCache')}</Badge> : null}
+        {live ? <Badge variant="muted">{state.status === 'connecting' ? t('explainConnecting') : t('explainStreaming')}</Badge> : null}
+        {!live && state.cached ? (
+          <Badge variant="outline" data-testid="explain-cached-badge">
+            {t('cachedBadge')}
+          </Badge>
+        ) : null}
       </div>
 
-      {state.status === 'streaming' && !d ? (
-        // API stream `delta` là mảnh JSON của structured output (không phải văn xuôi) → hiện tiến trình thay vì JSON thô;
-        // chỉ hiển thị trực tiếp khi provider stream văn bản thường.
-        /^\s*[{[]/.test(state.streamText) || state.streamText.length === 0 ? (
-          <div className="space-y-2" aria-busy>
+      {live ? (
+        preview && preview.text ? (
+          <p className="text-sm leading-relaxed whitespace-pre-wrap" data-testid="explain-stream" data-chars={state.text.length}>
+            {preview.text}
+            <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-foreground align-middle" aria-hidden />
+          </p>
+        ) : (
+          <div className="space-y-2" data-testid="explain-stream" data-chars={state.text.length}>
             <Skeleton className="h-3 w-11/12 bg-accent/30" />
             <Skeleton className="h-3 w-4/5 bg-accent/30" />
             <Skeleton className="h-3 w-2/3 bg-accent/30" />
-            <p className="tabular text-xs text-muted-foreground">{state.streamText.length > 0 ? `${state.streamText.length}…` : ''}</p>
           </div>
-        ) : (
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">
-            {state.streamText}
-            <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-foreground align-middle" aria-hidden />
-          </p>
         )
       ) : d ? (
-        <div className="space-y-3 text-sm leading-relaxed">
+        <div className="space-y-3 text-sm leading-relaxed" data-testid="explanation-body">
           <Section title={t('whyCorrect')}>
             <span className="omr-bubble mr-2 size-6 text-xs">{d.correct_option}</span>
             {d.why_correct}
@@ -98,7 +119,7 @@ export function ExplainPanel({ questionVersionId, chosenOption, attemptId, initi
               <ul className="space-y-1">
                 {Object.entries(d.why_others_wrong).map(([k, v]) => (
                   <li key={k} className="flex gap-2">
-                    <span className="omr-bubble size-6 text-xs">{k}</span>
+                    <span className="omr-bubble size-6 shrink-0 text-xs">{k}</span>
                     <span>{v}</span>
                   </li>
                 ))}
@@ -132,40 +153,7 @@ export function ExplainPanel({ questionVersionId, chosenOption, attemptId, initi
               </ul>
             </Section>
           ) : null}
-          {state.aiTaskId ? (
-            <div className="flex flex-wrap items-center gap-2 border-t border-accent/40 pt-3">
-              <span className="text-xs text-muted-foreground">{rated ? t('feedbackThanks') : t('feedbackQuestion')}</span>
-              {!rated
-                ? (
-                    [
-                      ['helpful', ThumbsUp, t('feedbackHelpful')],
-                      ['not_helpful', ThumbsDown, t('feedbackNotHelpful')],
-                      ['wrong', TriangleAlert, t('feedbackWrong')],
-                    ] as const
-                  ).map(([rating, Icon, label]) => (
-                    <Button
-                      key={rating}
-                      variant="outline"
-                      size="sm"
-                      aria-label={label}
-                      disabled={feedback.isPending}
-                      onClick={() =>
-                        feedback.mutate(
-                          { ai_task_id: state.aiTaskId!, rating },
-                          {
-                            onSuccess: () => setRated(rating),
-                            onError: (err) => toast.error(te(`codes.${getErrorCode(err)}`)),
-                          },
-                        )
-                      }
-                    >
-                      <Icon aria-hidden />
-                      <span className="hidden sm:inline">{label}</span>
-                    </Button>
-                  ))
-                : null}
-            </div>
-          ) : null}
+          <ExplainFeedback aiTaskId={state.aiTaskId} contentKey={explanationKey(questionVersionId, chosenOption, d.locale, d.prompt_version_id)} resolveTaskId={() => resolveTaskId(input)} />
         </div>
       ) : null}
     </div>

@@ -79,3 +79,17 @@ export function scaleView(result: Pick<AttemptResult, 'scale' | 'by_section'>): 
   if (hasR || hasL) return { kind: 'skill', skill: hasR ? 'reading' : 'listening', min: 5, max: 495 };
   return null;
 }
+
+/**
+ * Câu tự kiểm tra của chẩn đoán AI: vị trí đáp án đúng trong `options`. `answer` có thể là nguyên văn lựa chọn
+ * (không phân biệt hoa thường/khoảng trắng) hoặc chữ cái "B" / "B." / "B)"; không khớp → -1.
+ */
+export function checkAnswerIndex(options: readonly string[], answer: string): number {
+  const a = answer.trim().toLowerCase();
+  const byText = options.findIndex((o) => o.trim().toLowerCase() === a);
+  if (byText >= 0) return byText;
+  const m = /^([a-f])[.)]?$/.exec(a);
+  if (!m) return -1;
+  const idx = m[1]!.charCodeAt(0) - 97;
+  return idx < options.length ? idx : -1;
+}

@@ -454,7 +454,30 @@
     "skillRaw": "{correct}/{total} correct",
     "avgTimeVsCommunity": "Avg {mine}s/question · community {community}s",
     "avgTime": "Avg {mine}s/question",
-    "estimatedNotOfficial": "Scaled scores are Allingo estimates (5–495 per skill, 10–990 total, range ±25), not official ETS scores."
+    "estimatedNotOfficial": "Scaled scores are Allingo estimates (5–495 per skill, 10–990 total, range ±25), not official ETS scores.",
+    "aiDiagnosisTitle": "AI analysis",
+    "aiDiagnosisSubtitle": "The AI reads this attempt, finds the question type you miss most, explains why, and gives 3 steps to fix it.",
+    "aiDiagnosisGenerate": "Generate AI analysis",
+    "aiDiagnosisCredits": "{count, plural, one {You have # AI credit} other {You have # AI credits}}",
+    "aiDiagnosisStreaming": "AI is analysing your attempt…",
+    "aiDiagnosisTopError": "Most frequent error",
+    "aiDiagnosisEvidence": "Evidence from your attempt",
+    "aiDiagnosisWhy": "Why it happens",
+    "aiDiagnosisSteps": "3 steps for next time",
+    "aiDiagnosisCheck": "Self-check question",
+    "aiDiagnosisCheckHint": "Pick an answer to check your understanding.",
+    "aiDiagnosisCheckCorrect": "Correct!",
+    "aiDiagnosisCheckWrong": "Not quite – the answer is “{answer}”.",
+    "aiDiagnosisCached": "Saved",
+    "aiDiagnosisCreatedAt": "Created {date}",
+    "aiDiagnosisDisclaimer": "AI-generated content may be inaccurate – compare it with the question-by-question review.",
+    "aiDiagnosisLockedTitle": "AI analysis is a Pro feature",
+    "aiDiagnosisLockedDesc": "Upgrade to Pro and the AI will point out recurring mistakes, explain the cause and suggest 3 fixes after every attempt.",
+    "aiDiagnosisExamLocked": "You have an exam in progress. Submit it before using AI analysis.",
+    "aiDiagnosisConflict": "The analysis is being generated or the attempt is not graded yet. Try again in a moment.",
+    "aiDiagnosisError": "The AI could not produce the analysis. No credits were charged – please try again.",
+    "aiDiagnosisRetry": "Try again",
+    "aiDiagnosisLoadError": "Could not load the saved AI analysis."
   },
   "review": {
     "title": "Review",
@@ -511,7 +534,23 @@
     },
     "audioGroup": "Conversation",
     "audioGroupRange": "Questions {from}–{to}",
-    "evidence": "Evidence"
+    "evidence": "Evidence",
+    "cachedBadge": "Ready-made explanation",
+    "explainStreaming": "AI is writing the explanation…",
+    "explainConnecting": "Connecting to AI…",
+    "explainRetry": "Try again",
+    "explainErrorTitle": "No explanation yet",
+    "explainLockedHint": "AI explanations are locked while you have an exam in progress (Exam Mode). Submit that exam to unlock them.",
+    "examLockBanner": "You have an exam in progress – AI explanations are paused until you submit it.",
+    "continueExam": "Continue exam",
+    "feedbackUpdated": "Rating updated.",
+    "feedbackChange": "You can change your rating at any time.",
+    "feedbackNoteToggle": "Add a note",
+    "feedbackNoteLabel": "Note (optional)",
+    "feedbackNotePlaceholder": "What was wrong or unclear?",
+    "feedbackNoteSubmit": "Send note",
+    "feedbackNoteSaved": "Note sent. Thank you!",
+    "feedbackGroup": "Rate this explanation"
   },
   "settings": {
     "title": "Settings",
@@ -560,7 +599,9 @@
       "exam_mode_locked": "This feature is locked during an exam.",
       "feature_disabled": "This feature is temporarily unavailable.",
       "internal": "Server error. Try again later.",
-      "network": "Could not reach the server. Check your connection and retry."
+      "network": "Could not reach the server. Check your connection and retry.",
+      "ai_failed": "The AI could not produce a result. Your usage was refunded – please try again.",
+      "ai_timeout": "The AI took too long to respond. Your usage was refunded – please try again."
     },
     "upgrade": "Upgrade to Pro",
     "relogin": "Log in again"
@@ -635,5 +676,56 @@
     "perQuestionLabel": "Seconds per question",
     "perQuestionAuto": "Default for this Part ({seconds}s)",
     "perQuestionSeconds": "{seconds} seconds"
+  },
+  "quota": {
+    "feature": {
+      "ai_explain": "AI explanations",
+      "full_test": "full tests",
+      "mini_test": "mini tests",
+      "part_drill": "Part drills",
+      "ai_diagnose": "AI analysis",
+      "ai_tutor": "AI tutor",
+      "dictionary_ai": "AI dictionary",
+      "unknown": "this feature"
+    },
+    "explainLeft": "{remaining, plural, =0 {No explanations left today} one {# explanation left today} other {# explanations left today}}",
+    "fullTestLeft": "{remaining, plural, =0 {No full tests left this month} one {# full test left this month} other {# full tests left this month}}",
+    "ofLimit": "{remaining}/{limit}",
+    "unlimited": "Unlimited",
+    "resetAt": "{day, select, today {Resets at {time} today} tomorrow {Resets at {time} tomorrow} other {Resets at {time} on {date}}} (Vietnam time)",
+    "exceededTitle": "{period, select, day {No {feature} left today} month {No {feature} left this month} other {No {feature} left}}",
+    "exceededUsed": "You have used {used}/{limit} · {remaining} left.",
+    "exceededHint": "Upgrade to Pro for more, or come back when your quota resets.",
+    "upgradeCta": "Upgrade to Pro",
+    "creditsTitle": "Not enough AI credits",
+    "creditsDesc": "This task needs {required} credits, you have {balance}.",
+    "creditsDescUnknown": "You do not have enough AI credits for this task.",
+    "creditsCta": "See plans & credits",
+    "serverNote": "Quotas are enforced by the server; numbers shown may lag a few seconds."
+  },
+  "pricing": {
+    "title": "Pricing",
+    "subtitle": "Start free. Upgrade to Pro when you need more practice with AI.",
+    "comingSoon": "Pro checkout is being finalised and will open soon.",
+    "freeTitle": "Free",
+    "freeDesc": "Enough to get started and practise every day.",
+    "freeFeatures": [
+      "Mini tests and Part drills",
+      "Limited AI explanations per day",
+      "2 full tests per month",
+      "Rule-based diagnosis after every attempt"
+    ],
+    "proTitle": "Pro",
+    "proDesc": "For learners with an exam date.",
+    "proFeatures": [
+      "More AI explanations per day",
+      "Unlimited full tests",
+      "AI analysis after every attempt",
+      "AI tutor and a study plan to your exam date"
+    ],
+    "payments": "Pay with VNPay, MoMo or ZaloPay.",
+    "currentLimits": "Actual limits are applied by the server and shown on your dashboard.",
+    "backToApp": "Back to dashboard",
+    "proBadge": "Coming soon"
   }
 }

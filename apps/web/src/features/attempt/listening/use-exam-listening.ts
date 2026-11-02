@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { sendAttemptEvent } from '@/lib/queries';
 import { ListeningEngine, listeningCursorKey, type EngineOptions } from './listening-engine';
-import { isAnswerable, parseStoredCursor, resumeCursor, type ListeningCursor, type ListeningProgram, type ListeningStep } from './program';
+import { isAnswerable, newerCursor, parseServerCursor, parseStoredCursor, resumeCursor, type ListeningCursor, type ListeningProgram, type ListeningStep } from './program';
 import { initSequencer, reachedStep, sequencerReducer, type SeqPhase } from './sequencer';
 import { audioTestRate } from './test-rate';
 
@@ -19,7 +19,17 @@ export interface ExamListeningOptions {
   urlsVersion: unknown;
   onFocus: (questionIndex: number) => void;
   onDone: () => void;
+  /**
+   * Vị trí đã lưu ở server (`attempt.ui_state.listening`, v1.1 S5) và bản chưa gửi trong hàng đợi nháp – dùng khi mất/khác
+   * localStorage (thiết bị khác, xoá dữ liệu); bản nào tiến xa hơn được dùng.
+   */
+  serverCursor?: unknown;
+  /** Đẩy vị trí lên server (ui_state.listening) – gọi khi đổi bước và tối đa mỗi SERVER_PUSH_MS */
+  onCursor?: (cursor: ListeningCursor) => void;
 }
+
+/** Nhịp tối thiểu giữa hai lần ghi vị trí vào hàng đợi nháp (localStorage vẫn ghi mỗi giây) */
+const SERVER_PUSH_MS = 3000;
 
 export interface ExamListening {
   active: boolean;
@@ -35,7 +45,24 @@ export interface ExamListening {
   mountAudio: (el: HTMLDivElement | null) => (() => void) | undefined;
 }
 
-function initialCursor(attemptId: string, program: ListeningProgram | null, audioPlays?: Record<string, number>): ListeningCursor {
+/** Bộ giới hạn nhịp đẩy cursor (thuần, không dùng ref của React) */
+function createCursorPusher(minGapMs: number) {
+  let last = { step: -1, at: 0 };
+  let target: ((c: ListeningCursor) => void) | undefined;
+  return {
+    setTarget: (fn: ((c: ListeningCursor) => void) | undefined) => {
+      target = fn;
+    },
+    push: (c: ListeningCursor) => {
+      const now = Date.now();
+      if (c.step === last.step && now - last.at < minGapMs) return;
+      last = { step: c.step, at: now };
+      target?.(c);
+    },
+  };
+}
+
+function initialCursor(attemptId: string, program: ListeningProgram | null, audioPlays?: Record<string, number>, serverCursor?: unknown): ListeningCursor {
   if (!program || !program.steps.length) return { step: 0, offsetMs: 0 };
   let local: ListeningCursor | null = null;
   try {
@@ -43,7 +70,8 @@ function initialCursor(attemptId: string, program: ListeningProgram | null, audi
   } catch {
     local = null;
   }
-  return resumeCursor(program, local, audioPlays);
+  // localStorage (lớp nhanh, chính xác tới giây) vs ui_state.listening của server → bản mới hơn; rồi đối chiếu audio_plays
+  return resumeCursor(program, newerCursor(local, parseServerCursor(serverCursor, program.steps.length)), audioPlays);
 }
 
 /**
@@ -53,7 +81,12 @@ function initialCursor(attemptId: string, program: ListeningProgram | null, audi
 export function useExamListening(opts: ExamListeningOptions): ExamListening {
   const { attemptId, program } = opts;
   const active = !!program && program.steps.length > 0;
-  const [cursor] = React.useState(() => initialCursor(attemptId, program, opts.audioPlays));
+  const [cursor] = React.useState(() => initialCursor(attemptId, program, opts.audioPlays, opts.serverCursor));
+  // Đẩy vị trí lên server có nhịp (đổi bước → ngay; trong bước → tối đa mỗi SERVER_PUSH_MS); callback mới nhất gắn trong effect
+  const [pusher] = React.useState(() => createCursorPusher(SERVER_PUSH_MS));
+  React.useEffect(() => {
+    pusher.setTarget(opts.onCursor);
+  });
   const [state, dispatch] = React.useReducer(sequencerReducer, undefined, () => initSequencer(program ? program.steps.map((s) => s.kind) : [], cursor));
   const resumed = cursor.step > 0 || cursor.offsetMs > 0;
 
@@ -69,6 +102,7 @@ export function useExamListening(opts: ExamListeningOptions): ExamListening {
           onDone: opts.onDone,
           sendEvent: (type, meta) => sendAttemptEvent(attemptId, { type, meta }),
           rate: audioTestRate(),
+          onCursor: pusher.push,
         }
       : null;
   const [engine] = React.useState(() => {

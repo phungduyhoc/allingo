@@ -1,4 +1,4 @@
-import { serializeCursor, upcomingAudioSteps, type AudioStep, type ListeningProgram } from './program';
+import { serializeCursor, upcomingAudioSteps, type AudioStep, type ListeningCursor, type ListeningProgram } from './program';
 import type { SeqAction, SeqPhase, SeqState } from './sequencer';
 
 /**
@@ -32,6 +32,8 @@ export interface EngineOptions {
   sendEvent: (type: AudioEventType, meta: Record<string, unknown>) => void;
   /** Hệ số tốc độ (1 ở production; E2E tăng tốc) */
   rate: number;
+  /** Mỗi lần lưu vị trí (≈ 1 s/lần + khi đổi bước) – trang làm bài đẩy lên server qua ui_state.listening */
+  onCursor?: (cursor: ListeningCursor) => void;
 }
 
 interface Slot {
@@ -513,12 +515,14 @@ export class ListeningEngine {
   };
 
   private readonly persist = (): void => {
+    const cursor: ListeningCursor = { step: this.state.step, offsetMs: this.currentOffset() };
     try {
       const n = this.opts.program.steps.length;
-      window.localStorage.setItem(listeningCursorKey(this.opts.attemptId), serializeCursor({ step: this.state.step, offsetMs: this.currentOffset() }, n));
+      window.localStorage.setItem(listeningCursorKey(this.opts.attemptId), serializeCursor(cursor, n));
     } catch {
-      /* localStorage không khả dụng → khôi phục theo audio_plays của server */
+      /* localStorage không khả dụng → khôi phục theo ui_state.listening / audio_plays của server */
     }
+    this.opts.onCursor?.(cursor);
   };
 
   private clearTimers(): void {

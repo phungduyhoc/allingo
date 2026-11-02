@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { QuestionPublic } from '@/lib/types';
 import { questionGroups } from '../attempt-state';
-import { buildListeningProgram, cursorFromAudioPlays, focusIndexAt, isAnswerable, parseStoredCursor, pauseMsOf, resumeCursor, serializeCursor, upcomingAudioSteps } from './program';
+import { buildListeningProgram, cursorFromAudioPlays, focusIndexAt, isAnswerable, newerCursor, parseServerCursor, parseStoredCursor, pauseMsOf, resumeCursor, serializeCursor, toServerCursor, upcomingAudioSteps } from './program';
 
 const id = (n: number, p = 'aaaa') => `${p}0000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
@@ -142,5 +142,32 @@ describe('khôi phục vị trí', () => {
     expect(resumeCursor(p, { step: 1, offsetMs: 500 }, plays)).toEqual({ step: 5, offsetMs: 0 });
     expect(resumeCursor(p, null, plays)).toEqual({ step: 5, offsetMs: 0 });
     expect(resumeCursor(p, { step: 8, offsetMs: 100 }, plays)).toEqual({ step: 8, offsetMs: 100 });
+  });
+});
+
+describe('ui_state.listening (S5) – vị trí lưu ở server, ưu tiên bản mới hơn', () => {
+  it('parseServerCursor: hợp lệ → cursor; sai dạng → null; quá số bước → kết thúc', () => {
+    expect(parseServerCursor({ step: 3, offset_ms: 1200 }, 10)).toEqual({ step: 3, offsetMs: 1200 });
+    expect(parseServerCursor({ step: 3 }, 10)).toEqual({ step: 3, offsetMs: 0 });
+    expect(parseServerCursor({ step: 42, offset_ms: 900 }, 10)).toEqual({ step: 10, offsetMs: 0 });
+    expect(parseServerCursor({ step: -1, offset_ms: 0 }, 10)).toBeNull();
+    expect(parseServerCursor({ step: 1.5 }, 10)).toBeNull();
+    expect(parseServerCursor('x', 10)).toBeNull();
+    expect(parseServerCursor(undefined, 10)).toBeNull();
+  });
+
+  it('newerCursor: bước xa hơn thắng; cùng bước → offset lớn hơn; thiếu một bên → bên còn lại', () => {
+    const local = { step: 4, offsetMs: 500 };
+    expect(newerCursor(local, { step: 5, offsetMs: 0 })).toEqual({ step: 5, offsetMs: 0 });
+    expect(newerCursor(local, { step: 4, offsetMs: 9000 })).toEqual({ step: 4, offsetMs: 9000 });
+    expect(newerCursor(local, { step: 2, offsetMs: 99_000 })).toBe(local);
+    expect(newerCursor(null, local)).toBe(local);
+    expect(newerCursor(local, null)).toBe(local);
+    expect(newerCursor(null, null)).toBeNull();
+  });
+
+  it('toServerCursor: số nguyên không âm theo listeningUiStateSchema', () => {
+    expect(toServerCursor({ step: 2, offsetMs: 1234.6 })).toEqual({ step: 2, offset_ms: 1235 });
+    expect(toServerCursor({ step: 0, offsetMs: -5 })).toEqual({ step: 0, offset_ms: 0 });
   });
 });

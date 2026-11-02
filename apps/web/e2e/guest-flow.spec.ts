@@ -99,7 +99,8 @@ test('khách làm đề mini Part 5, nộp, xem lại và giải thích AI', asy
   await expect(again).toBeVisible();
   if (await again.getByTestId('explain-button').isVisible()) await again.getByTestId('explain-button').click();
   await expect(again.getByTestId('explanation')).toHaveAttribute('data-cached', 'true');
-  await expect(again.getByText('từ bộ nhớ')).toBeVisible();
+  // S5: nhãn cache đổi thành "Giải thích có sẵn"
+  await expect(again.getByTestId('explain-cached-badge')).toHaveText('Giải thích có sẵn');
 });
 
 test('đăng ký tài khoản ghép tiến độ khách', async ({ page }) => {

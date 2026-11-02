@@ -2,11 +2,12 @@
 
 import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Lock } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Button, buttonVariants, NativeSelect, Tabs, TabsList, TabsTrigger } from '@allingo/ui';
+import { Alert, AlertDescription, Button, buttonVariants, cn, NativeSelect, Tabs, TabsList, TabsTrigger } from '@allingo/ui';
 import { Link } from '@/i18n/navigation';
-import { useAttemptResult, useAttemptReview } from '@/lib/queries';
+import { useAttemptResult, useAttemptReview, useMyAttempts } from '@/lib/queries';
+import { QuotaLeft } from '@/features/quota/quota-ui';
 import { CardSkeleton, EmptyState, ErrorState } from '@/components/states';
 import { PageHeader } from '@/components/page-header';
 import { useSectionLabel } from '@/features/attempt/section-label';
@@ -82,6 +83,14 @@ export function ReviewPage({ attemptId }: { attemptId: string }) {
   };
   const position = wrongPosition(wrong, cursor);
 
+  // Exam Mode (CLAUDE.md §5.8): đang có bài thi chưa nộp → API trả 403 cho giải thích → ẩn nút ngay từ đầu;
+  // biết muộn (403 từ một lần bấm) cũng khoá mọi câu còn lại
+  const exams = useMyAttempts({ status: 'in_progress', mode: 'exam' }, { staleTime: 0 });
+  const openExam = exams.data?.data.find((a) => a.status === 'in_progress' && a.mode === 'exam' && a.id !== attemptId) ?? null;
+  const [lockedByApi, setLockedByApi] = React.useState(false);
+  const onExamLocked = React.useCallback(() => setLockedByApi(true), []);
+  const examLocked = !!openExam || lockedByApi;
+
   return (
     <div className="space-y-6 pb-20" data-testid="review-page">
       <PageHeader
@@ -92,6 +101,21 @@ export function ReviewPage({ attemptId }: { attemptId: string }) {
           </Link>
         }
       />
+      {examLocked ? (
+        <Alert variant="info" data-testid="review-exam-lock">
+          <Lock aria-hidden />
+          <AlertDescription className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span>{t('examLockBanner')}</span>
+            {openExam ? (
+              <Link href={`/attempts/${openExam.id}`} className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
+                {t('continueExam')}
+              </Link>
+            ) : null}
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <QuotaLeft feature="ai_explain" />
+      )}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" role="group" aria-label={t('filterLabel')}>
         <Tabs value={filters.filter} onValueChange={(v) => apply({ type: 'filter', filter: v as ReviewFilter })}>
           <TabsList aria-label={t('filterLabel')}>
@@ -135,7 +159,7 @@ export function ReviewPage({ attemptId }: { attemptId: string }) {
               <React.Fragment key={item.question.question_id}>
                 {groupHeads.has(i) ? <ReviewAudioGroup items={groupHeads.get(i)!} media={media} /> : null}
                 <div id={`review-${item.question.question_id}`} tabIndex={-1} className="scroll-mt-20 rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40">
-                  <ReviewItemCard item={item} number={item.question.order_no} attemptId={attemptId} media={media} />
+                  <ReviewItemCard item={item} number={item.question.order_no} attemptId={attemptId} media={media} examLocked={examLocked} onExamLocked={onExamLocked} />
                 </div>
               </React.Fragment>
             ))}

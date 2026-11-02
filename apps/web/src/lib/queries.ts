@@ -2,11 +2,13 @@
 
 import { useMutation, useQuery, useQueryClient, type UseQueryOptions, type UseQueryResult } from '@tanstack/react-query';
 import { unwrap } from '@allingo/api-client';
+import { attemptAiDiagnosisSchema } from '@allingo/schemas';
 import { queryKeys } from '@allingo/api-client/react';
 import { getApi } from './api';
 import { createGuestSession, login, logout, register } from './auth';
 import type {
   Attempt,
+  AttemptAiDiagnosis,
   AttemptAnswersPut,
   AttemptCreate,
   AttemptEvent,
@@ -233,11 +235,46 @@ export function useUpsertEnrollment() {
   });
 }
 
+export type AiFeedbackRating = 'helpful' | 'not_helpful' | 'wrong';
+export interface AiFeedbackInput {
+  ai_task_id: string;
+  rating: AiFeedbackRating;
+  comment?: string;
+}
+export interface AiFeedbackResult {
+  ok?: boolean;
+  id?: string;
+  ai_task_id?: string;
+  rating?: string;
+  /** true khi gửi lại cho cùng tác vụ (cập nhật phản hồi cũ) */
+  updated?: boolean;
+}
+
+/** POST /ai/feedback (v1.1 – S5): 👍/👎/Sai + ghi chú; gửi lại cho cùng ai_task_id = cập nhật */
 export function useAiFeedback() {
-  return useMutation<void, Error, { ai_task_id: string; rating: 'helpful' | 'not_helpful' | 'wrong'; comment?: string }>({
-    mutationFn: async (body) => {
-      unwrap(await getApi().POST('/ai/feedback', { body }));
+  return useMutation<AiFeedbackResult, Error, AiFeedbackInput>({
+    mutationFn: async (body): Promise<AiFeedbackResult> => unwrap(await getApi().POST('/ai/feedback', { body })) ?? {},
+  });
+}
+
+export const aiDiagnosisKey = (attemptId: string) => ['attempts', attemptId, 'ai-diagnosis'] as const;
+
+/**
+ * Chẩn đoán AI đã lưu (GET /attempts/{id}/diagnosis – v1.1 S5): 404 = chưa tạo → null (không phải lỗi).
+ * Tạo mới bằng POST (SSE) trong `features/result/use-ai-diagnosis.ts`, kết quả ghi vào cùng khoá query.
+ */
+export function useAttemptAiDiagnosis(attemptId: string, opts?: Opts<AttemptAiDiagnosis | null>) {
+  return useQuery<AttemptAiDiagnosis | null, Error>({
+    queryKey: aiDiagnosisKey(attemptId),
+    queryFn: async () => {
+      const res = await getApi().GET('/attempts/{attemptId}/diagnosis', { params: { path: { attemptId } } });
+      if (res.response.status === 404) return null;
+      const parsed = attemptAiDiagnosisSchema.safeParse(unwrap(res));
+      return parsed.success ? parsed.data : null;
     },
+    staleTime: Infinity,
+    retry: false,
+    ...opts,
   });
 }
 

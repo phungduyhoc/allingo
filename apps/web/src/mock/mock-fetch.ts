@@ -2,16 +2,19 @@ import {
   ATTEMPT_GRACE_SECONDS,
   DEFAULT_QUOTAS,
   XP_RULES,
+  aiFeedbackInputSchema,
   answerInputSchema,
   attemptEventSchema,
+  attemptUiStateSchema,
   correctAnswerOf,
   grade,
   isAnswered,
   isSpokenTextSection,
   redactSpokenText,
-  timedDrillSeconds,
+  timedDrillBudgetSeconds,
   toPublicContent,
   type Attempt,
+  type AttemptAiDiagnosis,
   type AttemptMode,
   type AttemptResult,
   type AttemptReview,
@@ -67,13 +70,60 @@ function route(method: string, path: string, handler: Handler): Route {
 }
 
 function publicUser(u: MockUserRecord): User {
-  const { password: _p, guest_token: _g, ...rest } = u;
+  const { password: _p, guest_token: _g, plan: _plan, ...rest } = u;
   return rest;
 }
 
-function freeLimit(feature: string): number | null {
-  const q = DEFAULT_QUOTAS.find((x) => x.plan_kind === 'free' && x.feature === feature);
-  return q ? q.limit : null;
+/** Kỳ hạn mức theo giờ Việt Nam (như QuotaService của API: reset 00:00 Asia/Ho_Chi_Minh) */
+const VN_OFFSET_MS = 7 * 3_600_000;
+const vnNow = () => new Date(Date.now() + VN_OFFSET_MS); // các trường UTC = giờ treo tường VN
+function periodKey(period: string): string {
+  const iso = vnNow().toISOString();
+  return period === 'month' ? iso.slice(0, 7) : period === 'lifetime' ? 'all' : iso.slice(0, 10);
+}
+function resetAtOf(period: string): string {
+  const v = vnNow();
+  if (period === 'lifetime') return new Date(Date.UTC(9999, 0, 1)).toISOString();
+  const next = period === 'month' ? Date.UTC(v.getUTCFullYear(), v.getUTCMonth() + 1, 1) : Date.UTC(v.getUTCFullYear(), v.getUTCMonth(), v.getUTCDate() + 1);
+  return new Date(next - VN_OFFSET_MS).toISOString();
+}
+
+type MockPlan = 'free' | 'monthly';
+const planOf = (u: MockUserRecord): MockPlan => u.plan ?? 'free';
+const isPro = (u: MockUserRecord) => planOf(u) !== 'free';
+/** Hạn mức theo gói (seed DEFAULT_QUOTAS – như billing.quotas); không có dòng → không giới hạn */
+function quotaFor(u: MockUserRecord, feature: string): { feature: string; period: string; limit: number } | null {
+  return DEFAULT_QUOTAS.find((x) => x.plan_kind === planOf(u) && x.feature === feature) ?? null;
+}
+/** Quyền theo gói (như GET /me/entitlements của API seed) */
+const FREE_FEATURES = ['ai_tutor', 'full_test', 'mini_test', 'ai_explain', 'part_drill', 'study_plan', 'dictionary_ai', 'srs_new_cards'];
+const PRO_FEATURES = ['ai_diagnose', 'ai_explain', 'ai_tutor', 'dictionary_ai', 'full_test', 'grade_speaking', 'grade_writing', 'mini_test', 'part_drill', 'shadowing', 'srs_new_cards', 'streak_freeze', 'study_plan'];
+/** Credit cho chẩn đoán AI (như ai.model_routes.credits_cost của diagnose_rl) */
+const DIAGNOSE_CREDITS = 10;
+/** prompt_version_id giả lập (khoá cache giải thích/chẩn đoán gồm phiên bản prompt) */
+const PROMPT_VERSION = { explain_mcq: '00000000-0000-4000-8000-00000000e301', diagnose_rl: '00000000-0000-4000-8000-00000000d301' } as const;
+/** Tài khoản Pro demo như seed API (`pnpm db:seed --set demo`) */
+const PRO_DEMO = { email: 'learner_pro@allingo.dev', password: 'Allingo@2026', display_name: 'Minh (Pro)' };
+
+/**
+ * Kịch bản lỗi AI cho dev/E2E: đặt `window.__ALLINGO_MOCK_AI_FAIL__ = 'ai_failed' | 'ai_timeout'` → lượt AI kế tiếp phát
+ * `start` → `delta` → `error` → `done` (hoàn quota) rồi tự xoá cờ.
+ */
+function takeMockAiFailure(): 'ai_failed' | 'ai_timeout' | null {
+  if (typeof window === 'undefined') return null;
+  const w = window as unknown as { __ALLINGO_MOCK_AI_FAIL__?: unknown };
+  const v = w.__ALLINGO_MOCK_AI_FAIL__;
+  if (v !== 'ai_failed' && v !== 'ai_timeout') return null;
+  delete w.__ALLINGO_MOCK_AI_FAIL__;
+  return v;
+}
+
+/** Cắt JSON đầu ra thành các mảnh `delta` như provider stream structured output */
+function jsonDeltas(value: unknown, size = 28, delayMs = 45): { event: string; data: unknown; delayMs?: number }[] {
+  const text = JSON.stringify(value);
+  const out: { event: string; data: unknown; delayMs?: number }[] = [];
+  for (let i = 0; i < text.length; i += size) out.push({ event: 'delta', data: { text: text.slice(i, i + size) }, delayMs });
+  return out;
 }
 
 /** URL "ký" giả lập (TTL 10′ như driver fs của API): `sig=init` cho URL trong attempt/review, `sig=r<n>` cho URL gia hạn */
@@ -87,6 +137,13 @@ function signUrl(url: string, sig: string): { url: string; expires_at: string } 
 export function createMockFetch(): typeof fetch {
   const state: MockState = loadState();
   const persist = () => saveState(state);
+  // Pro demo (đăng nhập learner_pro@allingo.dev / Allingo@2026) để thử chẩn đoán AI ở chế độ mock
+  if (!Object.values(state.users).some((u) => u.email === PRO_DEMO.email)) {
+    const id = uuid();
+    state.users[id] = { id, email: PRO_DEMO.email, password: PRO_DEMO.password, display_name: PRO_DEMO.display_name, phone: null, avatar_url: null, ui_locale: 'vi', explain_locale: 'vi', timezone: 'Asia/Ho_Chi_Minh', roles: ['learner'], active_program: 'toeic', created_at: nowIso(), is_guest: false, plan: 'monthly' };
+    state.credits[id] = 5000;
+    persist();
+  }
 
   const findTestSet = (id: string): MockTestSet | undefined => MOCK_TEST_SETS.find((t) => t.id === id);
   const allQuestions = (): MockQuestion[] => MOCK_TEST_SETS.flatMap((t) => t.questions);
@@ -105,12 +162,36 @@ export function createMockFetch(): typeof fetch {
   const currentUser = (): MockUserRecord | null => (state.sessionUserId ? (state.users[state.sessionUserId] ?? null) : null);
   const requireUser = (): MockUserRecord | Response => currentUser() ?? error(401, 'unauthorized', 'Session expired');
 
-  const usageOf = (userId: string, feature: string): number => state.usage[userId]?.[feature]?.[today()] ?? 0;
-  const bumpUsage = (userId: string, feature: string) => {
+  const usageOf = (userId: string, feature: string, period = 'day'): number => state.usage[userId]?.[feature]?.[periodKey(period)] ?? 0;
+  const bumpUsage = (userId: string, feature: string, period = 'day', delta = 1) => {
     const u = (state.usage[userId] ??= {});
     const f = (u[feature] ??= {});
-    f[today()] = (f[today()] ?? 0) + 1;
+    const k = periodKey(period);
+    f[k] = Math.max(0, (f[k] ?? 0) + delta);
   };
+  /** Đã hết hạn mức → Response 429 đúng dạng API (details.quota = QuotaExceededDetails); còn → null */
+  const quotaExceeded = (u: MockUserRecord, feature: string): Response | null => {
+    const q = quotaFor(u, feature);
+    if (!q) return null;
+    const used = usageOf(u.id, feature, q.period);
+    if (used < q.limit) return null;
+    const resets = resetAtOf(q.period);
+    return error(429, 'quota_exceeded', 'Quota exceeded', { quota: { feature, period: q.period, limit: q.limit, used, remaining: 0, resets_at: resets, reset_at: resets }, feature, reset_at: resets, upgrade: true });
+  };
+  const consumeQuota = (u: MockUserRecord, feature: string) => {
+    const q = quotaFor(u, feature);
+    if (q) bumpUsage(u.id, feature, q.period);
+  };
+  const refundQuota = (u: MockUserRecord, feature: string) => {
+    const q = quotaFor(u, feature);
+    if (q) bumpUsage(u.id, feature, q.period, -1);
+  };
+  const recordTask = (userId: string, task: string): string => {
+    const id = uuid();
+    state.aiTasks[id] = { user_id: userId, task };
+    return id;
+  };
+  const examInProgress = (userId: string, exceptId?: string) => Object.values(state.attempts).some((a) => a.user_id === userId && a.status === 'in_progress' && a.mode === 'exam' && a.id !== exceptId);
 
   const makeUser = (partial: Partial<MockUserRecord> & { is_guest: boolean }): MockUserRecord => ({
     id: uuid(),
@@ -321,6 +402,55 @@ export function createMockFetch(): typeof fetch {
     };
   };
 
+  /** Đầu ra diagnose_rl tự biên soạn từ bài làm (dạng sai nhiều nhất theo Part × kỹ năng con, như MockProvider của API) */
+  const buildDiagnosis = (a: MockAttemptRecord, lang: string): Pick<AttemptAiDiagnosis, 'top_error_type' | 'evidence' | 'why' | 'steps' | 'check_question' | 'encouragement'> => {
+    const vi = lang === 'vi';
+    const byType: Record<string, { correct: number; total: number }> = {};
+    const wrong: { key: string; q: MockQuestion; chosen: string | null }[] = [];
+    for (const q of questionsOf(a)) {
+      const rec = a.answers[q.question_id];
+      const ok = grade(q.content, rec?.answer ?? null).is_correct === true;
+      const subs = subskillsOf(q);
+      const keys = subs.length ? subs.map((x) => `${q.section_code}:${x}`) : [`${q.section_code}:${q.content.type}`];
+      for (const k of keys) {
+        const m = (byType[k] ??= { correct: 0, total: 0 });
+        m.total++;
+        if (ok) m.correct++;
+      }
+      if (!ok) wrong.push({ key: keys[0]!, q, chosen: rec?.answer.type === 'mcq_single' ? (rec.answer.selected ?? null) : null });
+    }
+    const ranked = Object.entries(byType).sort((x, y) => x[1].correct / x[1].total - y[1].correct / y[1].total || y[1].total - x[1].total);
+    const [type, stat] = ranked[0] ?? ['part5:vocabulary_context', { correct: 0, total: 0 }];
+    const miss = stat.total - stat.correct;
+    const ev = wrong.find((w) => w.key === type && !isSpokenTextSection('toeic', w.q.section_code)) ?? wrong.find((w) => !isSpokenTextSection('toeic', w.q.section_code));
+    const stem = ev && 'stem' in ev.q.content && typeof ev.q.content.stem === 'string' ? ev.q.content.stem.replace(/\s+/g, ' ').slice(0, 120) : null;
+    const correct = ev ? correctAnswerOf(ev.q.content) : null;
+    const evidence = stem
+      ? vi
+        ? `"${stem}" – bạn chọn ${ev?.chosen ?? '—'}, đáp án ${typeof correct === 'string' ? correct : '—'}.`
+        : `"${stem}" – you chose ${ev?.chosen ?? '—'}, the answer is ${typeof correct === 'string' ? correct : '—'}.`
+      : vi
+        ? `Sai ${miss}/${stat.total} câu thuộc nhóm này.`
+        : `Missed ${miss}/${stat.total} questions of this type.`;
+    return {
+      top_error_type: type,
+      evidence: [evidence.slice(0, 240)],
+      why: vi
+        ? `Bạn sai ${miss}/${stat.total} câu dạng này: thường do chọn theo nghĩa quen thuộc mà bỏ qua dấu hiệu ngữ pháp quanh chỗ trống.`
+        : `You missed ${miss}/${stat.total} of these: usually picking a familiar meaning while ignoring the grammar cue around the blank.`,
+      steps: vi
+        ? ['Gạch chân từ đứng ngay trước và sau chỗ trống', 'Xác định từ loại hoặc thì cần điền trước khi đọc lựa chọn', 'Đọc lại cả câu với đáp án đã chọn để kiểm tra nghĩa']
+        : ['Underline the words right before and after the blank', 'Decide the part of speech or tense needed before reading the options', 'Re-read the whole sentence with your choice to check the meaning'],
+      check_question: {
+        stem: 'The shipment will be delivered ______ the end of the week.',
+        options: ['by', 'until', 'since', 'during'],
+        answer: 'by',
+        explanation: vi ? '"by + mốc thời gian" = trước hoặc đúng thời hạn.' : '"by + a point in time" means no later than that time.',
+      },
+      encouragement: vi ? 'Bạn làm tốt các câu đọc hiểu chi tiết – giữ nhịp 20 phút mỗi ngày nhé!' : 'You handled the detail questions well – keep up 20 minutes a day!',
+    };
+  };
+
   const sse = (events: { event: string; data: unknown; delayMs?: number }[]): Response => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
@@ -455,14 +585,16 @@ export function createMockFetch(): typeof fetch {
       const u = requireUser();
       if (u instanceof Response) return u;
       const program = url.searchParams.get('program') ?? 'toeic';
-      const reset = new Date();
-      reset.setHours(24, 0, 0, 0);
+      // Như API v1.1: remaining = limit − used (không âm), reset_at = 00:00 giờ VN của kỳ sau
       const ent: Entitlements = {
         program,
-        is_pro: false,
-        features: ['mini_test', 'part_drill', 'ai_explain', 'ai_tutor', 'dictionary_ai'],
-        quotas: DEFAULT_QUOTAS.filter((q) => q.plan_kind === 'free').map((q) => ({ feature: q.feature, period: q.period, limit: q.limit, used: usageOf(u.id, q.feature), reset_at: reset.toISOString() })),
-        credits: 0,
+        is_pro: isPro(u),
+        features: isPro(u) ? PRO_FEATURES : FREE_FEATURES,
+        quotas: DEFAULT_QUOTAS.filter((q) => q.plan_kind === planOf(u)).map((q) => {
+          const used = usageOf(u.id, q.feature, q.period);
+          return { feature: q.feature, period: q.period, limit: q.limit, used, remaining: Math.max(0, q.limit - used), reset_at: resetAtOf(q.period) };
+        }),
+        credits: state.credits[u.id] ?? 0,
       };
       return json(200, ent);
     }),
@@ -560,13 +692,13 @@ export function createMockFetch(): typeof fetch {
       const b = body as { program: string; mode: AttemptMode; test_set_id?: string };
       const t = b.test_set_id ? findTestSet(b.test_set_id) : undefined;
       if (!t) return error(404, 'not_found', 'Test set not found');
-      if (t.locked) return error(403, 'forbidden', 'Pro plan required', { feature: 'full_test' });
+      if (t.locked && !isPro(u)) return error(403, 'forbidden', 'Pro plan required', { feature: 'full_test', upgrade: true });
       const feature = t.kind === 'full' ? 'full_test' : t.kind === 'part_drill' ? 'part_drill' : 'mini_test';
-      const limit = freeLimit(feature);
-      if (limit !== null && usageOf(u.id, feature) >= limit) return error(429, 'quota_exceeded', 'Daily quota reached', { feature, limit });
       const existing = Object.values(state.attempts).find((a) => a.user_id === u.id && a.test_set_id === t.id && a.status === 'in_progress');
       if (existing) return json(201, toAttemptDto(existing));
-      bumpUsage(u.id, feature);
+      const over = quotaExceeded(u, feature);
+      if (over) return over;
+      consumeQuota(u, feature);
       const started = Date.now();
       const rec: MockAttemptRecord = {
         id: uuid(),
@@ -622,7 +754,21 @@ export function createMockFetch(): typeof fetch {
         status: 'in_progress',
         started_at: new Date(started).toISOString(),
         // Như API: Σ giây theo Part (TIMED_DRILL_SEC_PER_QUESTION) hoặc per_question_sec × số câu
-        expires_at: timed ? new Date(started + timedDrillSeconds(picked.map((x) => x.section_code), perQuestion) * 1000).toISOString() : null,
+        // v1.1 S5: + thời lượng audio của câu + pause_ms + audio nhóm (một lần mỗi nhóm) – timedDrillBudgetSeconds như API
+        expires_at: timed
+          ? new Date(
+              started +
+                timedDrillBudgetSeconds(
+                  picked.map((x) => {
+                    const audio = x.media.find((m) => m.kind === 'audio');
+                    const media = 'media' in x.content ? (x.content.media as { pause_ms?: number } | undefined) : undefined;
+                    return { section_code: x.section_code, group_key: x.group_key, has_audio: !!audio, audio_ms: audio?.duration_ms ?? null, has_group_audio: !!x.passage?.media_url, group_audio_ms: null, pause_ms: media?.pause_ms ?? null };
+                  }),
+                  perQuestion,
+                ) *
+                  1000,
+            ).toISOString()
+          : null,
         submitted_at: null,
         answers: {},
         section_elapsed_sec: {},
@@ -657,7 +803,12 @@ export function createMockFetch(): typeof fetch {
         a.answers[ans.question_id] = { answer: parsed.data, time_spent_ms: ans.time_spent_ms ?? prev?.time_spent_ms, flagged: ans.flagged ?? prev?.flagged };
       }
       if (b.section_elapsed_sec) Object.assign(a.section_elapsed_sec, b.section_elapsed_sec);
-      if (b.ui_state) a.ui_state = { ...a.ui_state, ...b.ui_state };
+      if (b.ui_state) {
+        // Như API: attemptUiStateSchema (current_question_id, current_section_code, listening {step, offset_ms}); gộp nông
+        const ui = attemptUiStateSchema.safeParse(b.ui_state);
+        if (!ui.success) return error(400, 'validation_failed', 'Invalid ui_state', { issues: ui.error.issues.map((i) => i.path.join('.')) });
+        a.ui_state = { ...a.ui_state, ...ui.data };
+      }
       persist();
       return empty(204);
     }),
@@ -739,7 +890,8 @@ export function createMockFetch(): typeof fetch {
           time_spent_ms: rec?.time_spent_ms ?? null,
           flagged: rec?.flagged ?? false,
           details: g.details ?? null,
-          explanation: state.explanations[cacheKey] ? (state.explanations[cacheKey]) : null,
+          // Như API: giải thích cache kèm Review không có ai_task_id (đánh giá → gọi lại /ai/explain lấy ai_task_id)
+          explanation: state.explanations[cacheKey] ? { ...state.explanations[cacheKey], ai_task_id: null, cached: true } : null,
           transcript_highlight: transcriptOf(q),
           audio_plays: a.audio_plays?.[q.question_id] ?? 0,
           error_entry_id: null,
@@ -756,26 +908,87 @@ export function createMockFetch(): typeof fetch {
       const b = body as { question_version_id: string; chosen_option?: string; attempt_id?: string };
       const q = MOCK_TEST_SETS.flatMap((t) => t.questions).find((x) => x.question_version_id === b.question_version_id);
       if (!q) return error(404, 'not_found', 'Question version not found');
-      // Exam Mode: đang có bài thi chưa nộp → 403 (CLAUDE.md §5.8)
-      const examInProgress = Object.values(state.attempts).some((a) => a.user_id === u.id && a.status === 'in_progress' && a.mode === 'exam');
-      if (examInProgress) return error(403, 'exam_mode_locked', 'Explanations are locked during an exam');
+      // Exam Mode: đang có bài thi chưa nộp → 403, kể cả cache hit (CLAUDE.md §5.8)
+      if (examInProgress(u.id)) return error(403, 'exam_mode_locked', 'Explanations are locked during an exam');
       const lang = u.explain_locale ?? locale;
       const cacheKey = `${b.question_version_id}:${b.chosen_option ?? ''}:${lang}`;
       const cached = state.explanations[cacheKey];
-      if (cached) return json(200, { ...cached, cached: true });
-      const limit = freeLimit('ai_explain');
-      if (limit !== null && usageOf(u.id, 'ai_explain') >= limit) return error(429, 'quota_exceeded', 'Daily explanation quota reached', { feature: 'ai_explain', limit });
-      bumpUsage(u.id, 'ai_explain');
-      const aiTaskId = uuid();
-      const explanation = buildExplanation(q, b.chosen_option, lang, aiTaskId, false);
+      if (cached) {
+        // Như API: mỗi lượt trúng cache ghi một ai_task (cache_hit) → ai_task_id MỚI để đánh giá; không trừ quota
+        const hitId = recordTask(u.id, 'explain_mcq');
+        persist();
+        return json(200, { ...cached, cached: true, ai_task_id: hitId });
+      }
+      const over = quotaExceeded(u, 'ai_explain');
+      if (over) return over;
+      consumeQuota(u, 'ai_explain');
+      const aiTaskId = recordTask(u.id, 'explain_mcq');
+      const explanation: Explanation = { ...buildExplanation(q, b.chosen_option, lang, aiTaskId, false), prompt_version_id: PROMPT_VERSION.explain_mcq };
+      const { locale: _l, cached: _c, ai_task_id: _a, prompt_version_id: _p, ...output } = explanation;
+      const fail = takeMockAiFailure();
+      if (fail) {
+        // Lỗi AI giữa chừng → hoàn quota, không lưu cache (như ExplainService.refund)
+        refundQuota(u, 'ai_explain');
+        persist();
+        return sse([{ event: 'start', data: { ai_task_id: aiTaskId, cached: false } }, ...jsonDeltas(output).slice(0, 3), { event: 'error', data: { code: fail, message: fail === 'ai_timeout' ? 'timeout' : 'provider_error' }, delayMs: 150 }, { event: 'done', data: {} }]);
+      }
       state.explanations[cacheKey] = { ...explanation, cached: true };
       persist();
-      const words = explanation.why_correct.split(' ');
-      const deltas = [] as { event: string; data: unknown; delayMs?: number }[];
-      for (let i = 0; i < words.length; i += 3) deltas.push({ event: 'delta', data: { text: words.slice(i, i + 3).join(' ') + ' ' }, delayMs: 90 });
-      return sse([{ event: 'start', data: { ai_task_id: aiTaskId, cached: false } }, ...deltas, { event: 'result', data: { data: explanation, ai_task_id: aiTaskId, cached: false }, delayMs: 150 }, { event: 'done', data: {} }]);
+      return sse([{ event: 'start', data: { ai_task_id: aiTaskId, cached: false } }, ...jsonDeltas(output), { event: 'result', data: { data: explanation, ai_task_id: aiTaskId, cached: false }, delayMs: 120 }, { event: 'done', data: {} }]);
     }),
-    route('POST', '/ai/feedback', () => empty(201)),
+    // ai.feedback: chỉ chủ tác vụ; gửi lại cùng ai_task_id → cập nhật (updated: true)
+    route('POST', '/ai/feedback', ({ body }) => {
+      const u = requireUser();
+      if (u instanceof Response) return u;
+      const parsed = aiFeedbackInputSchema.safeParse(body);
+      if (!parsed.success) return error(400, 'validation_failed', 'Invalid feedback', { issues: parsed.error.issues.map((i) => i.path.join('.')) });
+      const task = state.aiTasks[parsed.data.ai_task_id];
+      if (!task) return error(404, 'not_found', 'AI task not found');
+      if (task.user_id !== u.id) return error(403, 'forbidden', 'Only the owner of the AI task can rate it', { ai_task_id: parsed.data.ai_task_id });
+      const prev = state.feedback[parsed.data.ai_task_id];
+      const rec = { id: prev?.id ?? uuid(), user_id: u.id, rating: parsed.data.rating, comment: parsed.data.comment?.trim() ? parsed.data.comment.trim().slice(0, 1000) : null };
+      state.feedback[parsed.data.ai_task_id] = rec;
+      persist();
+      return json(201, { ok: true, id: rec.id, ai_task_id: parsed.data.ai_task_id, rating: rec.rating, updated: !!prev });
+    }),
+    // Chẩn đoán AI (diagnose_rl, v1.1 S5): SSE như explain; đã có → start{cached:true} → result → done (không trừ credit)
+    route('POST', '/attempts/{attemptId}/diagnosis', ({ params, locale }) => {
+      const u = requireUser();
+      if (u instanceof Response) return u;
+      const a = state.attempts[params.attemptId!];
+      if (!a || a.user_id !== u.id) return error(404, 'not_found', 'Attempt not found');
+      if (!a.result) return error(409, 'conflict', 'Attempt is not graded yet', { status: a.status });
+      if (examInProgress(u.id, a.id)) return error(403, 'exam_mode_locked', 'AI is locked during an exam');
+      const lang = u.explain_locale ?? locale;
+      if (a.ai_diagnosis && a.ai_diagnosis.locale === lang && a.ai_diagnosis.prompt_version_id === PROMPT_VERSION.diagnose_rl) {
+        const dto: AttemptAiDiagnosis = { ...a.ai_diagnosis, attempt_id: a.id, cached: true };
+        return sse([{ event: 'start', data: { ai_task_id: dto.ai_task_id ?? '', cached: true } }, { event: 'result', data: { data: dto, ai_task_id: dto.ai_task_id, cached: true } }, { event: 'done', data: {} }]);
+      }
+      if (!isPro(u)) return error(403, 'forbidden', 'Feature requires an upgrade', { feature: 'ai_diagnose', program: a.program, upgrade: true });
+      const balance = state.credits[u.id] ?? 0;
+      if (balance < DIAGNOSE_CREDITS) return error(402, 'insufficient_credits', 'Not enough credits', { required: DIAGNOSE_CREDITS, balance });
+      const aiTaskId = recordTask(u.id, 'diagnose_rl');
+      const output = buildDiagnosis(a, lang);
+      const fail = takeMockAiFailure();
+      if (fail) {
+        persist();
+        return sse([{ event: 'start', data: { ai_task_id: aiTaskId, cached: false } }, ...jsonDeltas(output).slice(0, 3), { event: 'error', data: { code: fail, message: fail }, delayMs: 150 }, { event: 'done', data: {} }]);
+      }
+      // Lưu kết quả + trừ credit cùng lúc (API: cùng transaction)
+      a.ai_diagnosis = { ...output, locale: lang, ai_task_id: aiTaskId, prompt_version_id: PROMPT_VERSION.diagnose_rl, created_at: nowIso() };
+      state.credits[u.id] = balance - DIAGNOSE_CREDITS;
+      persist();
+      const dto: AttemptAiDiagnosis = { ...a.ai_diagnosis, attempt_id: a.id, cached: false };
+      return sse([{ event: 'start', data: { ai_task_id: aiTaskId, cached: false } }, ...jsonDeltas(output), { event: 'result', data: { data: dto, ai_task_id: aiTaskId, cached: false }, delayMs: 120 }, { event: 'done', data: {} }]);
+    }),
+    route('GET', '/attempts/{attemptId}/diagnosis', ({ params }) => {
+      const u = requireUser();
+      if (u instanceof Response) return u;
+      const a = state.attempts[params.attemptId!];
+      if (!a || a.user_id !== u.id) return error(404, 'not_found', 'Attempt not found');
+      if (!a.ai_diagnosis) return error(404, 'not_found', 'attempt_diagnosis not found');
+      return json(200, { ...a.ai_diagnosis, attempt_id: a.id, cached: true } satisfies AttemptAiDiagnosis);
+    }),
   ];
 
   const summarize = (t: MockTestSet, userId: string | null) => {
@@ -788,7 +1001,8 @@ export function createMockFetch(): typeof fetch {
       kind: t.kind,
       level: t.level,
       is_free: t.is_free,
-      locked: t.locked,
+      // Pro mở mọi đề (như entitlement full_test của API)
+      locked: t.locked && !(userId && state.users[userId] && isPro(state.users[userId])),
       duration_sec: t.duration_sec,
       question_count: t.question_count,
       last_score: scores.length ? (mine.sort((x, y) => (y.submitted_at ?? '').localeCompare(x.submitted_at ?? ''))[0]?.result?.scaled_score ?? null) : null,

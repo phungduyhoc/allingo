@@ -10,6 +10,7 @@ import { useAttemptResult } from '@/lib/queries';
 import { CardSkeleton, ErrorState } from '@/components/states';
 import { PageHeader } from '@/components/page-header';
 import { DiagnosisCard } from './diagnosis-card';
+import { AiDiagnosisCard } from './ai-diagnosis-card';
 import { parseDiagnosis, scaleView } from './diagnosis';
 import { parseScaled, ScaledScores } from './scaled-scores';
 
@@ -145,6 +146,9 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
       <ScaledScores result={r} />
 
       {diagnosis ? <DiagnosisCard diagnosis={diagnosis} /> : null}
+
+      {/* Sprint 5: phân tích AI (Pro) – bổ sung, không thay khối chẩn đoán theo quy tắc ở trên */}
+      <AiDiagnosisCard attemptId={attemptId} />
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
         <Card>

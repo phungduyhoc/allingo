@@ -1,10 +1,12 @@
-import type { AnswerInput, AttemptMode, AttemptResult, Enrollment, Explanation, User } from '@allingo/schemas';
+import type { AnswerInput, AttemptAiDiagnosis, AttemptMode, AttemptResult, Enrollment, Explanation, User } from '@allingo/schemas';
 
 /** Trạng thái "máy chủ" giả lập, lưu localStorage để tải lại trang vẫn giữ phiên/nháp */
 
 export interface MockUserRecord extends User {
   password?: string;
   guest_token?: string;
+  /** Gói (mock): 'free' mặc định; tài khoản demo learner_pro@allingo.dev là 'monthly' (Pro) */
+  plan?: 'free' | 'monthly';
 }
 
 export interface MockAnswerRecord {
@@ -32,6 +34,8 @@ export interface MockAttemptRecord {
   question_ids?: string[];
   /** Số lần audio_started theo question_id (Sprint 4) */
   audio_plays?: Record<string, number>;
+  /** Chẩn đoán AI đã lưu (S5 – như score_breakdown.ai_diagnosis của API) */
+  ai_diagnosis?: Omit<AttemptAiDiagnosis, 'cached' | 'attempt_id'>;
 }
 
 export interface MockState {
@@ -40,15 +44,21 @@ export interface MockState {
   attempts: Record<string, MockAttemptRecord>;
   enrollments: Record<string, Enrollment[]>;
   explanations: Record<string, Explanation>;
-  /** usage[userId][feature][YYYY-MM-DD] = count */
+  /** usage[userId][feature][kỳ theo giờ VN: YYYY-MM-DD | YYYY-MM | all] = count */
   usage: Record<string, Record<string, Record<string, number>>>;
   xp: Record<string, number>;
+  /** ai_tasks giả lập: chủ tác vụ (POST /ai/feedback chỉ cho chủ) */
+  aiTasks: Record<string, { user_id: string; task: string }>;
+  /** ai.feedback giả lập theo ai_task_id */
+  feedback: Record<string, { id: string; user_id: string; rating: string; comment: string | null }>;
+  /** Số dư credit AI theo user */
+  credits: Record<string, number>;
 }
 
 const KEY = 'allingo.mock.v1';
 
 export function emptyState(): MockState {
-  return { users: {}, sessionUserId: null, attempts: {}, enrollments: {}, explanations: {}, usage: {}, xp: {} };
+  return { users: {}, sessionUserId: null, attempts: {}, enrollments: {}, explanations: {}, usage: {}, xp: {}, aiTasks: {}, feedback: {}, credits: {} };
 }
 
 export function loadState(): MockState {

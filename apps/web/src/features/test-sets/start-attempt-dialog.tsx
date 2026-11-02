@@ -3,8 +3,8 @@
 import * as React from 'react';
 import { BookOpen, Timer } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Alert, AlertDescription, AlertTitle, Button, buttonVariants, cn, Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@allingo/ui';
-import { Link } from '@/i18n/navigation';
+import { Alert, AlertDescription, Button, cn, Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@allingo/ui';
+import { QuotaExceededNotice } from '@/features/quota/quota-ui';
 import { useLocalized } from '@/lib/localized';
 import { getErrorCode } from '@/lib/errors';
 import type { AttemptMode } from '@/lib/types';
@@ -59,14 +59,7 @@ export function StartAttemptDialog({ ctl }: { ctl: Ctl }) {
           })}
         </div>
         {code === 'quota_exceeded' ? (
-          <Alert variant="gold">
-            <AlertTitle>{t('quotaExceeded')}</AlertTitle>
-            <AlertDescription>
-              <Link href="/settings" className={cn(buttonVariants({ variant: 'gold', size: 'sm' }), 'mt-2')}>
-                {t('quotaCta')}
-              </Link>
-            </AlertDescription>
-          </Alert>
+          <QuotaExceededNotice error={err} />
         ) : code ? (
           <Alert variant="destructive">
             <AlertDescription>{te(`codes.${code}`)}</AlertDescription>

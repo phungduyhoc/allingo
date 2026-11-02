@@ -38,6 +38,9 @@ src/mock                       fixtures tự biên soạn + "máy chủ" giả l
 e2e/guest-flow.spec.ts         luồng khách → đề mini → nộp → kết quả → xem lại → giải thích → đăng ký ghép tiến độ
 e2e/exam-offline.spec.ts       Thi Part 5: offline giữa chừng → IndexedDB → online/tải lại/đóng tab → nộp → chẩn đoán → lọc câu sai
 e2e/exam-layout.spec.ts        Reading Part 5–7: thanh Part, đoạn văn + thanh kéo, nhóm câu, tập trung, cỡ chữ (mock: toeic-reading-mini-01, API: toeic-reading-full-01)
+e2e/ai-explain.spec.ts         AI (S5): Review → Giải thích SSE (chữ hiện dần) → 👍 + ghi chú → tải lại "Giải thích có sẵn" + đánh giá được nhớ/cập nhật,
+                               lỗi AI + Thử lại (mock), lần explain thứ 11 → 429 (còn 0, giờ reset VN, toast, CTA → /pricing), kết quả: Free thẻ khoá,
+                               Pro tạo "Phân tích của AI" → tải lại vẫn hiện, trang đề thi "Đề đầy đủ còn y lượt tháng này"
 e2e/listening.spec.ts          Listening (S4): "Bắt đầu nghe", phát một lần không tua/tạm dừng, chuyển câu theo audio, tải lại tiếp tục, URL 403 → gia hạn,
                                Practice tua/tốc độ/lặp, timed_drill, L&R → Reading, kết quả L/R/Tổng, Review transcript (mock: toeic-listening-mini-01,
                                toeic-lr-mini-01; API: toeic-listening-01-drill-part1, toeic-mini-lr-01)
@@ -74,3 +77,32 @@ packages/ui/src                component dùng chung (Button, Card, Dialog/Sheet
 - **Kết quả L&R**: thẻ Listening / Reading / Tổng + khoảng ước tính từ `AttemptResult.scaled` (ghi rõ "ước tính, không phải điểm chính
   thức ETS"), breakdown Part 1–7 nhóm theo kỹ năng (`by_skill`), thời gian TB so cộng đồng.
 - **Kiểu dữ liệu**: ưu tiên Zod trong `packages/schemas` (đầy đủ hơn OpenAPI đã sinh); `GET /attempts/{id}/result` mới thêm (SPEC-ISSUES S8) nên path được ép kiểu cho tới khi chạy `pnpm client:gen`.
+- **AI (Sprint 5)** – `lib/ai-stream.ts` (thuần, có test): `sseToAction` đọc định dạng AI Gateway `start {ai_task_id, cached}` → `delta {text}`* →
+  `result {data, ai_task_id, cached}` → `done` / `error {code: ai_failed|ai_timeout}`, `aiStreamReducer` (idle → connecting → streaming →
+  done | error; luồng đóng khi chưa có `result` = lỗi), `extractJsonStrings`/`streamPreview` trích chữ từ JSON structured output ĐANG stream
+  (delta của provider là mảnh JSON) để hiện dần `why_correct`, `how_to_spot`… thay vì JSON thô. Dùng chung cho `POST /ai/explain` (cache hit =
+  JSON) và `POST /attempts/{id}/diagnosis`.
+- **Giải thích (Review)** – `review/use-explain.ts` + `explain-panel.tsx`: nhãn "Giải thích có sẵn" khi `cached`; lỗi AI → thông báo i18n + Thử lại;
+  429/402 → `QuotaExceededNotice`/`CreditsNotice` (đã dùng/giới hạn, còn lại, "Lượt mới lúc 00:00 ngày mai (giờ Việt Nam)", CTA → `/pricing`);
+  403 `exam_mode_locked` → ẩn nút (Review cũng hỏi `/me/attempts?status=in_progress&mode=exam` để ẩn trước + banner "Tiếp tục bài thi").
+  Đánh giá 👍/👎/Sai + ghi chú (`explain-feedback.tsx`) → `POST /ai/feedback`; lựa chọn nhớ trong `localStorage` `allingo.ai-feedback.v1`
+  theo `ai_task_id` + khoá nội dung (question_version × chosen × locale × prompt_version) vì giải thích cache có `ai_task_id` mới/null → tải
+  lại vẫn thấy lựa chọn, đổi đánh giá gửi lại ĐÚNG ai_task_id cũ (API cập nhật). Giải thích kèm Review (`ai_task_id = null`) → khi đánh giá
+  gọi lại `/ai/explain` (trúng cache, không trừ lượt) để lấy ai_task_id.
+- **Phân tích của AI (kết quả)** – `result/ai-diagnosis-card.tsx` + `use-ai-diagnosis.ts`: `GET /attempts/{id}/diagnosis` (404 = chưa có) →
+  nút tạo (SSE) → dạng sai nhiều nhất (`part5:word_form` → "Part 5 · Dạng từ"), bằng chứng, lý do, 3 bước, câu tự kiểm tra (chọn → đúng/sai),
+  lời động viên; Free (thiếu quyền `ai_diagnose` trong entitlements hoặc 403 `details.upgrade`) → thẻ khoá + CTA; 409/402/429/403 Exam → thông báo
+  riêng. Khối chẩn đoán theo quy tắc (S3) giữ nguyên phía trên.
+- **Hạn mức (chỉ hiển thị)** – `lib/quota.ts` + `features/quota/*`: `quotaOf` (ưu tiên `remaining` của API), `parseQuotaExceeded` (`details.quota`,
+  `resets_at`/`reset_at`), `resetParts` định dạng theo **Asia/Ho_Chi_Minh** (so ngày theo giờ VN, không theo múi giờ máy). "Còn x lượt giải thích
+  hôm nay" ở dashboard + Review, "Đề đầy đủ còn y lượt tháng này" ở trang Đề thi. 429 từ mọi query/mutation (QueryCache/MutationCache) hoặc luồng
+  AI → sự kiện `allingo:quota-exceeded` → `QuotaToastListener` (trong layout (app)) hiện một toast + nút Nâng cấp và làm mới entitlements.
+  Server luôn kiểm tra lại (CLAUDE.md §5.7). `/pricing` là trang placeholder (billing S7).
+- **Listening `ui_state` (S5)** – chuỗi phát lưu vị trí `localStorage` mỗi giây (lớp nhanh) VÀ đẩy `ui_state.listening = {step, offset_ms}` vào hàng
+  đợi nháp (đổi bước → ngay, trong bước ≤ 3 s/lần; gửi theo nhịp PUT /answers). Tải lại: chọn bản **tiến xa hơn** (chuỗi chỉ đi tới) giữa bản cục bộ,
+  bản chưa gửi trong IndexedDB và `GET /attempts/{id}.ui_state.listening`, rồi đối chiếu `audio_plays` như S4 (`program.ts`: `parseServerCursor`,
+  `newerCursor`, `toServerCursor`).
+- **Mock S5** – SSE đúng định dạng mới (delta = mảnh JSON), cache hit trả `ai_task_id` mới, Review kèm giải thích `ai_task_id = null`, `POST /ai/feedback`
+  (chủ tác vụ, gửi lại = `updated: true`), entitlements `remaining` + `reset_at` 00:00 giờ VN, 429 `details.quota` sau 10 lượt explain/ngày (Free),
+  chẩn đoán AI POST/GET (Pro demo `learner_pro@allingo.dev` / `Allingo@2026` tự tạo; Free → 403 upgrade; 10 credit), `ui_state` validate bằng Zod,
+  timed_drill cộng thời lượng audio. Kịch bản lỗi AI: `window.__ALLINGO_MOCK_AI_FAIL__ = 'ai_failed' | 'ai_timeout'` (lượt AI kế tiếp lỗi, hoàn quota).

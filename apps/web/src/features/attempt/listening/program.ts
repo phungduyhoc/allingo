@@ -159,6 +159,35 @@ export function parseStoredCursor(raw: string | null | undefined, stepsLength: n
 }
 
 /**
+ * Vị trí chuỗi phát đã lưu lên server (`attempt.ui_state.listening = { step, offset_ms }` – v1.1 S5, gửi kèm PUT /answers).
+ * Sai dạng/ngoài phạm vi → null; bước ≥ số bước (đã nghe xong) → `stepsLength`, offset 0.
+ */
+export function parseServerCursor(raw: unknown, stepsLength: number): ListeningCursor | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const v = raw as { step?: unknown; offset_ms?: unknown };
+  if (typeof v.step !== 'number' || !Number.isInteger(v.step) || v.step < 0) return null;
+  const step = Math.min(stepsLength, v.step);
+  const offsetMs = step < stepsLength && typeof v.offset_ms === 'number' && Number.isFinite(v.offset_ms) && v.offset_ms > 0 ? v.offset_ms : 0;
+  return { step, offsetMs };
+}
+
+/** Cursor dạng gửi lên server (`ui_state.listening`): số nguyên không âm */
+export function toServerCursor(c: ListeningCursor): { step: number; offset_ms: number } {
+  return { step: Math.max(0, Math.trunc(c.step)), offset_ms: Math.max(0, Math.round(c.offsetMs)) };
+}
+
+/**
+ * Chọn bản MỚI HƠN giữa bản cục bộ (localStorage – lớp nhanh, lưu mỗi giây) và bản server (ui_state – theo nhịp lưu nháp).
+ * Chuỗi phát chỉ đi tới nên "mới hơn" = xa hơn (bước lớn hơn, cùng bước thì offset lớn hơn); thiếu một bên → bên còn lại.
+ */
+export function newerCursor(a: ListeningCursor | null, b: ListeningCursor | null): ListeningCursor | null {
+  if (!a) return b;
+  if (!b) return a;
+  if (a.step !== b.step) return a.step > b.step ? a : b;
+  return a.offsetMs >= b.offsetMs ? a : b;
+}
+
+/**
  * Vị trí theo server: `attempt.audio_plays[question_id]` (số lần audio_started). Đi theo thứ tự bước audio, "tiêu" một lượt
  * cho mỗi bước đã bắt đầu; vị trí tiếp theo = sau bước audio cuối cùng đã bắt đầu (không phát lại đoạn đã nghe; phần còn lại
  * của bước bị gián đoạn bỏ qua vì server không biết vị trí).

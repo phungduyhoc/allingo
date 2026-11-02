@@ -12,6 +12,8 @@ import { PageHeader } from '@/components/page-header';
 import { TestSetCard } from '@/features/test-sets/test-set-card';
 import { StartAttemptDialog } from '@/features/test-sets/start-attempt-dialog';
 import { useStartTestSet } from '@/features/test-sets/use-start-test-set';
+import { QuotaLeft, ResetHint } from '@/features/quota/quota-ui';
+import { quotaOf } from '@/lib/quota';
 
 const TrendChart = dynamic(() => import('./trend-chart'), { ssr: false, loading: () => <Skeleton className="h-44 w-full" /> });
 
@@ -157,18 +159,21 @@ export function DashboardPage() {
             ) : (
               <Card>
                 <CardContent className="space-y-4">
-                  {ent.data.quotas
-                    .filter((q) => (SHOWN_QUOTAS as readonly string[]).includes(q.feature))
+                  {/* Sprint 5: số lượt còn lại + giờ reset (giờ VN) do API trả – chỉ hiển thị, server mới kiểm tra hạn mức */}
+                  <QuotaLeft feature="ai_explain" bar />
+                  {SHOWN_QUOTAS.filter((f) => f !== 'ai_explain')
+                    .map((f) => quotaOf(ent.data, f))
+                    .filter((q): q is NonNullable<typeof q> => q !== null)
                     .map((q) => {
-                      const remaining = q.limit === null ? null : Math.max(0, q.limit - q.used);
-                      const pct = q.limit ? ((q.limit - q.used) / q.limit) * 100 : 100;
+                      const pct = q.limit && q.remaining !== null ? (q.remaining / q.limit) * 100 : 100;
                       return (
-                        <div key={`${q.feature}-${q.period}`} className="space-y-1.5" data-testid={`quota-${q.feature}`}>
+                        <div key={`${q.feature}-${q.period}`} className="space-y-1.5" data-testid={`quota-${q.feature}`} data-remaining={q.remaining ?? ''}>
                           <div className="flex items-center justify-between text-sm">
                             <span className="font-medium">{t(`quotaFeature.${q.feature}`)}</span>
-                            <span className="tabular text-muted-foreground">{remaining === null ? t('quotaUnlimited') : t('quotaRemaining', { remaining, limit: q.limit ?? 0 })}</span>
+                            <span className="tabular text-muted-foreground">{q.remaining === null ? t('quotaUnlimited') : t('quotaRemaining', { remaining: q.remaining, limit: q.limit ?? 0 })}</span>
                           </div>
                           <Progress value={pct} tone={pct < 34 ? 'gold' : 'primary'} label={t(`quotaFeature.${q.feature}`)} />
+                          {q.remaining !== null ? <ResetHint iso={q.resetAt} className="block text-xs text-muted-foreground" /> : null}
                         </div>
                       );
                     })}

@@ -12,6 +12,8 @@ export type KnownErrorCode =
   | 'rate_limited'
   | 'exam_mode_locked'
   | 'feature_disabled'
+  | 'ai_failed'
+  | 'ai_timeout'
   | 'internal'
   | 'network';
 
@@ -27,6 +29,9 @@ const KNOWN: ReadonlySet<string> = new Set<KnownErrorCode>([
   'rate_limited',
   'exam_mode_locked',
   'feature_disabled',
+  // Mã của sự kiện SSE `error` từ AI Gateway (Sprint 5)
+  'ai_failed',
+  'ai_timeout',
   'internal',
   'network',
 ]);

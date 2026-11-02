@@ -454,7 +454,30 @@
     "skillRaw": "{correct}/{total} câu đúng",
     "avgTimeVsCommunity": "TB {mine} giây/câu · cộng đồng {community} giây",
     "avgTime": "TB {mine} giây/câu",
-    "estimatedNotOfficial": "Điểm quy đổi là ước tính của Allingo (thang 5–495 mỗi kỹ năng, tổng 10–990, khoảng ±25), không phải điểm chính thức của ETS."
+    "estimatedNotOfficial": "Điểm quy đổi là ước tính của Allingo (thang 5–495 mỗi kỹ năng, tổng 10–990, khoảng ±25), không phải điểm chính thức của ETS.",
+    "aiDiagnosisTitle": "Phân tích của AI",
+    "aiDiagnosisSubtitle": "AI đọc bài làm này, chỉ ra dạng câu bạn sai nhiều nhất, vì sao, và 3 bước để khắc phục.",
+    "aiDiagnosisGenerate": "Tạo phân tích AI",
+    "aiDiagnosisCredits": "{count, plural, other {Bạn còn # credit AI}}",
+    "aiDiagnosisStreaming": "AI đang phân tích bài làm…",
+    "aiDiagnosisTopError": "Dạng sai nhiều nhất",
+    "aiDiagnosisEvidence": "Bằng chứng từ bài làm",
+    "aiDiagnosisWhy": "Vì sao bạn sai",
+    "aiDiagnosisSteps": "3 bước cho lần sau",
+    "aiDiagnosisCheck": "Câu tự kiểm tra",
+    "aiDiagnosisCheckHint": "Chọn một đáp án để kiểm tra mình đã hiểu chưa.",
+    "aiDiagnosisCheckCorrect": "Chính xác!",
+    "aiDiagnosisCheckWrong": "Chưa đúng – đáp án là “{answer}”.",
+    "aiDiagnosisCached": "Đã lưu",
+    "aiDiagnosisCreatedAt": "Tạo lúc {date}",
+    "aiDiagnosisDisclaimer": "Nội dung do AI tạo có thể chưa chính xác – đối chiếu với phần xem lại từng câu.",
+    "aiDiagnosisLockedTitle": "Phân tích của AI dành cho gói Pro",
+    "aiDiagnosisLockedDesc": "Nâng cấp Pro để AI chỉ ra lỗi sai lặp lại, giải thích nguyên nhân và gợi ý 3 bước khắc phục sau mỗi bài.",
+    "aiDiagnosisExamLocked": "Bạn đang có bài thi chưa nộp. Nộp bài thi đó trước khi dùng phân tích AI.",
+    "aiDiagnosisConflict": "Phân tích đang được tạo hoặc bài chưa chấm xong. Thử lại sau giây lát.",
+    "aiDiagnosisError": "AI chưa tạo được phân tích. Bạn không bị trừ credit – thử lại nhé.",
+    "aiDiagnosisRetry": "Thử lại",
+    "aiDiagnosisLoadError": "Không tải được phân tích AI đã lưu."
   },
   "review": {
     "title": "Xem lại",
@@ -511,7 +534,23 @@
     },
     "audioGroup": "Hội thoại",
     "audioGroupRange": "Câu {from}–{to}",
-    "evidence": "Dẫn chứng"
+    "evidence": "Dẫn chứng",
+    "cachedBadge": "Giải thích có sẵn",
+    "explainStreaming": "AI đang viết giải thích…",
+    "explainConnecting": "Đang kết nối AI…",
+    "explainRetry": "Thử lại",
+    "explainErrorTitle": "Chưa có giải thích",
+    "explainLockedHint": "Giải thích AI bị khoá khi bạn đang làm một bài thi (Exam Mode). Nộp bài thi đó để mở lại.",
+    "examLockBanner": "Bạn đang có bài thi chưa nộp – giải thích AI tạm khoá cho tới khi nộp bài.",
+    "continueExam": "Tiếp tục bài thi",
+    "feedbackUpdated": "Đã cập nhật đánh giá.",
+    "feedbackChange": "Bạn có thể đổi đánh giá bất cứ lúc nào.",
+    "feedbackNoteToggle": "Thêm ghi chú",
+    "feedbackNoteLabel": "Ghi chú (tuỳ chọn)",
+    "feedbackNotePlaceholder": "Điểm nào chưa đúng hoặc chưa rõ?",
+    "feedbackNoteSubmit": "Gửi ghi chú",
+    "feedbackNoteSaved": "Đã gửi ghi chú. Cảm ơn bạn!",
+    "feedbackGroup": "Đánh giá giải thích"
   },
   "settings": {
     "title": "Cài đặt",
@@ -560,7 +599,9 @@
       "exam_mode_locked": "Tính năng này bị khoá khi đang thi.",
       "feature_disabled": "Tính năng tạm thời chưa bật.",
       "internal": "Lỗi hệ thống. Thử lại sau.",
-      "network": "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại."
+      "network": "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.",
+      "ai_failed": "AI chưa tạo được kết quả. Lượt dùng đã được hoàn lại – thử lại nhé.",
+      "ai_timeout": "AI phản hồi quá lâu. Lượt dùng đã được hoàn lại – thử lại nhé."
     },
     "upgrade": "Nâng cấp Pro",
     "relogin": "Đăng nhập lại"
@@ -635,5 +676,56 @@
     "perQuestionLabel": "Giây mỗi câu",
     "perQuestionAuto": "Mặc định theo Part ({seconds} giây)",
     "perQuestionSeconds": "{seconds} giây"
+  },
+  "quota": {
+    "feature": {
+      "ai_explain": "giải thích AI",
+      "full_test": "đề đầy đủ",
+      "mini_test": "đề mini",
+      "part_drill": "luyện Part",
+      "ai_diagnose": "phân tích AI",
+      "ai_tutor": "gia sư AI",
+      "dictionary_ai": "từ điển AI",
+      "unknown": "tính năng này"
+    },
+    "explainLeft": "{remaining, plural, =0 {Hết lượt giải thích hôm nay} other {Còn # lượt giải thích hôm nay}}",
+    "fullTestLeft": "{remaining, plural, =0 {Hết lượt đề đầy đủ tháng này} other {Đề đầy đủ còn # lượt tháng này}}",
+    "ofLimit": "{remaining}/{limit}",
+    "unlimited": "Không giới hạn",
+    "resetAt": "{day, select, today {Lượt mới lúc {time} hôm nay} tomorrow {Lượt mới lúc {time} ngày mai} other {Lượt mới lúc {time} ngày {date}}} (giờ Việt Nam)",
+    "exceededTitle": "{period, select, day {Hết lượt {feature} hôm nay} month {Hết lượt {feature} tháng này} other {Hết lượt {feature}}}",
+    "exceededUsed": "Bạn đã dùng {used}/{limit} lượt · còn {remaining}.",
+    "exceededHint": "Nâng cấp Pro để dùng nhiều hơn, hoặc quay lại khi hạn mức được làm mới.",
+    "upgradeCta": "Nâng cấp Pro",
+    "creditsTitle": "Không đủ credit AI",
+    "creditsDesc": "Tác vụ này cần {required} credit, bạn còn {balance}.",
+    "creditsDescUnknown": "Bạn không đủ credit AI cho tác vụ này.",
+    "creditsCta": "Xem gói & credit",
+    "serverNote": "Hạn mức do máy chủ kiểm tra; số hiển thị có thể trễ vài giây."
+  },
+  "pricing": {
+    "title": "Bảng giá",
+    "subtitle": "Bắt đầu miễn phí. Nâng cấp Pro khi bạn cần luyện nhiều hơn với AI.",
+    "comingSoon": "Thanh toán gói Pro đang được hoàn thiện và sẽ mở trong thời gian tới.",
+    "freeTitle": "Miễn phí",
+    "freeDesc": "Đủ để làm quen và luyện đều mỗi ngày.",
+    "freeFeatures": [
+      "Đề mini và luyện theo Part",
+      "Giải thích AI có giới hạn mỗi ngày",
+      "2 đề đầy đủ mỗi tháng",
+      "Chẩn đoán theo quy tắc sau mỗi bài"
+    ],
+    "proTitle": "Pro",
+    "proDesc": "Cho người học có ngày thi cụ thể.",
+    "proFeatures": [
+      "Giải thích AI nhiều hơn mỗi ngày",
+      "Đề đầy đủ không giới hạn",
+      "Phân tích của AI sau mỗi bài",
+      "Gia sư AI và lộ trình theo ngày thi"
+    ],
+    "payments": "Thanh toán qua VNPay, MoMo, ZaloPay.",
+    "currentLimits": "Hạn mức thực tế do máy chủ áp dụng và hiển thị trong bảng điều khiển.",
+    "backToApp": "Về bảng điều khiển",
+    "proBadge": "Sắp mở bán"
   }
 }

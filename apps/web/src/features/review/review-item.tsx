@@ -64,7 +64,7 @@ export function ReviewAudioGroup({ items, media }: { items: ReviewItemT[]; media
   );
 }
 
-export function ReviewItemCard({ item, number, attemptId, media }: { item: ReviewItemT; number: number; attemptId: string; media?: ReviewMedia }) {
+export function ReviewItemCard({ item, number, attemptId, media, examLocked, onExamLocked }: { item: ReviewItemT; number: number; attemptId: string; media?: ReviewMedia; examLocked?: boolean; onExamLocked?: () => void }) {
   const t = useTranslations('review');
   const ts = useTranslations('sections');
   const ta = useTranslations('attempt');
@@ -176,7 +176,14 @@ export function ReviewItemCard({ item, number, attemptId, media }: { item: Revie
       </dl>
 
       <div className="mt-4">
-        <ExplainPanel questionVersionId={item.question.question_version_id} chosenOption={chosen} attemptId={attemptId} initial={cachedExplanation?.success ? cachedExplanation.data : null} />
+        <ExplainPanel
+          questionVersionId={item.question.question_version_id}
+          chosenOption={chosen}
+          attemptId={attemptId}
+          initial={cachedExplanation?.success ? cachedExplanation.data : null}
+          examLocked={examLocked}
+          onExamLocked={onExamLocked}
+        />
       </div>
     </article>
   );

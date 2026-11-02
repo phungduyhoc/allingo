@@ -25,7 +25,7 @@ import { useDraftSaver, useOnlineStatus, type DraftSaver } from './use-draft-sav
 import { useExamClock } from './use-exam-clock';
 import { FONT_SCALES, SPLIT_MAX, SPLIT_MIN, stepFont, useExamPrefs } from './exam-prefs';
 import { useMediaUrls } from './use-media-urls';
-import { buildListeningProgram } from './listening/program';
+import { buildListeningProgram, toServerCursor } from './listening/program';
 import { useExamListening } from './listening/use-exam-listening';
 import { ListeningBar, ListeningGate } from './listening/listening-bar';
 import { AudioGroupHeader } from './listening/audio-group-header';
@@ -161,6 +161,9 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
     resolveUrl: media.resolveLatest,
     refreshUrls: media.refresh,
     urlsVersion: media.resolve,
+    // ui_state.listening: bản chưa gửi trong hàng đợi nháp (IndexedDB) mới hơn bản của server
+    serverCursor: saver.queue.pendingUiState()?.listening ?? attempt.ui_state?.listening,
+    onCursor: (c) => saver.setMeta({ ui_state: { listening: toServerCursor(c) } }),
     onFocus: (index) => {
       if (followingRef.current) navigateRef.current(index);
     },

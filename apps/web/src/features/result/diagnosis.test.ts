@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { diagnoseAttempt } from '@allingo/scoring';
-import { knownFlags, parseDiagnosis, recommendationHref, scaleView, toPercent } from './diagnosis';
+import { checkAnswerIndex, knownFlags, parseDiagnosis, recommendationHref, scaleView, toPercent } from './diagnosis';
 
 describe('diagnosis (khối Chẩn đoán màn kết quả)', () => {
   it('đọc đúng cấu trúc AttemptDiagnosis của packages/scoring', () => {
@@ -36,5 +36,19 @@ describe('diagnosis (khối Chẩn đoán màn kết quả)', () => {
     expect(scaleView({ scale: { program: 'toeic', skills: { listening: 120, reading: null } }, by_section: {} })).toMatchObject({ skill: 'listening', min: 5 });
     expect(scaleView({ scale: {}, by_section: { part5: { correct: 1, total: 2, avg_time_ms: null, score: null } } })).toMatchObject({ kind: 'skill', skill: 'reading' });
     expect(scaleView({ scale: { program: 'ielts' }, by_section: {} })).toBeNull();
+  });
+});
+
+describe('checkAnswerIndex – câu tự kiểm tra của chẩn đoán AI', () => {
+  const options = ['entitled', 'available', 'capable'];
+  it('khớp nguyên văn (không phân biệt hoa thường/khoảng trắng)', () => {
+    expect(checkAnswerIndex(options, 'entitled')).toBe(0);
+    expect(checkAnswerIndex(options, '  Capable ')).toBe(2);
+  });
+  it('khớp chữ cái A/B/C (kể cả "B." / "b)"), ngoài phạm vi → -1', () => {
+    expect(checkAnswerIndex(options, 'B')).toBe(1);
+    expect(checkAnswerIndex(options, 'b)')).toBe(1);
+    expect(checkAnswerIndex(options, 'D')).toBe(-1);
+    expect(checkAnswerIndex(options, 'unrelated')).toBe(-1);
   });
 });

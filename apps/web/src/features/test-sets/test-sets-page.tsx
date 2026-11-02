@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/page-header';
 import { TestSetCard } from './test-set-card';
 import { StartAttemptDialog } from './start-attempt-dialog';
 import { useStartTestSet } from './use-start-test-set';
+import { QuotaLeft } from '@/features/quota/quota-ui';
 
 const KINDS = ['all', 'mini', 'full', 'part_drill', 'diagnostic', 'topic_pack'] as const;
 type Kind = (typeof KINDS)[number];
@@ -22,6 +23,8 @@ export function TestSetsPage({ initialKind }: { initialKind?: string }) {
   return (
     <div className="space-y-6">
       <PageHeader title={t('title')} description={t('subtitle')} />
+      {/* "Đề đầy đủ còn y lượt tháng này" (Free) – Pro không có dòng hạn mức → ẩn */}
+      <QuotaLeft feature="full_test" className="sm:max-w-md" />
       <Tabs value={kind} onValueChange={(v) => setKind(v as Kind)}>
         <TabsList aria-label={t('title')}>
           {KINDS.map((k) => (
