@@ -1,6 +1,6 @@
-# HANDOFF — Sprint 1 → Sprint 6 (02/11/2026)
+# HANDOFF — Sprint 1 → Sprint 8 (02/11/2026)
 
-Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1–6 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A39), `docs/SPEC-ISSUES.md` (S1–S29), ADR 0001–0025. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
+Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1–8 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A39), `docs/SPEC-ISSUES.md` (S1–S29), ADR 0001–0025. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
 
 Repo chưa push (theo yêu cầu: làm tiếp trên phiên, push sau). Mọi kiểm tra dưới đây chạy trong phiên cloud: Postgres 16 + pgvector, Valkey/Redis cục bộ, không Docker, không Meilisearch/MinIO/Azure/khoá AI thật (A1, A25).
 
@@ -82,6 +82,33 @@ Chi phí ước tính ≈ 1,0 USD / 1.000 explain (Gemini 2.5 Flash, token ướ
 | 7 | `api:diff`, `db:diff` xanh | ĐẠT | Migration 0004 |
 
 Phát hiện và sửa thêm: CMS production lỗi 500 khi tạo câu (schema `cms` thiếu cột mới vì production không push) → migration Payload ban đầu `apps/cms/migrations` + bước `payload migrate` trong runbook deploy.
+
+### Sprint 7 — Billing: đơn hàng, 3 cổng thanh toán, subscription & entitlement gating
+
+Phiên không có credential sandbox và không ra được mạng cổng: VNPay 2.1.0, MoMo AIO v2, ZaloPay v2 viết theo tài liệu chính thức, kiểm bằng vector chữ ký tính độc lập (openssl) + HTTP giả lập; luồng đầu-cuối chạy với `MockPaymentProvider` (trang thanh toán giả có nút paid/failed/cancelled/paid-drop).
+
+| # | Tiêu chí | Kết quả | Ghi chú |
+| --- | --- | --- | --- |
+| 1 | Mua Pro tháng qua VNPay/MoMo/ZaloPay sandbox → webhook → quyền < 5 s, credit tháng, ledger 2 dòng đúng `balance_after` | ĐẠT (mock + IPN tự ký) / CHƯA (sandbox thật) | E2E `checkout.spec.ts` mock + API thật; cần credential sandbox + tunnel https (`PAYMENT_CALLBACK_BASE_URL`) – runbook payments §2 |
+| 2 | Gửi lại webhook 3 lần → 1 payment; sai chữ ký → 400 + audit | ĐẠT | Cả 3 webhook đồng thời (`Promise.all`) chỉ cấp 1 lần |
+| 3 | Pending 31′ → expired; mất webhook → `payment.reconcile` cấp quyền | ĐẠT | `paid-drop` E2E |
+| 4 | Free đề full lần 3/tháng → 429 đúng envelope; Pro không giới hạn | ĐẠT | Ma trận plan × feature qua `FeatureGateService` + `packages/config/entitlements.ts` |
+| 5 | Huỷ subscription → giữ quyền tới hết kỳ → job hạ Free + thông báo | ĐẠT | Nhắc 7/3/1 ngày mỗi mốc một lần |
+| 6 | Đối soát 20 giao dịch không lệch; báo cáo CSV | ĐẠT (giả lập) | Mẫu CSV sao kê tự định nghĩa – cần đối chiếu mẫu thật từng cổng |
+| 7 | `api:diff`, `db:diff` xanh; không secret; ≥ 40 ca mới | ĐẠT | 66 ca mới |
+
+### Sprint 8 — Hoá đơn điện tử, khuyến mãi, referral, thông báo đa kênh
+
+| # | Tiêu chí | Kết quả | Ghi chú |
+| --- | --- | --- | --- |
+| 1 | Mua gói → hoá đơn trong 60 s (sandbox nhà cung cấp), PDF tải được, email PDF; hoàn tiền → huỷ | ĐẠT (mock) / CHƯA (MISA thật) | ADR-0030 Proposed: MISA meInvoice mặc định. **Cần kế toán xác nhận** xử lý hoàn tiền (NĐ 123/2020, NĐ 70/2025 thường yêu cầu điều chỉnh/thay thế, không huỷ – S90) và thuế suất mặc định |
+| 2 | `WELCOME20` 20 % user mới, lần 2 bị từ chối; trial 7 ngày một lần | ĐẠT | Không vượt `max_uses` khi đặt đồng thời |
+| 3 | A giới thiệu B: joined → started → upgraded, thưởng đúng; B thứ 21/tháng không thưởng; cùng fingerprint không thưởng | ĐẠT (API) | Web gửi `X-Device-Fingerprint` – API đã được bổ sung header CORS ở Sprint 10 |
+| 4 | Tắt email marketing → không nhận email tuần; push không gửi trong giờ yên lặng | ĐẠT | Giờ yên lặng theo giờ VN |
+| 5 | Admin cấp 100 credit kèm lý do → ledger `admin_adjust`, audit có admin id | ĐẠT | E2E `admin-billing.spec.ts` |
+| 6 | `api:diff`, `db:diff` xanh; dead-letter hoá đơn trong admin | ĐẠT | Trang admin billing 10 tab |
+
+Web Sprint 7–8: bảng giá thật, checkout, kết quả thanh toán (polling + Socket.IO), lịch sử đơn/hoá đơn, sổ credit, huỷ gói, banner hết hạn, giới thiệu bạn bè + ảnh OG, chuông thông báo realtime, trang quản lý thông báo theo token, admin billing. Unit 200, E2E mock 86/86, API thật 81/82 (1 ca push chập chờn khi máy tải nặng).
 
 ## 2. Đã làm
 
