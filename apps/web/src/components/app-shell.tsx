@@ -1,6 +1,6 @@
 'use client';
 
-import { Dumbbell, LayoutDashboard, ListChecks, LogOut, NotebookPen, Settings, UserRound } from 'lucide-react';
+import { CreditCard, Dumbbell, LayoutDashboard, ListChecks, LogOut, NotebookPen, Settings, ShieldCheck, UserRound } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Badge, Button, buttonVariants, cn } from '@allingo/ui';
 import { Link, usePathname, useRouter } from '@/i18n/navigation';
@@ -10,6 +10,9 @@ import { ThemeToggle } from './theme-toggle';
 import { LocaleSwitcher } from './locale-switcher';
 import { TutorProvider } from '@/features/tutor/tutor-provider';
 import { InstallBanner } from '@/features/pwa/install-banner';
+import { NotificationBell } from '@/features/notifications/notification-bell';
+import { SubscriptionBanner } from '@/features/billing/subscription-banner';
+import { isAdmin } from '@/features/admin/is-admin';
 
 const NAV = [
   { href: '/toeic/dashboard', key: 'dashboard', icon: LayoutDashboard },
@@ -66,6 +69,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-1 sm:gap-2">
               <LocaleSwitcher className="hidden h-9 w-auto sm:block" />
               <ThemeToggle />
+              {user && isAdmin(user) ? (
+                <Link
+                  href="/admin/billing"
+                  aria-label={t('adminBilling')}
+                  title={t('adminBilling')}
+                  className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'hidden sm:inline-flex', pathname.startsWith('/admin') && 'bg-secondary')}
+                  data-testid="nav-admin-billing"
+                >
+                  <ShieldCheck aria-hidden />
+                </Link>
+              ) : null}
+              {user ? (
+                <Link
+                  href="/account/billing"
+                  aria-label={t('billing')}
+                  title={t('billing')}
+                  className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), pathname.startsWith('/account') && 'bg-secondary')}
+                  data-testid="nav-billing"
+                >
+                  <CreditCard aria-hidden />
+                </Link>
+              ) : null}
+              {user ? <NotificationBell /> : null}
               {user ? (
                 <span
                   className="hidden items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-medium sm:inline-flex"
@@ -81,7 +107,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 size="icon"
                 aria-label={t('logout')}
                 disabled={logout.isPending}
-                onClick={() => logout.mutate(undefined, { onSettled: () => router.replace('/') })}
+                onClick={() => {
+                  // mutateAsync: qc.clear() trong useLogout làm AuthGate gỡ component này trước khi callback onSettled của
+                  // mutate() kịp chạy (kẹt spinner) – promise vẫn hoàn tất sau khi gỡ nên chuyển trang chắc chắn
+                  void logout.mutateAsync().catch(() => undefined).finally(() => router.replace('/'));
+                }}
               >
                 <LogOut aria-hidden />
               </Button>
@@ -102,6 +132,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         ) : null}
+        <SubscriptionBanner />
 
         <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 pb-24 sm:px-6 md:pb-10">
           {children}

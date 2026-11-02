@@ -1,5 +1,7 @@
 import { unwrap } from '@allingo/api-client';
 import { getApi } from './api';
+import { getDeviceFingerprint } from './fingerprint';
+import { clearReferral, getPendingReferral } from './referral';
 import type { AuthTokens, GuestSession, User } from './types';
 
 const GUEST_TOKEN_KEY = 'allingo.guest_token';
@@ -23,6 +25,52 @@ export function setGuestToken(token: string | null): void {
   }
 }
 
+const FP_BLOCKED_KEY = 'allingo.fp_header_blocked';
+
+function fpHeaderBlocked(): boolean {
+  try {
+    return typeof window !== 'undefined' && window.sessionStorage.getItem(FP_BLOCKED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markFpHeaderBlocked(): void {
+  try {
+    window.sessionStorage.setItem(FP_BLOCKED_KEY, '1');
+  } catch {
+    /* bỏ qua */
+  }
+}
+
+/** Mã giới thiệu đang chờ (link `/register?ref=`) – gửi kèm khi tạo tài khoản (đăng ký, OTP, OAuth) */
+function referralField(): { referral_code?: string } {
+  const ref = getPendingReferral();
+  return ref ? { referral_code: ref.code } : {};
+}
+
+type AuthPath = '/auth/register' | '/auth/otp/verify' | '/auth/oauth/{provider}';
+
+/**
+ * POST xác thực kèm `X-Device-Fingerprint` (S8 – chống lạm dụng referral). Nếu trình duyệt chặn header ở preflight CORS
+ * (API chưa khai báo header trong `allowedHeaders`) thì fetch ném TypeError TRƯỚC khi request được gửi → gửi lại không header
+ * và nhớ trong phiên để không thử lại (header là tín hiệu phụ, không được làm hỏng đăng ký).
+ */
+async function authPost(path: AuthPath, init: { body: unknown; params?: unknown }): Promise<AuthTokens> {
+  const api = getApi();
+  const fp = fpHeaderBlocked() ? null : await getDeviceFingerprint();
+  const call = (headers?: Record<string, string>) => api.POST(path as '/auth/register', { ...(init as object), body: init.body as never, ...(headers ? { headers } : {}) });
+  if (fp) {
+    try {
+      return unwrap(await call({ 'X-Device-Fingerprint': fp })) as unknown as AuthTokens;
+    } catch (err) {
+      if (!(err instanceof TypeError)) throw err;
+      markFpHeaderBlocked();
+    }
+  }
+  return unwrap(await call()) as unknown as AuthTokens;
+}
+
 /** POST /auth/guest → API đặt cookie allingo_at/allingo_rt; trả user khách (SPEC-ISSUES S4) */
 export async function createGuestSession(): Promise<User> {
   const api = getApi();
@@ -32,11 +80,11 @@ export async function createGuestSession(): Promise<User> {
 }
 
 export async function register(input: { email: string; password: string; display_name: string; ui_locale?: string; accept_terms: boolean; marketing_opt_in?: boolean }): Promise<User> {
-  const api = getApi();
   const guest = getGuestToken();
-  const body = { ...input, ...(guest ? { guest_token: guest } : {}) };
-  const res = unwrap(await api.POST('/auth/register', { body: body as never })) as unknown as AuthTokens;
+  const body = { ...input, ...(guest ? { guest_token: guest } : {}), ...referralField() };
+  const res = await authPost('/auth/register', { body });
   setGuestToken(null);
+  clearReferral();
   return res.user;
 }
 
@@ -64,20 +112,20 @@ export async function requestEmailOtp(email: string): Promise<{ retry_after: num
 
 /** OTP qua email: xác minh → đăng nhập (tạo tài khoản nếu chưa có), ghép tiến độ khách */
 export async function verifyEmailOtp(input: { email: string; otp: string; ui_locale?: string }): Promise<User> {
-  const api = getApi();
   const guest = getGuestToken();
-  const body = { ...input, ...(guest ? { guest_token: guest } : {}) };
-  const res = unwrap(await api.POST('/auth/otp/verify', { body: body as never })) as unknown as AuthTokens;
+  const body = { ...input, ...(guest ? { guest_token: guest } : {}), ...referralField() };
+  const res = await authPost('/auth/otp/verify', { body });
   setGuestToken(null);
+  clearReferral();
   return res.user;
 }
 
 /** Google Identity Services: gửi id_token (credential) – 409 link_required khi email đã có tài khoản mật khẩu */
 export async function signInWithGoogle(input: { id_token: string; link_password?: string; ui_locale?: string }): Promise<User> {
-  const api = getApi();
   const guest = getGuestToken();
-  const body = { ...input, ...(guest ? { guest_token: guest } : {}) };
-  const res = unwrap(await api.POST('/auth/oauth/{provider}', { params: { path: { provider: 'google' } }, body: body as never })) as unknown as AuthTokens;
+  const body = { ...input, ...(guest ? { guest_token: guest } : {}), ...referralField() };
+  const res = await authPost('/auth/oauth/{provider}', { params: { path: { provider: 'google' } }, body });
   setGuestToken(null);
+  clearReferral();
   return res.user;
 }

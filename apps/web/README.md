@@ -51,6 +51,13 @@ e2e/notes.spec.ts              Ghi chú (S6): tự lưu (POST → PATCH), Markdo
 e2e/pwa.spec.ts                PWA (S6): manifest, SW (dev: cờ allingo.sw.dev), cache không có API, offline → trang offline + đề đã xem (danh sách
                                chỉ kiểm tra trên bản production), banner cài đặt lần 2, Web Push (grantPermissions; headless không có dịch vụ push →
                                PushManager giả) + SW hiện thông báo qua CDP ServiceWorker.deliverPushMessage
+e2e/checkout.spec.ts          Billing (S7/S8): đăng ký → /pricing WELCOME20 xem trước giá → checkout (MST doanh nghiệp kiểm tra như server) → cổng giả
+                               `paid` → kết quả `paid` (polling/Socket.IO) → Pro + ledger + hoá đơn; `failed` → Thử lại → `paid`; `paid-drop` → reconcile
+                               (API thật: lùi `billing.payments.created_at` bằng psql + admin chạy job; mock: `__ALLINGO_MOCK__.runJob`) → `paid`
+e2e/referral.spec.ts          Referral (S8): A lấy link → B mở link (API: /v1/r/{code}; mock: /r/{code} web) → /register?ref= → joined của A = 1
+e2e/notifications.spec.ts     Thông báo (S8): chuông realtime (redeem PRO7DAY qua API → notification.new) → đọc tất cả; /notifications/manage?token=
+                               (token HMAC tự ký trong test: API thật đọc AUTH_SECRET/.env dev, mock khoá cố định) → huỷ email học tập → cài đặt
+e2e/admin-billing.spec.ts     Admin (S8): học viên không vào được; admin cấp 100 credit (ghi chú bắt buộc) → ledger admin_adjust; hoàn tiền đơn
 e2e/listening.spec.ts          Listening (S4): "Bắt đầu nghe", phát một lần không tua/tạm dừng, chuyển câu theo audio, tải lại tiếp tục, URL 403 → gia hạn,
                                Practice tua/tốc độ/lặp, timed_drill, L&R → Reading, kết quả L/R/Tổng, Review transcript (mock: toeic-listening-mini-01,
                                toeic-lr-mini-01; API: toeic-listening-01-drill-part1, toeic-mini-lr-01)
@@ -161,3 +168,53 @@ packages/ui/src                component dùng chung (Button, Card, Dialog/Sheet
 - **Giới hạn đã biết**: bản `next dev` không hydrate được HTML trang offline lưu sẵn (HTML dev mang request id kênh debug `self.__next_r`) → e2e
   kiểm tra danh sách đề đã xem trên bản production; Chrome headless không có dịch vụ push (`Registration failed - permission denied`) → e2e dùng
   PushManager giả để kiểm tra luồng đăng ký với API và CDP để kiểm tra SW hiển thị thông báo.
+
+## Sprint 7 + 8 – billing, khuyến mãi, hoá đơn, referral, thông báo, billing admin (giao diện)
+
+- **Lớp API** – `lib/billing-api.ts` (gói/cổng/khuyến mãi/đơn/pay/subscription/ledger), `lib/growth-api.ts` (referral, thông báo, trang
+  quản lý theo token), `lib/admin-api.ts` (billing admin); validate bằng Zod của `@allingo/schemas` (`lib/zod-parse.ts`). Hàm thuần có test:
+  `lib/billing.ts` (VND, `priceView` – giá sau mã do SERVER tính, `groupPlans`, `validateBuyer` dùng đúng `buyerInfoSchema`/`normalizeVnTaxCode`
+  của server, lỗi `details.promotion.reason`/`details.issues`, nhịp polling 2 → 5 → 10 s, `safeNextPath`).
+- **Bảng giá `/pricing`** (`features/pricing`): tab chương trình, thẻ Free / Pro (tháng · năm · trọn đời, `compare_at` + % tiết kiệm, ≈ giá/tháng) /
+  Combo, gói credit; mã khuyến mãi xem trước giá cho mọi gói (`POST /promotions/validate` – cần đăng nhập; khách/chưa đăng nhập → mời đăng ký);
+  mã đổi trực tiếp (trial/credit) → nút "Kích hoạt"; "Dùng thử Pro 7 ngày" (`PRO7DAY`, chỉ hiện khi server nói còn đổi được); bảng so sánh đọc
+  `FEATURE_GATES` + `plans[].features` (không số cứng; hạn mức hiển thị từ `/me/entitlements` của chính người dùng). Chưa đăng nhập / khách →
+  `/signup?next=/checkout?...` (`AuthForm` đọc `?next=` lúc đăng nhập xong, chỉ đường dẫn nội bộ).
+- **Checkout `/checkout?price_id=&promo=`** (`features/checkout`): cổng từ `GET /payments/providers` (ẩn khi `checkout_enabled=false`), mã (lý do
+  i18n `billing.promoReason.*`), hoá đơn cá nhân/doanh nghiệp (MST kiểm tra khi rời ô + khi gửi), điều khoản; Idempotency-Key ổn định mỗi phiên
+  (`checkout-session.ts`, sessionStorage theo price_id; 409 → xoay khoá) → `/pay` → redirect / QR (`payment-qr.tsx`, polling) / deeplink.
+  `/checkout/result` CHỈ hiển thị: `GET /orders/{id}` polling + Socket.IO `order.updated`; `paid` → làm mới entitlements/credit/subscription/
+  thông báo, xoá khoá phiên; `failed|cancelled` còn hạn → "Thử thanh toán lại".
+- **Tài khoản → Thanh toán** `/account/billing?tab=plan|orders|credits` + `/account/orders/{id}` (đích của thông báo `billing.order_paid`/
+  `invoice_issued`): gói hiện tại + huỷ gia hạn (xác nhận, giữ tới `current_period_end`), lịch sử đơn (cursor), sổ credit (cursor), hoá đơn
+  (ký hiệu, số, mã tra cứu + sao chép, PDF – URL ký 10′, hết hạn thì tải lại đơn trước khi mở). `SubscriptionBanner` trong AppShell
+  (`features/billing/banner.ts`, có test): dùng thử còn N ngày / sắp hết hạn ≤ 7 ngày (chưa mua kỳ nối tiếp) / vừa hết hạn hoặc hết dùng thử.
+- **Realtime** – `lib/realtime.ts`: client Socket.IO tối giản (Engine.IO v4 qua WebSocket gốc, không thêm thư viện; parser khung có test),
+  cookie `allingo_at` (path `/`) đi kèm handshake, server ngắt → `GET /me` qua API client (refresh khử trùng lặp) rồi kết nối lại lũy thừa 2.
+  `lib/realtime-hub.ts` (singleton) + `features/realtime/realtime-provider.tsx` trong layout (app): `order.updated`, `credits.changed`,
+  `entitlements.changed`, `notification.new` → làm mới query / thêm vào hộp thông báo + toast. Mock: sự kiện window `allingo:mock-realtime`.
+- **Thông báo** – `features/notifications`: chuông trong header (số chưa đọc, 99+, bảng 8 mục, đọc tất cả), trang `/notifications`, reducer
+  `feed.ts` (có test) lưu trong cache TanStack; nội dung `notification-text.ts` (có test): server đã dựng cùng ngôn ngữ → dùng; không →
+  dịch `notifications.templates.<template_code>` với tham số từ `payload.data` (đủ tham số bắt buộc) → dự phòng title/body server → chuỗi chung;
+  `url` chỉ nhận đường dẫn nội bộ, ánh xạ `/practice` → `/toeic/practice`, `/today|/stats` (S9) → dashboard. Cài đặt `/settings/notifications`
+  thêm ma trận loại × kênh (`category-matrix.tsx`); `/notifications/manage?token=&unsubscribe=` (không cần đăng nhập, mở trang không đổi gì –
+  phải bấm "Huỷ đăng ký"; `noindex`).
+- **Referral** – `/referral` (+ `/account/referral` cho thông báo): mã, link UTM, sao chép, Facebook/Messenger (link API), Zalo (Web Share API
+  hoặc sao chép link – Zalo Share SDK cần OA id), thống kê, thưởng/trần tháng, danh sách gần đây. `/register?ref=` (và `/signup?ref=`):
+  `ReferralCapture` lưu mã + UTM (`lib/referral.ts`, localStorage 30 ngày) và hiện lời mời từ `GET /referrals/{code}`; `referral_code` gửi ở
+  đăng ký/OTP/Google. `X-Device-Fingerprint` (`lib/fingerprint.ts`, có test): SHA-256 của đặc điểm trình duyệt + id ngẫu nhiên
+  `allingo.device_id` (không PII); preflight CORS chặn header → gửi lại không header (request chưa đi) và nhớ trong phiên. Ảnh OG tĩnh
+  `public/og/referral.png` dựng bằng `node scripts/build-og.mjs` (Chromium của Playwright, `E2E_CHROME_CHANNEL=chrome`). `/r/{code}` của web
+  chuyển tới `/register?ref=`.
+- **Billing admin `/admin/billing[/<tab>]`** (`features/admin`, chỉ admin/superadmin: ẩn menu + chặn route phía client, server vẫn 403):
+  tổng quan + đối chiếu hoá đơn tháng, đơn (lọc, hoàn tiền: lý do + thu hồi credit), thanh toán, hoá đơn, subscription, cấp/trừ credit (ghi chú
+  bắt buộc, validate bằng `adminCreditAdjustInputSchema`) + sổ của người dùng, dead-letter hoá đơn + thử lại, đối soát (CSV dán/tải lên → JSON
+  body, xem lệch, tải CSV qua fetch → Blob), khuyến mãi CRUD (validate bằng schema server) + thống kê, chạy job + cờ `ff.billing.checkout`.
+- **Mock S7/S8** – `src/mock/billing-fixtures.ts` (gói/giá/8 mã seed như API), `billing-core.ts`, `billing.ts`, `growth.ts`: đơn + Idempotency-Key,
+  cổng giả `/[locale]/mock-gateway` (`data-outcome` paid | failed | cancelled | paid-drop; 404 ở bản build không mock), xác nhận một bước (đơn →
+  subscription/credit/khuyến mãi → hoá đơn phát hành ngay (PDF mẫu `public/mock/invoice-sample.pdf`) → thông báo → realtime), referral (thưởng
+  200/200 khi bài đầu tiên được chấm, 500/500 khi trả tiền), thông báo in-app (title/body null → web dịch), admin đầy đủ; admin demo
+  `admin@allingo.dev` / `Allingo@2026`. Hook E2E: `window.__ALLINGO_MOCK__.request(method, path, body)` (như page.request với API thật),
+  `.runJob(job)` (mock bỏ ngưỡng 15′ của reconcile), `.failNextInvoice()`.
+- **Sửa lỗi**: đăng xuất đôi khi kẹt spinner (`useLogout` gọi `qc.clear()` → AuthGate gỡ AppShell trước khi callback `onSettled` của `mutate()`
+  chạy) → dùng `mutateAsync().finally(...)` và AuthGate tự tải lại `/me` khi query bị xoá về trạng thái pending/idle.

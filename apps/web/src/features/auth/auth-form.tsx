@@ -11,6 +11,7 @@ import { getErrorCode, getFieldErrors, isApiError } from '@/lib/errors';
 import { getGuestToken } from '@/lib/auth';
 import { useClientValue } from '@/lib/use-mounted';
 import { env } from '@/env';
+import { safeNextPath } from '@/lib/billing';
 import { GoogleButton } from './google-button';
 import { OtpLoginForm } from './otp-login-form';
 
@@ -43,10 +44,20 @@ export function AuthForm({ mode }: { mode: Mode }) {
     [mode, t],
   );
 
+  // `?next=` (vd. từ /pricing → /checkout) – chỉ nhận đường dẫn nội bộ; đọc lúc đăng nhập xong (không cần useSearchParams/Suspense)
   const afterSignIn = React.useCallback(() => {
     toast.success(mode === 'login' ? t('submitLogin') : t('submitSignup'));
-    router.push('/toeic/dashboard');
+    const next = safeNextPath(new URLSearchParams(window.location.search).get('next'));
+    router.push(next ?? '/toeic/dashboard');
   }, [mode, router, t]);
+  // Giữ `next`/`ref`/UTM khi chuyển qua lại Đăng nhập ↔ Đăng ký
+  const carriedQuery = useClientValue(() => {
+    const src = new URLSearchParams(window.location.search);
+    const keep = new URLSearchParams();
+    for (const [k, v] of src) if (k === 'next' || k === 'ref' || k.startsWith('utm_')) keep.set(k, v);
+    const q = keep.toString();
+    return q ? `?${q}` : '';
+  }, '');
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -194,7 +205,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
         ) : null}
         <p className="text-center text-sm text-muted-foreground">
           {mode === 'login' ? t('noAccount') : t('haveAccount')}{' '}
-          <Link href={mode === 'login' ? '/signup' : '/login'} className="font-semibold text-primary underline-offset-4 hover:underline">
+          <Link href={`${mode === 'login' ? '/signup' : '/login'}${carriedQuery}`} className="font-semibold text-primary underline-offset-4 hover:underline">
             {mode === 'login' ? t('submitSignup') : t('submitLogin')}
           </Link>
         </p>

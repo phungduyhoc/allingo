@@ -28,6 +28,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     if (me.isError && isApiError(me.error) && me.error.status === 401) router.replace('/');
   }, [me.isError, me.error, router]);
 
+  // Sau queryClient.clear() (đăng xuất/đổi tài khoản) truy vấn /me về pending mà không tự tải lại → tải lại để không kẹt spinner
+  const { isPending, fetchStatus, refetch } = me;
+  React.useEffect(() => {
+    if (isPending && fetchStatus === 'idle') void refetch();
+  }, [isPending, fetchStatus, refetch]);
+
   if (me.isPending) {
     return (
       <div className="flex min-h-dvh items-center justify-center" aria-busy>

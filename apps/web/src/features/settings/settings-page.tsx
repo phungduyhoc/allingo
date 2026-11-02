@@ -5,7 +5,8 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { Bell } from 'lucide-react';
+import { Bell, CreditCard, Gift, ShieldCheck } from 'lucide-react';
+import { isAdmin } from '@/features/admin/is-admin';
 import {
   Alert,
   AlertDescription,
@@ -36,6 +37,7 @@ const WEB_LOCALES = routing.locales as readonly string[];
 export function SettingsPage() {
   const t = useTranslations('settings');
   const tnf = useTranslations('notifications');
+  const tb = useTranslations('account');
   const tc = useTranslations('common');
   const router = useRouter();
   const me = useMe();
@@ -97,6 +99,29 @@ export function SettingsPage() {
 
         <Card className="lg:col-span-2">
           <CardHeader>
+            <CardTitle>{tb('settingsTitle')}</CardTitle>
+            <CardDescription>{tb('settingsDesc')}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Link href="/account/billing" className={buttonVariants({ variant: 'outline' })} data-testid="settings-billing-link">
+              <CreditCard aria-hidden />
+              {tb('settingsBilling')}
+            </Link>
+            <Link href="/referral" className={buttonVariants({ variant: 'outline' })} data-testid="settings-referral-link">
+              <Gift aria-hidden />
+              {tb('settingsReferral')}
+            </Link>
+            {isAdmin(me.data) ? (
+              <Link href="/admin/billing" className={buttonVariants({ variant: 'outline' })} data-testid="settings-admin-link">
+                <ShieldCheck aria-hidden />
+                {tb('settingsAdmin')}
+              </Link>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader>
             <CardTitle>{t('accountTitle')}</CardTitle>
             {me.data?.is_guest ? <CardDescription>{t('guestNote')}</CardDescription> : null}
           </CardHeader>
@@ -105,7 +130,11 @@ export function SettingsPage() {
             <Button
               variant="outline"
               disabled={logout.isPending}
-              onClick={() => logout.mutate(undefined, { onSettled: () => router.replace('/') })}
+              onClick={() => {
+                  // mutateAsync: qc.clear() trong useLogout làm AuthGate gỡ component này trước khi callback onSettled của
+                  // mutate() kịp chạy (kẹt spinner) – promise vẫn hoàn tất sau khi gỡ nên chuyển trang chắc chắn
+                  void logout.mutateAsync().catch(() => undefined).finally(() => router.replace('/'));
+                }}
               data-testid="logout-button"
             >
               {t('logout')}

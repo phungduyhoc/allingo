@@ -30,6 +30,8 @@ import { env } from '@/env';
 import { MOCK_PROGRAMS, MOCK_SUBSKILL_OF_TAG, MOCK_TEST_SETS, type MockQuestion, type MockTestSet } from './fixtures';
 import { loadState, saveState, type MockAttemptRecord, type MockState, type MockUserRecord } from './state';
 import { latestNoteFor, learningToolRoutes } from './learning-tools';
+import { billingRoutes } from './billing';
+import { growthRoutes, referralHooks } from './growth';
 
 /**
  * fetch giả lập cho dev/e2e khi NEXT_PUBLIC_API_MOCK=1. Bám hợp đồng docs/spec/allingo-openapi.yaml + Zod
@@ -49,7 +51,7 @@ const empty = (status: number) => new Response(null, { status });
 const error = (status: number, code: string, message: string, details?: Record<string, unknown>) =>
   json(status, { error: { code, message, details, trace_id: `mock-${uuid().slice(0, 8)}` } });
 
-type Handler = (ctx: { url: URL; params: Record<string, string>; body: unknown; method: string; locale: string }) => Promise<Response> | Response;
+type Handler = (ctx: { url: URL; params: Record<string, string>; body: unknown; method: string; locale: string; headers: Headers }) => Promise<Response> | Response;
 interface Route {
   method: string;
   pattern: RegExp;
@@ -71,7 +73,7 @@ function route(method: string, path: string, handler: Handler): Route {
 }
 
 function publicUser(u: MockUserRecord): User {
-  const { password: _p, guest_token: _g, plan: _plan, ...rest } = u;
+  const { password: _p, guest_token: _g, plan: _plan, plan_kind: _pk, referral_code: _rc, ...rest } = u;
   return rest;
 }
 
@@ -105,6 +107,8 @@ const DIAGNOSE_CREDITS = 10;
 const PROMPT_VERSION = { explain_mcq: '00000000-0000-4000-8000-00000000e301', diagnose_rl: '00000000-0000-4000-8000-00000000d301' } as const;
 /** Tài khoản Pro demo như seed API (`pnpm db:seed --set demo`) */
 const PRO_DEMO = { email: 'learner_pro@allingo.dev', password: 'Allingo@2026', display_name: 'Minh (Pro)' };
+/** Admin demo như seed API – vào /admin/billing (S7/S8) */
+const ADMIN_DEMO = { email: 'admin@allingo.dev', password: 'Allingo@2026', display_name: 'Admin Allingo' };
 
 /**
  * Kịch bản lỗi AI cho dev/E2E: đặt `window.__ALLINGO_MOCK_AI_FAIL__ = 'ai_failed' | 'ai_timeout'` → lượt AI kế tiếp phát
@@ -145,6 +149,12 @@ export function createMockFetch(): typeof fetch {
     state.credits[id] = 5000;
     persist();
   }
+  if (!Object.values(state.users).some((u) => u.email === ADMIN_DEMO.email)) {
+    const id = uuid();
+    state.users[id] = { id, email: ADMIN_DEMO.email, password: ADMIN_DEMO.password, display_name: ADMIN_DEMO.display_name, phone: null, avatar_url: null, ui_locale: 'vi', explain_locale: 'vi', timezone: 'Asia/Ho_Chi_Minh', roles: ['learner', 'admin', 'editor'], active_program: 'toeic', created_at: nowIso(), is_guest: false, plan: 'free' };
+    persist();
+  }
+  const referral = referralHooks(state, uuid, nowIso);
 
   const findTestSet = (id: string): MockTestSet | undefined => MOCK_TEST_SETS.find((t) => t.id === id);
   const allQuestions = (): MockQuestion[] => MOCK_TEST_SETS.flatMap((t) => t.questions);
@@ -476,8 +486,8 @@ export function createMockFetch(): typeof fetch {
       const expires_at = new Date(Date.now() + 30 * 86_400_000).toISOString();
       return json(201, { guest_token: user.guest_token, expires_at, user: publicUser(user), access_token: 'mock-access', expires_in: 900 });
     }),
-    route('POST', '/auth/register', ({ body }) => {
-      const b = body as { email?: string; password?: string; display_name?: string; guest_token?: string; ui_locale?: string };
+    route('POST', '/auth/register', ({ body, headers }) => {
+      const b = body as { email?: string; password?: string; display_name?: string; guest_token?: string; ui_locale?: string; referral_code?: string };
       if (!b.email || !b.password || !b.display_name) return error(400, 'validation_failed', 'Missing fields', { fields: { email: 'required' } });
       if (Object.values(state.users).some((u) => u.email?.toLowerCase() === b.email!.toLowerCase())) return error(409, 'conflict', 'Email already registered');
       const guest = b.guest_token ? Object.values(state.users).find((u) => u.guest_token === b.guest_token) : undefined;
@@ -496,6 +506,7 @@ export function createMockFetch(): typeof fetch {
         state.enrollments[user.id] = state.enrollments[guest.id] ?? [];
         delete state.users[guest.id];
       }
+      referral.onRegistered(user, b.referral_code, headers.get('x-device-fingerprint'));
       state.sessionUserId = user.id;
       persist();
       return json(201, { access_token: 'mock-access', expires_in: 900, user: publicUser(user) });
@@ -520,13 +531,14 @@ export function createMockFetch(): typeof fetch {
       if (!b.email && !b.phone) return error(400, 'validation_failed', 'Provide exactly one of phone or email');
       return json(202, { status: 'sent', channel: b.email ? 'email' : 'zalo', retry_after: 60, expires_in: 300 });
     }),
-    route('POST', '/auth/otp/verify', ({ body }) => {
-      const b = body as { email?: string; otp?: string; display_name?: string; guest_token?: string };
+    route('POST', '/auth/otp/verify', ({ body, headers }) => {
+      const b = body as { email?: string; otp?: string; display_name?: string; guest_token?: string; referral_code?: string };
       if (b.otp !== '123456') return error(401, 'unauthorized', 'Invalid OTP', { reason: 'otp_invalid', attempts_left: 4 });
       let user = Object.values(state.users).find((u) => u.email?.toLowerCase() === b.email?.toLowerCase());
       if (!user) {
         user = makeUser({ is_guest: false, email: b.email ?? null, display_name: b.display_name ?? (b.email ?? 'user').split('@')[0]! });
         state.users[user.id] = user;
+        referral.onRegistered(user, b.referral_code, headers.get('x-device-fingerprint'));
       }
       const guest = b.guest_token ? Object.values(state.users).find((u) => u.guest_token === b.guest_token && u.id !== user.id) : undefined;
       if (guest) {
@@ -587,9 +599,10 @@ export function createMockFetch(): typeof fetch {
       if (u instanceof Response) return u;
       const program = url.searchParams.get('program') ?? 'toeic';
       // Như API v1.1: remaining = limit − used (không âm), reset_at = 00:00 giờ VN của kỳ sau
-      const ent: Entitlements = {
+      const ent: Entitlements & { plan_kind: string } = {
         program,
         is_pro: isPro(u),
+        plan_kind: u.plan_kind ?? (isPro(u) ? 'monthly' : 'free'),
         features: isPro(u) ? PRO_FEATURES : FREE_FEATURES,
         quotas: DEFAULT_QUOTAS.filter((q) => q.plan_kind === planOf(u)).map((q) => {
           const used = usageOf(u.id, q.feature, q.period);
@@ -838,6 +851,8 @@ export function createMockFetch(): typeof fetch {
       a.result = gradeAttempt(a);
       a.status = 'graded';
       a.submitted_at = nowIso();
+      // S8: bài chấm đầu tiên của người được giới thiệu → referral started (thưởng 200/200)
+      referral.onAttemptGraded(u.id);
       persist();
       return json(200, a.result);
     }),
@@ -993,11 +1008,17 @@ export function createMockFetch(): typeof fetch {
       return json(200, { ...a.ai_diagnosis, attempt_id: a.id, cached: true } satisfies AttemptAiDiagnosis);
     }),
 
+    // --------------------------------------------------------------------- S7/S8: billing, khuyến mãi, admin, referral, thông báo
+    // (đặt TRƯỚC learningToolRoutes: GET/PATCH /me/notification-preferences bản S8 có categories đè bản S6)
+    ...billingRoutes({ state, persist, route, json, error, uuid, nowIso, requireUser, currentUser, onOrderPaid: (userId) => referral.onOrderPaid(userId) }),
+    ...growthRoutes({ state, persist, route, json, error, uuid, nowIso, requireUser, currentUser, onOrderPaid: () => undefined }),
+
     // --------------------------------------------------------------------- S6: gia sư, tra từ, TTS, SRS, ghi chú, Web Push
     ...learningToolRoutes({
       state,
       persist,
-      route,
+      // Handler S6 không đọc `headers` (S8 thêm vào ctx) – tương thích lúc chạy
+      route: route as unknown as Parameters<typeof learningToolRoutes>[0]['route'],
       json,
       error,
       empty,
@@ -1036,7 +1057,7 @@ export function createMockFetch(): typeof fetch {
     };
   };
 
-  return async (input, init) => {
+  const mockFetch: typeof fetch = async (input, init) => {
     // Giả lập mất mạng như fetch thật (Playwright context.setOffline → navigator.onLine = false)
     if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new TypeError('Failed to fetch');
     // E2E nhiều tab: `window.__ALLINGO_MOCK_SYNC__ = true` → đọc lại trạng thái từ localStorage trước mỗi yêu cầu
@@ -1067,8 +1088,27 @@ export function createMockFetch(): typeof fetch {
       if (!m) continue;
       const params: Record<string, string> = {};
       r.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1] ?? '')));
-      return r.handler({ url, params, body, method, locale });
+      return r.handler({ url, params, body, method, locale, headers: req.headers });
     }
     return error(404, 'not_found', `No mock route for ${method} ${path}`);
   };
+  // E2E: gọi "máy chủ" giả từ trang (`window.__ALLINGO_MOCK__.request('POST', '/promotions/redeem', body)`) như page.request với API thật
+  if (typeof window !== 'undefined') {
+    const w = window as unknown as { __ALLINGO_MOCK__?: Record<string, unknown> };
+    w.__ALLINGO_MOCK__ = {
+      ...(w.__ALLINGO_MOCK__ ?? {}),
+      request: async (method: string, path: string, body?: unknown) => {
+        const res = await mockFetch(`${env.apiUrl}${path}`, { method, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': uuid() }, body: body === undefined ? undefined : JSON.stringify(body) });
+        const text = await res.text();
+        let data: unknown = text;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch {
+          /* giữ chuỗi */
+        }
+        return { status: res.status, data };
+      },
+    };
+  }
+  return mockFetch;
 }

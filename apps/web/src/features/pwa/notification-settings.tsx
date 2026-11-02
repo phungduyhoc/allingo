@@ -6,6 +6,7 @@ import { ArrowLeft, BellOff, BellRing, Plus, Smartphone, Trash2, TriangleAlert }
 import { useFormatter, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { NOTIFICATION_CHANNELS, type NotificationPreferences } from '@allingo/schemas';
+import { CategoryMatrix } from '@/features/notifications/category-matrix';
 import {
   Alert,
   AlertDescription,
@@ -86,9 +87,11 @@ function PrefsForm({ prefs }: { prefs: NotificationPreferences }) {
   const [channels, setChannels] = React.useState(prefs.channels);
   const [quiet, setQuiet] = React.useState(prefs.quiet_hours);
   const [times, setTimes] = React.useState<string[]>(prefs.reminder_times);
+  // S8: bật/tắt theo loại × kênh (API cũ không trả `categories` → ẩn ma trận, không gửi)
+  const [categories, setCategories] = React.useState(prefs.categories ?? null);
   const save = useMutation({
     mutationFn: () =>
-      patchNotificationPreferences({ channels, quiet_hours: quiet, reminder_times: [...new Set(times)].sort() }),
+      patchNotificationPreferences({ channels, quiet_hours: quiet, reminder_times: [...new Set(times)].sort(), ...(categories ? { categories } : {}) }),
     onSuccess: (p) => {
       qc.setQueryData(PREFS_KEY, p);
       toast.success(t('saved'));
@@ -122,6 +125,8 @@ function PrefsForm({ prefs }: { prefs: NotificationPreferences }) {
           </div>
         ))}
       </fieldset>
+
+      {categories ? <CategoryMatrix value={categories} onChange={setCategories} channels={channels} /> : null}
 
       <fieldset className="space-y-2">
         <legend className="text-sm font-semibold">{t('quietTitle')}</legend>
