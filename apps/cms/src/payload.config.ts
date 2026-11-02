@@ -6,7 +6,7 @@ import { buildConfig } from 'payload';
 import { en } from 'payload/i18n/en';
 import { vi } from 'payload/i18n/vi';
 import sharp from 'sharp';
-import { buildMedia, Lessons, Passages, PromptTemplates, PromptVersions, Questions, TestSets, Users, VocabItems } from './collections/index';
+import { Authors, buildMarketingMedia, buildMedia, Categories, Lessons, Pages, Passages, Posts, PromptTemplates, PromptVersions, Questions, Redirects, TestSets, Users, VocabItems } from './collections/index';
 import { getEnv } from './lib/env';
 
 const filename = fileURLToPath(import.meta.url);
@@ -16,6 +16,7 @@ const env = getEnv();
 /**
  * Payload CMS 3 – soạn thảo nội dung Allingo. Bảng của Payload nằm trong schema PostgreSQL `cms`
  * (ADR-0019), tách biệt 6 schema nghiệp vụ; phát hành đi qua API nội bộ, không ghi catalog.* trực tiếp.
+ * S10: marketing & blog (pages/posts/redirects) – web đọc REST công khai `/api/pages|posts|redirects` (chỉ bản published).
  */
 export default buildConfig({
   serverURL: env.CMS_PUBLIC_URL,
@@ -38,7 +39,24 @@ export default buildConfig({
   },
   i18n: { supportedLanguages: { vi, en }, fallbackLanguage: 'en' },
   editor: lexicalEditor(),
-  collections: [Users, buildMedia(env.CMS_MEDIA_DIR ?? path.resolve(dirname, '../media')), Passages, Questions, TestSets, Lessons, VocabItems, PromptTemplates, PromptVersions],
+  collections: [
+    Users,
+    buildMedia(env.CMS_MEDIA_DIR ?? path.resolve(dirname, '../media')),
+    Passages,
+    Questions,
+    TestSets,
+    Lessons,
+    VocabItems,
+    PromptTemplates,
+    PromptVersions,
+    // S10 – marketing & blog (REST công khai chỉ bản published)
+    buildMarketingMedia(env.CMS_MEDIA_DIR ?? path.resolve(dirname, '../media')),
+    Categories,
+    Authors,
+    Posts,
+    Pages,
+    Redirects,
+  ],
   graphQL: { disable: true },
   typescript: { outputFile: path.resolve(dirname, 'payload-types.ts') },
   db: postgresAdapter({

@@ -18,7 +18,8 @@ pnpm dev                                            # http://localhost:3001/admi
 ```
 
 Biến môi trường: `DATABASE_URL`, `CMS_DATABASE_SCHEMA=cms`, `PAYLOAD_SECRET`, `CMS_PUBLIC_URL`, `INTERNAL_API_URL`
-(`http://localhost:4000/v1`), `INTERNAL_API_TOKEN`, tuỳ chọn `CMS_MEDIA_DIR`, `INTERNAL_API_TIMEOUT_MS`.
+(`http://localhost:4000/v1`), `INTERNAL_API_TOKEN`, tuỳ chọn `CMS_MEDIA_DIR`, `INTERNAL_API_TIMEOUT_MS`; S10: `WEB_PUBLIC_URL`
+(canonical/JSON-LD), `WEB_REVALIDATE_URL`, `WEB_REVALIDATE_SECRET` (≥ 16 ký tự).
 Dev: `push: true` – Payload tự đồng bộ bảng trong schema `cms` (drizzle push, chỉ lọc schema `cms`). Prod: `push` tắt,
 dùng `payload migrate` (thư mục `apps/cms/migrations`).
 
@@ -47,6 +48,18 @@ mở từng câu → đổi nội dung nhỏ và lưu (teacher/admin) sẽ gọi
 | `test_sets` | Bộ đề: `code` duy nhất, `kind`, `sections[]`, `items[]`; TOEIC full phải đủ Part 1–7 (6/25/39/30/30/16/54); mọi câu phải `published` |
 | `lessons`, `vocab_items` | Bài học, từ vựng (đồng bộ sang catalog ở Sprint 1) |
 | `prompt_templates`, `prompt_versions` | **Chỉ nháp** – nguồn sự thật là `ai.*` qua API admin; `status` chỉ đọc |
+| `pages`, `posts`, `redirects` (S10) | Marketing & blog: văn bản `{vi, en}`, pages = blocks hero/features/pricing/faq/testimonial/cta, posts có chuyên mục/tác giả/ảnh/SEO/FAQ; bản nháp (`versions.drafts`) – REST công khai `/api/pages`, `/api/posts` CHỈ trả `published`, `/api/redirects` chỉ bản bật; mỗi doc có `jsonLd {vi, en}` (BlogPosting/Article/FAQPage/Organization) |
+| `categories`, `authors`, `marketing-media` (S10) | Chuyên mục, tác giả công khai (không lộ `users`), ảnh marketing đọc công khai (`media/marketing/`) |
+
+### Webhook revalidate (S10)
+
+Khi `pages`/`posts`/`redirects` xuất bản / gỡ / sửa bản đã xuất bản / xoá, CMS POST tới `WEB_REVALIDATE_URL` (trống → bỏ qua):
+body `{event, collection, id, slug, paths, tags, locales, at}`; header `x-allingo-timestamp` (giây), `x-allingo-event`,
+`x-allingo-signature: sha256=<HMAC_SHA256(WEB_REVALIDATE_SECRET, "<timestamp>.<body>")>` (web kiểm ±5 phút – `verifyRevalidate`
+trong `src/lib/marketing.ts`). Gửi nền, thử lại 1 lần, không chặn lưu.
+
+Seed nội dung marketing tự viết (3 bài blog + trang `home`, `toeic`, idempotent theo slug): `pnpm exec tsx scripts/seed-marketing.ts`.
+Production: `payload migrate` (migration `20261102_054056_s10_marketing`) trước `next start`.
 
 ## Quy trình duyệt câu hỏi (`src/lib/workflow.ts`)
 

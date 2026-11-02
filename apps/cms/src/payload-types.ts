@@ -76,6 +76,12 @@ export interface Config {
     vocab_items: VocabItem;
     prompt_templates: PromptTemplate;
     prompt_versions: PromptVersion;
+    'marketing-media': MarketingMedia;
+    categories: Category;
+    authors: Author;
+    posts: Post;
+    pages: Page;
+    redirects: Redirect;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -92,6 +98,12 @@ export interface Config {
     vocab_items: VocabItemsSelect<false> | VocabItemsSelect<true>;
     prompt_templates: PromptTemplatesSelect<false> | PromptTemplatesSelect<true>;
     prompt_versions: PromptVersionsSelect<false> | PromptVersionsSelect<true>;
+    'marketing-media': MarketingMediaSelect<false> | MarketingMediaSelect<true>;
+    categories: CategoriesSelect<false> | CategoriesSelect<true>;
+    authors: AuthorsSelect<false> | AuthorsSelect<true>;
+    posts: PostsSelect<false> | PostsSelect<true>;
+    pages: PagesSelect<false> | PagesSelect<true>;
+    redirects: RedirectsSelect<false> | RedirectsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -541,6 +553,388 @@ export interface PromptVersion {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "marketing-media".
+ */
+export interface MarketingMedia {
+  id: string;
+  alt: {
+    vi: string;
+    en?: string | null;
+  };
+  license: string;
+  updatedAt: string;
+  createdAt: string;
+  url?: string | null;
+  thumbnailURL?: string | null;
+  filename?: string | null;
+  mimeType?: string | null;
+  filesize?: number | null;
+  width?: number | null;
+  height?: number | null;
+  focalX?: number | null;
+  focalY?: number | null;
+  sizes?: {
+    card?: {
+      url?: string | null;
+      width?: number | null;
+      height?: number | null;
+      mimeType?: string | null;
+      filesize?: number | null;
+      filename?: string | null;
+    };
+    og?: {
+      url?: string | null;
+      width?: number | null;
+      height?: number | null;
+      mimeType?: string | null;
+      filesize?: number | null;
+      filename?: string | null;
+    };
+  };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "categories".
+ */
+export interface Category {
+  id: string;
+  /**
+   * e.g. toeic-tips
+   */
+  slug: string;
+  name: {
+    vi: string;
+    en?: string | null;
+  };
+  description?: {
+    vi?: string | null;
+    en?: string | null;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "authors".
+ */
+export interface Author {
+  id: string;
+  name: string;
+  /**
+   * e.g. editorial-team
+   */
+  slug: string;
+  bio?: {
+    vi?: string | null;
+    en?: string | null;
+  };
+  avatar?: (string | null) | MarketingMedia;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "posts".
+ */
+export interface Post {
+  id: string;
+  title: {
+    vi: string;
+    en?: string | null;
+  };
+  /**
+   * URL /blog/<slug>
+   */
+  slug: string;
+  excerpt?: {
+    vi?: string | null;
+    en?: string | null;
+  };
+  content: {
+    vi: {
+      root: {
+        type: string;
+        children: {
+          type: any;
+          version: number;
+          [k: string]: unknown;
+        }[];
+        direction: ('ltr' | 'rtl') | null;
+        format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
+        indent: number;
+        version: number;
+      };
+      [k: string]: unknown;
+    };
+    en?: {
+      root: {
+        type: string;
+        children: {
+          type: any;
+          version: number;
+          [k: string]: unknown;
+        }[];
+        direction: ('ltr' | 'rtl') | null;
+        format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
+        indent: number;
+        version: number;
+      };
+      [k: string]: unknown;
+    } | null;
+  };
+  coverImage?: (string | null) | MarketingMedia;
+  category?: (string | null) | Category;
+  authors?: (string | Author)[] | null;
+  program?: ('toeic' | 'ielts' | 'jlpt' | 'hsk' | 'general') | null;
+  publishedAt?: string | null;
+  readingMinutes?: number | null;
+  schemaType?: ('BlogPosting' | 'Article') | null;
+  faq?:
+    | {
+        question: {
+          vi: string;
+          en?: string | null;
+        };
+        answer: {
+          vi: string;
+          en?: string | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  seo?: {
+    title?: {
+      vi?: string | null;
+      en?: string | null;
+    };
+    description?: {
+      vi?: string | null;
+      en?: string | null;
+    };
+    ogImage?: (string | null) | MarketingMedia;
+    /**
+     * Empty = default URL
+     */
+    canonical?: string | null;
+    noindex?: boolean | null;
+  };
+  updatedAt: string;
+  createdAt: string;
+  _status?: ('draft' | 'published') | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "pages".
+ */
+export interface Page {
+  id: string;
+  title: {
+    vi: string;
+    en?: string | null;
+  };
+  /**
+   * "home" = /, "toeic" = /toeic…
+   */
+  slug: string;
+  layout?: (HeroBlock | FeaturesBlock | PricingBlock | FaqBlock | TestimonialBlock | CtaBlock)[] | null;
+  seo?: {
+    title?: {
+      vi?: string | null;
+      en?: string | null;
+    };
+    description?: {
+      vi?: string | null;
+      en?: string | null;
+    };
+    ogImage?: (string | null) | MarketingMedia;
+    /**
+     * Empty = default URL
+     */
+    canonical?: string | null;
+    noindex?: boolean | null;
+  };
+  updatedAt: string;
+  createdAt: string;
+  _status?: ('draft' | 'published') | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "HeroBlock".
+ */
+export interface HeroBlock {
+  eyebrow?: {
+    vi?: string | null;
+    en?: string | null;
+  };
+  heading: {
+    vi: string;
+    en?: string | null;
+  };
+  subheading?: {
+    vi?: string | null;
+    en?: string | null;
+  };
+  primaryCta?: {
+    label?: {
+      vi?: string | null;
+      en?: string | null;
+    };
+    href?: string | null;
+  };
+  secondaryCta?: {
+    label?: {
+      vi?: string | null;
+      en?: string | null;
+    };
+    href?: string | null;
+  };
+  image?: (string | null) | MarketingMedia;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'hero';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FeaturesBlock".
+ */
+export interface FeaturesBlock {
+  heading?: {
+    vi?: string | null;
+    en?: string | null;
+  };
+  items?:
+    | {
+        /**
+         * Tên icon (lucide)
+         */
+        icon?: string | null;
+        title: {
+          vi: string;
+          en?: string | null;
+        };
+        body?: {
+          vi?: string | null;
+          en?: string | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'features';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "PricingBlock".
+ */
+export interface PricingBlock {
+  heading?: {
+    vi?: string | null;
+    en?: string | null;
+  };
+  note?: {
+    vi?: string | null;
+    en?: string | null;
+  };
+  program?: ('toeic' | 'ielts' | 'jlpt' | 'hsk') | null;
+  highlightPlanCode?: string | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'pricing';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FaqBlock".
+ */
+export interface FaqBlock {
+  heading?: {
+    vi?: string | null;
+    en?: string | null;
+  };
+  items?:
+    | {
+        question: {
+          vi: string;
+          en?: string | null;
+        };
+        answer: {
+          vi: string;
+          en?: string | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'faq';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TestimonialBlock".
+ */
+export interface TestimonialBlock {
+  heading?: {
+    vi?: string | null;
+    en?: string | null;
+  };
+  items?:
+    | {
+        quote: {
+          vi: string;
+          en?: string | null;
+        };
+        name: string;
+        role?: {
+          vi?: string | null;
+          en?: string | null;
+        };
+        consent: boolean;
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'testimonial';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "CtaBlock".
+ */
+export interface CtaBlock {
+  heading: {
+    vi: string;
+    en?: string | null;
+  };
+  body?: {
+    vi?: string | null;
+    en?: string | null;
+  };
+  button?: {
+    label?: {
+      vi?: string | null;
+      en?: string | null;
+    };
+    href?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'cta';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "redirects".
+ */
+export interface Redirect {
+  id: string;
+  from: string;
+  to: string;
+  type: '301' | '302';
+  enabled?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -598,6 +992,30 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'prompt_versions';
         value: string | PromptVersion;
+      } | null)
+    | ({
+        relationTo: 'marketing-media';
+        value: string | MarketingMedia;
+      } | null)
+    | ({
+        relationTo: 'categories';
+        value: string | Category;
+      } | null)
+    | ({
+        relationTo: 'authors';
+        value: string | Author;
+      } | null)
+    | ({
+        relationTo: 'posts';
+        value: string | Post;
+      } | null)
+    | ({
+        relationTo: 'pages';
+        value: string | Page;
+      } | null)
+    | ({
+        relationTo: 'redirects';
+        value: string | Redirect;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -892,6 +1310,418 @@ export interface PromptVersionsSelect<T extends boolean = true> {
   outputSchema?: T;
   modelPolicy?: T;
   changeNote?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "marketing-media_select".
+ */
+export interface MarketingMediaSelect<T extends boolean = true> {
+  alt?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  license?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  url?: T;
+  thumbnailURL?: T;
+  filename?: T;
+  mimeType?: T;
+  filesize?: T;
+  width?: T;
+  height?: T;
+  focalX?: T;
+  focalY?: T;
+  sizes?:
+    | T
+    | {
+        card?:
+          | T
+          | {
+              url?: T;
+              width?: T;
+              height?: T;
+              mimeType?: T;
+              filesize?: T;
+              filename?: T;
+            };
+        og?:
+          | T
+          | {
+              url?: T;
+              width?: T;
+              height?: T;
+              mimeType?: T;
+              filesize?: T;
+              filename?: T;
+            };
+      };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "categories_select".
+ */
+export interface CategoriesSelect<T extends boolean = true> {
+  slug?: T;
+  name?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  description?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "authors_select".
+ */
+export interface AuthorsSelect<T extends boolean = true> {
+  name?: T;
+  slug?: T;
+  bio?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  avatar?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "posts_select".
+ */
+export interface PostsSelect<T extends boolean = true> {
+  title?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  slug?: T;
+  excerpt?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  content?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  coverImage?: T;
+  category?: T;
+  authors?: T;
+  program?: T;
+  publishedAt?: T;
+  readingMinutes?: T;
+  schemaType?: T;
+  faq?:
+    | T
+    | {
+        question?:
+          | T
+          | {
+              vi?: T;
+              en?: T;
+            };
+        answer?:
+          | T
+          | {
+              vi?: T;
+              en?: T;
+            };
+        id?: T;
+      };
+  seo?:
+    | T
+    | {
+        title?:
+          | T
+          | {
+              vi?: T;
+              en?: T;
+            };
+        description?:
+          | T
+          | {
+              vi?: T;
+              en?: T;
+            };
+        ogImage?: T;
+        canonical?: T;
+        noindex?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+  _status?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "pages_select".
+ */
+export interface PagesSelect<T extends boolean = true> {
+  title?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  slug?: T;
+  layout?:
+    | T
+    | {
+        hero?: T | HeroBlockSelect<T>;
+        features?: T | FeaturesBlockSelect<T>;
+        pricing?: T | PricingBlockSelect<T>;
+        faq?: T | FaqBlockSelect<T>;
+        testimonial?: T | TestimonialBlockSelect<T>;
+        cta?: T | CtaBlockSelect<T>;
+      };
+  seo?:
+    | T
+    | {
+        title?:
+          | T
+          | {
+              vi?: T;
+              en?: T;
+            };
+        description?:
+          | T
+          | {
+              vi?: T;
+              en?: T;
+            };
+        ogImage?: T;
+        canonical?: T;
+        noindex?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+  _status?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "HeroBlock_select".
+ */
+export interface HeroBlockSelect<T extends boolean = true> {
+  eyebrow?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  heading?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  subheading?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  primaryCta?:
+    | T
+    | {
+        label?:
+          | T
+          | {
+              vi?: T;
+              en?: T;
+            };
+        href?: T;
+      };
+  secondaryCta?:
+    | T
+    | {
+        label?:
+          | T
+          | {
+              vi?: T;
+              en?: T;
+            };
+        href?: T;
+      };
+  image?: T;
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FeaturesBlock_select".
+ */
+export interface FeaturesBlockSelect<T extends boolean = true> {
+  heading?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  items?:
+    | T
+    | {
+        icon?: T;
+        title?:
+          | T
+          | {
+              vi?: T;
+              en?: T;
+            };
+        body?:
+          | T
+          | {
+              vi?: T;
+              en?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "PricingBlock_select".
+ */
+export interface PricingBlockSelect<T extends boolean = true> {
+  heading?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  note?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  program?: T;
+  highlightPlanCode?: T;
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FaqBlock_select".
+ */
+export interface FaqBlockSelect<T extends boolean = true> {
+  heading?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  items?:
+    | T
+    | {
+        question?:
+          | T
+          | {
+              vi?: T;
+              en?: T;
+            };
+        answer?:
+          | T
+          | {
+              vi?: T;
+              en?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TestimonialBlock_select".
+ */
+export interface TestimonialBlockSelect<T extends boolean = true> {
+  heading?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  items?:
+    | T
+    | {
+        quote?:
+          | T
+          | {
+              vi?: T;
+              en?: T;
+            };
+        name?: T;
+        role?:
+          | T
+          | {
+              vi?: T;
+              en?: T;
+            };
+        consent?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "CtaBlock_select".
+ */
+export interface CtaBlockSelect<T extends boolean = true> {
+  heading?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  body?:
+    | T
+    | {
+        vi?: T;
+        en?: T;
+      };
+  button?:
+    | T
+    | {
+        label?:
+          | T
+          | {
+              vi?: T;
+              en?: T;
+            };
+        href?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "redirects_select".
+ */
+export interface RedirectsSelect<T extends boolean = true> {
+  from?: T;
+  to?: T;
+  type?: T;
+  enabled?: T;
   updatedAt?: T;
   createdAt?: T;
 }

@@ -15,6 +15,12 @@ const envSchema = z.object({
   CMS_MEDIA_DIR: z.string().optional(),
   /** Thời gian chờ gọi API nội bộ (ms) */
   INTERNAL_API_TIMEOUT_MS: z.coerce.number().int().min(500).max(120_000).default(15_000),
+  /** S10: gốc URL web công khai (canonical/JSON-LD của pages/posts) */
+  WEB_PUBLIC_URL: z.string().url().default('http://localhost:3000'),
+  /** S10: webhook revalidate của web (POST, ví dụ http://localhost:3000/api/revalidate); trống → không gọi */
+  WEB_REVALIDATE_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
+  /** S10: khoá HMAC ký webhook (header x-allingo-signature = sha256=HMAC(secret, "<ts>.<body>")) – ≥ 16 ký tự */
+  WEB_REVALIDATE_SECRET: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(16).optional()),
 });
 
 export type CmsEnv = z.infer<typeof envSchema>;
