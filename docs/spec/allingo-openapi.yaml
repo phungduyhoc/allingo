@@ -18,6 +18,7 @@ info:
     - Realtime: WebSocket `wss://api.allingo.vn/v1/ws` (Socket.IO), sự kiện `submission.graded`, `plan.updated`, `credits.changed`, `notification.new`; v1.1 – S7: `order.updated` `{order_id, status, paid_at}`, `credits.changed` `{balance | null}`, `entitlements.changed` `{}`.
     - Thanh toán (v1.1 – S7, ADR-0012 webhook-first): quyền chỉ mở khi webhook/IPN đã xác minh chữ ký (hoặc job đối chiếu `queryStatus`); return URL chỉ hiển thị. Tiền VND nguyên.
     - Streaming AI: `text/event-stream` cho chat và giải thích (`event: delta|done|error`).
+    - v1.1 – S10: ôn tập FSRS-5 (GET /me/srs/due trả `SrsDueList` – thẻ đến hạn + thẻ mới trong hạn mức ngày; POST /me/srs/review idempotent theo (card_id, reviewed_at); GET /me/srs/cards), bộ từ hệ thống TOEIC 600 theo chủ đề + POST /vocab/lists/{listId}/enroll, sổ lỗi đầy đủ (lọc kind/part/thời gian, PATCH ghi chú/đã hiểu/tạo thẻ, POST /me/errors/drill), Stats đầy đủ (cache 1 giờ, đọc replica), dự báo v0 hồi quy tuyến tính ("ước tính sơ bộ"), `attribution` (UTM/referrer) khi đăng ký, POST /analytics/events (sự kiện phễu có đồng ý cookie).
     - v1.1 – S9: lộ trình học (POST/GET /me/plan, /me/plan/today, check-in → đề xuất plan_adjust có kiểm tra ràng buộc → apply), bài chẩn đoán thích ứng (POST /me/diagnostic, GET|POST /me/diagnostic/{attemptId}/next), huy hiệu GET /me/badges; WS `plan.updated` {plan_id | task_id | proposal_id, reason}.
     - v1.1 – S8: hoá đơn điện tử tự phát hành sau `order.paid` (`Order.invoice`, PDF URL ký 10 phút); khuyến mãi đầy đủ (percent | fixed | credit_bonus | trial_days, không cộng dồn) + dùng thử Pro; referral; thông báo đa kênh (Socket.IO `notification.new` = NotificationItem); header tuỳ chọn `X-Device-Fingerprint` ở /auth/register, /auth/otp/verify, /auth/oauth/{provider} (server chỉ lưu sha256 – chống lạm dụng referral).
   contact:
@@ -82,6 +83,7 @@ paths:
                 accept_terms: { type: boolean, description: 'Đồng ý điều khoản + chính sách (PDPL); false → 400. v1.1' }
                 marketing_opt_in: { type: boolean }
                 turnstile_token: { type: string, description: Cloudflare Turnstile (bắt buộc khi máy chủ bật) }
+                attribution: { $ref: '#/components/schemas/AttributionInput' }
       responses:
         '201': { $ref: '#/components/responses/AuthTokens' }
         '400': { $ref: '#/components/responses/Error' }
@@ -128,6 +130,7 @@ paths:
                 referral_code: { type: string }
                 ui_locale: { type: string }
                 display_name: { type: string, description: Apple chỉ gửi tên ở lần đầu – client chuyển tiếp }
+                attribution: { $ref: '#/components/schemas/AttributionInput' }
                 link_password: { type: string, description: 'Khi email đã có tài khoản mật khẩu: xác nhận liên kết (409 link_required nếu thiếu)' }
                 link_confirm: { type: boolean, description: 'Khi email đã có tài khoản không mật khẩu: xác nhận liên kết' }
       responses:
@@ -177,6 +180,8 @@ paths:
                 guest_token: { type: string }
                 display_name: { type: string, description: Dùng khi tạo tài khoản mới }
                 ui_locale: { type: string }
+                referral_code: { type: string }
+                attribution: { $ref: '#/components/schemas/AttributionInput' }
       responses:
         '200': { $ref: '#/components/responses/AuthTokens' }
         '401': { $ref: '#/components/responses/Error' }
@@ -408,6 +413,10 @@ paths:
     get:
       tags: [Catalog]
       summary: Danh sách bộ từ (hệ thống + của tôi) kèm tiến độ Mới/Đang học/Đến hạn
+      description: |
+        v1.1 – S10: cần đăng nhập (tiến độ theo thẻ SRS của người học). Bộ hệ thống seed "TOEIC 600 từ theo chủ đề" (10 chủ đề +
+        bộ trọn gói, dựng từ từ điển tự biên soạn theo `topics` + `level`). `counts.due` = thẻ đã học đến hạn tới cuối ngày;
+        `next_action_code` enroll | review | learn_new | done (web dịch), `next_action` chuỗi theo ngôn ngữ người học.
       parameters: [ { $ref: '#/components/parameters/ProgramQuery' } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/VocabList' } } } } }
@@ -419,10 +428,22 @@ paths:
           application/json:
             schema: { type: object, required: [program, title], properties: { program: { type: string }, title: { type: string }, headwords: { type: array, items: { type: string } } } }
       responses: { '201': { description: Đã tạo } }
+  /vocab/lists/{listId}/enroll:
+    post:
+      tags: [Learning]
+      summary: '"Thêm cả bộ vào ôn tập" – tạo thẻ vocab (state new) cho mọi từ trong bộ (v1.1 – S10)'
+      description: |
+        Idempotent: từ đã có thẻ giữ nguyên lịch (`existing`), chỉ tạo thẻ thiếu (`added`). KHÔNG tiêu quota – hạn mức
+        `srs_new_cards` (Free 10/ngày, Pro 30/ngày) giới hạn số thẻ mới được HỌC mỗi ngày ở GET /me/srs/due.
+      parameters: [ { name: listId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/VocabEnrollResult' } } } }
+        '404': { $ref: '#/components/responses/Error' }
   /vocab/lists/{listId}/items:
     get:
       tags: [Catalog]
       summary: Từ trong bộ (kèm trạng thái SRS)
+      description: 'v1.1 – S10: cần đăng nhập; `srs` = thẻ của người học (null nếu chưa thêm); mặc định 50 mục/trang theo thứ tự trong bộ.'
       parameters: [ { name: listId, in: path, required: true, schema: { type: string, format: uuid } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/VocabItem' } }, next_cursor: { type: [string, 'null'] } } } } } }
@@ -1021,9 +1042,14 @@ paths:
     get:
       tags: [Learning]
       summary: Thẻ đến hạn (từ vựng, lỗi, ngữ pháp, âm) theo chương trình, giới hạn số thẻ/phiên
-      parameters: [ { $ref: '#/components/parameters/ProgramQuery' }, { name: card_type, in: query, schema: { type: string } }, { name: list_id, in: query, schema: { type: string, format: uuid } }, { $ref: '#/components/parameters/Limit' } ]
+      description: |
+        v1.1 – S10 (đổi phản hồi từ mảng sang `SrsDueList` – chưa có client dùng): thứ tự learning/relearning đến hạn → review
+        quá hạn lâu nhất → thẻ mới (cũ nhất trước) tối đa `counts.new_remaining` = hạn mức `srs_new_cards` của gói (billing.quotas
+        – Free 10, Pro 30/ngày, reset 00:00 giờ VN) trừ thẻ mới đã học hôm nay. Mỗi thẻ có `preview` (hạn nếu chọn từng nút) và
+        `payload` để hiển thị (vocab: headword/IPA/nghĩa/ví dụ; error: câu hỏi rút gọn + đáp án; grammar: chủ đề).
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' }, { name: card_type, in: query, schema: { type: string, enum: [vocab, error, grammar, phoneme, sentence] } }, { name: list_id, in: query, schema: { type: string, format: uuid } }, { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SrsCard' } } } } }
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SrsDueList' } } } }
   /me/srs/review:
     post:
       tags: [Learning]
@@ -1032,18 +1058,32 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [reviews], properties: { reviews: { type: array, items: { type: object, required: [card_id, rating], properties: { card_id: { type: string, format: uuid }, rating: { type: integer, minimum: 1, maximum: 4 }, review_mode: { type: string } } } } } }
+            schema: { type: object, required: [reviews], properties: { reviews: { type: array, minItems: 1, maxItems: 100, items: { type: object, required: [card_id, rating], properties: { card_id: { type: string, format: uuid }, rating: { type: integer, minimum: 1, maximum: 4 }, review_mode: { type: string, enum: [flashcard, gap_fill, listen_type, match, use_in_sentence, dictation] }, reviewed_at: { type: string, format: date-time, description: 'v1.1 – S10: thời điểm chấm ở client – khoá idempotent (card_id, reviewed_at); thiếu → giờ server; tương lai > 5 phút → giờ server' } } } } } }
+      description: |
+        v1.1 – S10: FSRS-5 (trọng số người dùng nếu đã tối ưu). Gửi lại cùng (card_id, reviewed_at) → `duplicate: true`, lịch
+        không đổi. Again/Hard thẻ mới → hạn ≤ 20 phút (`in_session: true` – quay lại trong phiên); Good → ≥ ngày hôm sau.
+        Lần ôn ĐẦU của thẻ `new` tiêu 1 lượt `srs_new_cards`; vượt hạn mức → 429 `quota_exceeded` cho cả lô (không ghi gì).
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SrsCard' } } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
   /me/srs/cards:
+    get:
+      tags: [Learning]
+      summary: Thẻ của tôi (lọc loại/trạng thái/bộ từ/headword) – v1.1 – S10
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' }, { name: card_type, in: query, schema: { type: string, enum: [vocab, error, grammar, phoneme, sentence] } }, { name: state, in: query, schema: { type: string, enum: [new, learning, review, relearning] } }, { name: list_id, in: query, schema: { type: string, format: uuid } }, { name: q, in: query, schema: { type: string, maxLength: 100 } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/SrsCard' } }, next_cursor: { type: [string, 'null'] } } } } } }
     post:
       tags: [Learning]
       summary: Thêm thẻ (lưu từ từ bài đọc/feedback, thêm từ tự do, lưu bản đồ paraphrase)
       description: |
-        v1.1 – S6: chỉ `card_type = vocab` (loại khác → 400, làm ở S10). `ref_id` = vocab_item_id, hoặc `headword` (tra từ điển; không có →
-        tạo mục `catalog.vocab_items` source `ai`/status `draft` từ bản dịch đã cache). Thẻ mới `state = new`, `due_at = now` (lịch FSRS ở S10).
-        Idempotent theo (user, card_type, ref_id): đã có → 200 `created: false`; mới → 201 (tiêu quota `srs_new_cards`, vượt → 429).
-        Đang thi → không chặn (không lộ đáp án).
+        v1.1 – S6: `ref_id` = vocab_item_id, hoặc `headword` (tra từ điển; không có → tạo mục `catalog.vocab_items` source `ai`/status
+        `draft` từ bản dịch đã cache). Idempotent theo (user, card_type, ref_id): đã có → 200 `created: false`; mới → 201.
+        v1.1 – S10: thẻ mới `state = new` lịch FSRS-5; `card_type` vocab | error (`ref_id` = error_log_entry_id của chính người
+        học) | grammar (`ref_id` = grammar_topic_id); phoneme/sentence → 400 (GĐ2). Thêm thẻ KHÔNG còn tiêu quota – hạn mức
+        `srs_new_cards` áp khi HỌC thẻ mới (GET /me/srs/due, POST /me/srs/review). Đang thi → không chặn (không lộ đáp án).
       requestBody:
         required: true
         content:
@@ -1059,23 +1099,57 @@ paths:
     get:
       tags: [Learning]
       summary: Nhật ký lỗi 7/30 ngày kèm lý do, phân bố "điểm rơi", bản đồ paraphrase
-      parameters: [ { $ref: '#/components/parameters/ProgramQuery' }, { name: days, in: query, schema: { type: integer, default: 30 } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
+      description: |
+        v1.1 – S10: mục tạo từ outbox `attempt.graded` (mỗi câu sai/bỏ trống một mục, gộp theo câu: `occurrences`, mở lại nếu đã
+        hiểu mà sai lại). Lọc `kind` (loại hiệu lực = reason_override ?? error_kind), `part` (section code), `status` open | resolved
+        | all (mặc định open), `days` theo lần sai gần nhất (0 = không giới hạn; mặc định 30 với sort=newest, không giới hạn với
+        sort=oldest) hoặc `from`/`to` (YYYY-MM-DD, giờ người học), `sort` newest | oldest (task review_errors:
+        status=open&sort=oldest&limit=10 = 10 lỗi chưa hiểu cũ nhất mọi thời gian). `distribution`/`by_section` theo bộ lọc
+        (trừ `kind`); `paraphrase_map` rỗng tới GĐ2 (AI gán nhãn).
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' }, { name: kind, in: query, schema: { type: string, enum: [paraphrase, trap, vocabulary, timeout, grammar, listening_detail, inference, spelling, tone, pronunciation, other] } }, { name: part, in: query, schema: { type: string } }, { name: status, in: query, schema: { type: string, enum: [open, resolved, all], default: open } }, { name: days, in: query, schema: { type: integer, minimum: 0, description: 'mặc định 30 (sort=newest) / 0 (sort=oldest)' } }, { name: from, in: query, schema: { type: string, format: date } }, { name: to, in: query, schema: { type: string, format: date } }, { name: sort, in: query, schema: { type: string, enum: [newest, oldest], default: newest } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorLogPage' } } } }
+  /me/errors/drill:
+    post:
+      tags: [Learning]
+      summary: '"Làm lại 10 câu sai" – tạo attempt timed_drill từ ≤ 10 lỗi chưa hiểu (v1.1 – S10)'
+      description: |
+        `entry_ids` (≤ 10, của chính người học, chưa hiểu) hoặc 10 lỗi chưa hiểu cũ nhất theo `kind`/`part`. Câu dùng phiên bản đã
+        phát hành hiện hành (câu đã gỡ → bỏ qua); giới hạn giờ theo Part như timed_drill; tiêu quota `part_drill` như luyện Part.
+        `plan_task_id` (task review_errors) → task tự done khi bài được chấm. Không còn lỗi phù hợp → 404.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ErrorDrillInput' }
+      responses:
+        '201': { description: Attempt timed_drill, content: { application/json: { schema: { $ref: '#/components/schemas/Attempt' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
   /me/errors/{entryId}:
     patch:
       tags: [Learning]
       summary: Đổi lý do sai / đánh dấu đã khắc phục
+      description: 'v1.1 – S10: `resolved` = "đã hiểu" (biến mất khỏi task review_errors; false mở lại), `note` ghi chú (≤ 1.000 ký tự, null xoá), `create_card` tạo thẻ SRS kind `error` (idempotent). Trả mục đã cập nhật.'
       parameters: [ { name: entryId, in: path, required: true, schema: { type: string, format: uuid } } ]
       requestBody:
         content:
           application/json:
-            schema: { type: object, properties: { reason_override: { type: string }, resolved: { type: boolean } } }
-      responses: { '200': { description: OK } }
+            schema: { type: object, properties: { reason_override: { type: [string, 'null'], enum: [paraphrase, trap, vocabulary, timeout, grammar, listening_detail, inference, spelling, tone, pronunciation, other, null] }, resolved: { type: boolean }, note: { type: [string, 'null'], maxLength: 1000, description: v1.1 – S10 }, create_card: { type: boolean, description: v1.1 – S10 } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorLogEntry' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
   /me/stats:
     get:
       tags: [Learning]
       summary: "Dashboard: điểm ước tính vs mục tiêu, xu hướng 30 ngày, theo Part/dạng, streak, XP"
+      description: |
+        v1.1 – S10 (module analytics, đọc replica `DATABASE_URL_REPLICA` hoặc cùng DB `SET TRANSACTION READ ONLY`): thêm
+        `score_history`, `accuracy` (30 ngày vs 30 ngày trước theo Part/subskill), `minutes_by_week` (8 tuần), `vocab`, `errors`,
+        `community` (percentile ẩn danh trong nhóm cùng chương trình + mức mục tiêu, ≥ 10 người). Cache Redis 1 giờ theo
+        (người dùng, chương trình) – xoá khi `attempt.graded`, ôn thẻ, cập nhật sổ lỗi; `cached` cho biết.
       parameters: [ { $ref: '#/components/parameters/ProgramQuery' } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Stats' } } } }
@@ -1083,9 +1157,32 @@ paths:
     get:
       tags: [Learning]
       summary: Dự báo điểm có khoảng tin cậy & ngày sẵn sàng thi (GĐ4)
+      description: |
+        v1.1 – S10 – v0 "ước tính sơ bộ" (`label: preliminary_estimate`, `model_version: linreg-v0`): hồi quy tuyến tính trên điểm
+        ước tính (bài có thang điểm 120 ngày gần nhất) → điểm tại ngày thi (hoặc +30 ngày), khoảng dự báo 80 %, kẹp thang điểm;
+        `ready_date` = ngày đường xu hướng chạm mục tiêu (≤ ngày thi + 180 ngày). < 1 điểm → `status: insufficient_data`.
+        Lưu learn.score_forecasts tối đa 1 lần/ngày. AI/knowledge tracing ở GĐ4.
       parameters: [ { $ref: '#/components/parameters/ProgramQuery' } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Forecast' } } } }
+  /analytics/events:
+    post:
+      tags: [Growth]
+      security: []
+      summary: Sự kiện phễu từ client gửi server-side (landing_view, signup_start, checkout_start) – v1.1 – S10
+      description: |
+        Tuỳ chọn (khi trình chặn quảng cáo chặn PostHog JS). Chỉ nhận khi `consent = true` (người dùng đã đồng ý cookie phân tích),
+        ngược lại 202 `accepted: false`. Có đăng nhập → distinct_id = sha256(user_id) (không gửi PII), không → `anonymous_id`.
+        Sự kiện signup_done, diagnostic_done, first_attempt, order_paid do server phát từ outbox. Không có `POSTHOG_KEY` → 202
+        `disabled`. Giới hạn 60 sự kiện/phút/IP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FunnelEventInput' }
+      responses:
+        '202': { description: Đã nhận, content: { application/json: { schema: { $ref: '#/components/schemas/FunnelEventResult' } } } }
+        '400': { $ref: '#/components/responses/Error' }
 
   # ---------------------------------------------------------------- Billing
   /plans:
@@ -1106,6 +1203,11 @@ paths:
         người dùng mới (chưa có đơn đã thanh toán, tài khoản ≤ 30 ngày), thời gian, tổng lượt (đã dùng + đang giữ bởi đơn chờ thanh toán),
         lượt/người, tổng tối thiểu; không cộng dồn (một mã/đơn). Có `price_id`/`plan_id` → đánh giá như POST /orders; không gói → như
         POST /promotions/redeem (trial_days, credit_bonus standalone; mã cần đơn → `plan_required`). Luôn 200; `valid = false` kèm `reason`.
+        v1.1 – S10: KHÔNG cần đăng nhập (trang /pricing cho khách): chưa đăng nhập → chỉ đánh giá điều kiện không phụ thuộc người dùng
+        (mã, thời gian, gói/chương trình, tổng lượt, tổng tối thiểu, mức tối thiểu) và trả `requires_login: true` khi mã còn điều kiện
+        theo người dùng (người dùng mới, lượt/người, dùng thử một lần) – kết quả cuối cùng kiểm lại khi tạo đơn/đổi mã. Ẩn danh giới
+        hạn 30 lần/phút/IP → 429 `rate_limited`.
+      security: [ {}, { bearerAuth: [] }, { cookieAuth: [] } ]
       requestBody:
         required: true
         content:
@@ -1114,6 +1216,7 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PromotionValidation' } } } }
         '400': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
   /promotions/redeem:
     post:
       tags: [Billing]
@@ -1619,7 +1722,7 @@ paths:
         - { $ref: '#/components/parameters/Cursor' }
         - { $ref: '#/components/parameters/Limit' }
       responses:
-        '200': { description: 'Order + user_id + payments[].provider_txn_id/merchant_ref', content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Order' } }, next_cursor: { type: [string, 'null'] } } } } } }
+        '200': { description: 'Order + user_id + user_email (v1.1 – S10, chỉ admin) + payments[].provider_txn_id/merchant_ref', content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Order' } }, next_cursor: { type: [string, 'null'] } } } } } }
   /admin/billing/summary:
     get:
       tags: [Admin]
@@ -1654,8 +1757,13 @@ paths:
     post:
       tags: [Admin]
       summary: Chạy ngay một job billing (v1.1 – S7)
-      description: 'order.expire | payment.reconcile | subscription.expire | credit.grant_monthly | credit.expire | billing.reconcile | credit.grant_free_monthly (S8: Free 300 credit/tháng) | invoice.retry (S8: thử lại hoá đơn theo backoff). Chạy inline xong trong 10 s → 200 kèm kết quả; đưa vào hàng đợi → 202.'
+      description: 'order.expire | payment.reconcile | subscription.expire | credit.grant_monthly | credit.expire | billing.reconcile | credit.grant_free_monthly (S8: Free 300 credit/tháng) | invoice.retry (S8: thử lại hoá đơn theo backoff). Chạy inline xong trong 10 s → 200 kèm kết quả; đưa vào hàng đợi → 202. v1.1 – S10: body tuỳ chọn `min_age_minutes` (0–1440) cho payment.reconcile – bỏ ngưỡng PAYMENT_RECONCILE_AFTER_MINUTES (0 = mọi lần thanh toán initiated ≤ 48 giờ); job khác bỏ qua.'
       parameters: [ { name: job, in: path, required: true, schema: { type: string, enum: [order.expire, payment.reconcile, subscription.expire, credit.grant_monthly, credit.expire, billing.reconcile, credit.grant_free_monthly, invoice.retry] } } ]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { min_age_minutes: { type: integer, minimum: 0, maximum: 1440 } } }
       responses:
         '200': { description: Đã chạy xong, content: { application/json: { schema: { type: object, properties: { job: { type: string }, job_id: { type: string }, mode: { type: string }, status: { type: string }, result: { type: object } } } } } }
         '202': { description: Đã đưa vào hàng đợi, content: { application/json: { schema: { type: object, properties: { job: { type: string }, job_id: { type: string }, mode: { type: string }, status: { type: string } } } } } }
@@ -1709,7 +1817,7 @@ paths:
         - { $ref: '#/components/parameters/Cursor' }
         - { $ref: '#/components/parameters/Limit' }
       responses:
-        '200': { description: 'Subscription + user_id, created_at', content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Subscription' } }, next_cursor: { type: [string, 'null'] } } } } } }
+        '200': { description: 'Subscription + user_id, user_email (v1.1 – S10), created_at', content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Subscription' } }, next_cursor: { type: [string, 'null'] } } } } } }
   /admin/billing/dead-letters:
     get:
       tags: [Admin]
@@ -2405,11 +2513,25 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
+        program: { type: string, description: v1.1 – S10 }
         kind: { type: string }
         title: { $ref: '#/components/schemas/I18nText' }
         is_free: { type: boolean }
-        counts: { type: object, properties: { total: { type: integer }, new: { type: integer }, learning: { type: integer }, due: { type: integer }, mastered: { type: integer } } }
+        sort_order: { type: integer, description: v1.1 – S10 }
+        topic: { type: [string, 'null'], description: 'v1.1 – S10: mã chủ đề (office, finance…) của bộ topic' }
+        counts: { type: object, properties: { total: { type: integer }, new: { type: integer }, learning: { type: integer }, due: { type: integer }, mastered: { type: integer }, enrolled: { type: integer, description: 'v1.1 – S10: số từ đã có thẻ' } } }
+        enrolled: { type: boolean, description: v1.1 – S10 }
+        next_action_code: { type: string, enum: [enroll, review, learn_new, done], description: 'v1.1 – S10: web dịch' }
         next_action: { type: string, example: 'Ôn 20' }
+    VocabEnrollResult:
+      type: object
+      description: v1.1 – S10
+      properties:
+        list_id: { type: string, format: uuid }
+        total: { type: integer }
+        added: { type: integer }
+        existing: { type: integer }
+        new_per_day: { type: [integer, 'null'], description: 'Hạn mức thẻ mới/ngày của gói (srs_new_cards)' }
     VocabItem:
       type: object
       properties:
@@ -2427,6 +2549,8 @@ components:
         examples: { type: array, items: { type: object } }
         collocations: { type: array, items: { type: string } }
         level: { type: string, nullable: true }
+        topics: { type: array, items: { type: string }, description: v1.1 – S10 }
+        sort_order: { type: integer, description: v1.1 – S10 }
         srs: { $ref: '#/components/schemas/SrsCard' }
     DictionaryEntry:
       type: object
@@ -2473,6 +2597,31 @@ components:
         lapses: { type: integer }
         payload: { type: object, description: Nội dung thẻ để hiển thị (từ/lỗi/ngữ pháp) }
         created: { type: boolean, description: 'v1.1 – S6: false khi thẻ đã tồn tại (POST idempotent)' }
+        last_review_at: { type: [string, 'null'], format: date-time, description: v1.1 – S10 }
+        source_type: { type: [string, 'null'], description: v1.1 – S10 }
+        suspended: { type: boolean, description: v1.1 – S10 }
+        mastered: { type: boolean, description: 'v1.1 – S10: review và stability ≥ 21 ngày' }
+        preview: { type: object, description: 'v1.1 – S10: hạn nếu chọn từng nút (GET /me/srs/due)', properties: { again: { type: string, format: date-time }, hard: { type: string, format: date-time }, good: { type: string, format: date-time }, easy: { type: string, format: date-time } } }
+        duplicate: { type: boolean, description: 'v1.1 – S10: POST /me/srs/review gửi lại cùng (card_id, reviewed_at)' }
+        in_session: { type: boolean, description: 'v1.1 – S10: đến hạn lại ≤ 20 phút (Again/Hard) – quay lại trong phiên' }
+    SrsDueList:
+      type: object
+      description: v1.1 – S10 – GET /me/srs/due
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/SrsCard' } }
+        counts:
+          type: object
+          properties:
+            due: { type: integer, description: Thẻ đã học đến hạn tới cuối ngày (giờ người học) }
+            due_now: { type: integer }
+            new_total: { type: integer }
+            new_limit: { type: [integer, 'null'], description: 'srs_new_cards/ngày theo gói (Free 10, Pro 30); null = không giới hạn' }
+            new_used_today: { type: integer }
+            new_remaining: { type: [integer, 'null'] }
+            new_in_session: { type: integer }
+        next_due_at: { type: [string, 'null'], format: date-time }
+        new_resets_at: { type: [string, 'null'], format: date-time }
+        server_time: { type: string, format: date-time }
     StudyPlan:
       type: object
       properties:
@@ -2676,6 +2825,8 @@ components:
       type: object
       properties:
         distribution: { type: object, additionalProperties: { type: integer } }
+        by_section: { type: object, additionalProperties: { type: integer }, description: v1.1 – S10 }
+        totals: { type: object, description: 'v1.1 – S10: mọi thời gian', properties: { open: { type: integer }, resolved: { type: integer } } }
         paraphrase_map: { type: array, items: { type: object, properties: { question_said: { type: string }, passage_said: { type: string }, count: { type: integer } } } }
         recurring_writing_speaking: { type: array, items: { type: object } }
         data: { type: array, items: { $ref: '#/components/schemas/ErrorLogEntry' } }
@@ -2684,15 +2835,37 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
-        kind: { type: string }
-        reason_auto: { type: object }
+        kind: { type: string, description: 'Loại hiệu lực = reason_override ?? error_kind' }
+        kind_auto: { type: string, description: 'v1.1 – S10: loại do luật gán (timeout | paraphrase | trap | vocabulary | grammar | listening_detail | inference | other)' }
+        reason_auto: { type: object, description: 'v1.1 – S10: {kind, rule, evidence: {time_spent_ms, threshold_ms, subskill, topic, section}}' }
         reason_override: { type: string, nullable: true }
         question: { $ref: '#/components/schemas/QuestionPublic' }
+        question_id: { type: [string, 'null'], format: uuid, description: v1.1 – S10 }
+        question_version_id: { type: [string, 'null'], format: uuid, description: 'v1.1 – S10: phiên bản đã làm' }
+        section_code: { type: [string, 'null'], description: v1.1 – S10 }
         your_answer: {}
         correct_answer: {}
         subskill: { type: string, nullable: true }
+        topic: { type: [string, 'null'], description: v1.1 – S10 }
+        time_spent_ms: { type: [integer, 'null'], description: v1.1 – S10 }
+        occurrences: { type: integer, description: 'v1.1 – S10: số lần sai câu này (gộp)' }
+        note: { type: [string, 'null'], description: v1.1 – S10 }
         resolved: { type: boolean }
+        resolved_at: { type: [string, 'null'], format: date-time, description: v1.1 – S10 }
+        srs_card_id: { type: [string, 'null'], format: uuid, description: 'v1.1 – S10: thẻ SRS kind error' }
+        attempt_id: { type: [string, 'null'], format: uuid, description: v1.1 – S10 }
         created_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time, description: v1.1 – S10 }
+    ErrorDrillInput:
+      type: object
+      description: v1.1 – S10
+      properties:
+        program: { type: string, enum: [toeic, ielts, jlpt, hsk], default: toeic }
+        entry_ids: { type: array, minItems: 1, maxItems: 10, items: { type: string, format: uuid } }
+        kind: { type: string }
+        part: { type: string }
+        limit: { type: integer, minimum: 1, maximum: 10, default: 10 }
+        plan_task_id: { type: string, format: uuid }
     Stats:
       type: object
       properties:
@@ -2709,16 +2882,70 @@ components:
         minutes_this_week: { type: integer }
         badges: { type: object, description: 'v1.1 – S9', properties: { earned: { type: integer }, total: { type: integer }, latest: { type: array, items: { type: object, properties: { code: { type: string }, earned_at: { type: string, format: date-time } } } } } }
         plan: { type: [object, 'null'], description: 'v1.1 – S9: tóm tắt lộ trình', properties: { plan_id: { type: string }, week_pct: { type: number }, forecast: { type: string }, days_to_exam: { type: [integer, 'null'] } } }
+        score_history: { type: array, description: 'v1.1 – S10: bài có thang điểm (exam/diagnostic, đề full/mini), cũ → mới', items: { type: object, properties: { date: { type: string, format: date }, at: { type: string, format: date-time }, score: { type: number }, listening: { type: [number, 'null'] }, reading: { type: [number, 'null'] }, kind: { type: [string, 'null'] }, mode: { type: string }, attempt_id: { type: string, format: uuid } } } }
+        accuracy: { type: object, description: 'v1.1 – S10: 30 ngày gần nhất vs 30 ngày trước', properties: { window_days: { type: integer }, by_section: { type: object, additionalProperties: { $ref: '#/components/schemas/AccuracyCompare' } }, by_subskill: { type: object, additionalProperties: { $ref: '#/components/schemas/AccuracyCompare' } } } }
+        minutes_by_week: { type: array, description: 'v1.1 – S10: 8 tuần (thứ Hai, giờ người học); ôn thẻ ước tính 10 giây/thẻ', items: { type: object, properties: { week_start: { type: string, format: date }, minutes: { type: integer }, attempts: { type: integer }, reviews: { type: integer } } } }
+        vocab: { type: object, description: v1.1 – S10, properties: { total: { type: integer }, new: { type: integer }, learning: { type: integer }, mastered: { type: integer }, due_today: { type: integer }, reviews_7d: { type: integer } } }
+        errors: { type: object, description: v1.1 – S10, properties: { open: { type: integer }, resolved: { type: integer }, by_kind: { type: object, additionalProperties: { type: integer } } } }
+        community: { type: object, description: 'v1.1 – S10: percentile ẩn danh (cùng chương trình + mức mục tiêu, ≥ 10 người)', properties: { percentile: { type: [number, 'null'] }, cohort_size: { type: integer }, target_bucket: { type: [string, 'null'] }, reason: { type: string, enum: [ok, no_estimate, cohort_too_small] } } }
+        generated_at: { type: string, format: date-time, description: v1.1 – S10 }
+        cached: { type: boolean, description: v1.1 – S10 }
+    AccuracyCompare:
+      type: object
+      description: v1.1 – S10
+      properties:
+        current: { type: object, properties: { correct: { type: integer }, total: { type: integer }, accuracy: { type: [number, 'null'] } } }
+        previous: { type: object, properties: { correct: { type: integer }, total: { type: integer }, accuracy: { type: [number, 'null'] } } }
+        delta: { type: [number, 'null'], description: Điểm phần trăm }
     Forecast:
       type: object
       properties:
-        predicted_score: { type: number }
-        ci_low: { type: number }
-        ci_high: { type: number }
+        predicted_score: { type: [number, 'null'], description: 'v1.1 – S10: null khi chưa có điểm ước tính' }
+        ci_low: { type: [number, 'null'] }
+        ci_high: { type: [number, 'null'] }
         ready_date: { type: string, format: date, nullable: true }
-        on_track: { type: boolean }
+        on_track: { type: [boolean, 'null'] }
         recommendation: { type: string }
+        recommendation_code: { type: string, enum: [need_data, keep_going, increase_practice, on_track, target_reached, set_target], description: 'v1.1 – S10: web dịch' }
         computed_at: { type: string, format: date-time }
+        status: { type: string, enum: [ok, insufficient_data], description: v1.1 – S10 }
+        label: { type: string, enum: [preliminary_estimate], description: 'v1.1 – S10: luôn hiển thị "ước tính sơ bộ"' }
+        model_version: { type: string, description: 'v1.1 – S10: linreg-v0' }
+        current_estimate: { type: [number, 'null'] }
+        target: { type: [number, 'null'] }
+        exam_date: { type: [string, 'null'], format: date }
+        horizon_date: { type: string, format: date }
+        slope_per_week: { type: [number, 'null'] }
+        points_used: { type: integer }
+        scale: { type: object, properties: { min: { type: number }, max: { type: number } } }
+    AttributionInput:
+      type: object
+      description: 'v1.1 – S10: UTM/referrer lần chạm đầu (web đọc từ URL/cookie trang đích); server chỉ lưu host của referrer, path không query; lưu iam.users.attribution khi TẠO tài khoản'
+      properties:
+        utm_source: { type: string, maxLength: 100 }
+        utm_medium: { type: string, maxLength: 100 }
+        utm_campaign: { type: string, maxLength: 150 }
+        utm_term: { type: string, maxLength: 150 }
+        utm_content: { type: string, maxLength: 150 }
+        referrer: { type: string, maxLength: 2048 }
+        landing_path: { type: string, maxLength: 512 }
+        first_seen_at: { type: string, format: date-time }
+    FunnelEventInput:
+      type: object
+      description: v1.1 – S10
+      required: [event, anonymous_id, consent]
+      properties:
+        event: { type: string, enum: [landing_view, signup_start, checkout_start] }
+        anonymous_id: { type: string, pattern: '^[A-Za-z0-9_-]{8,64}$' }
+        consent: { type: boolean }
+        path: { type: string, maxLength: 512 }
+        properties: { type: object, additionalProperties: { oneOf: [ { type: string, maxLength: 200 }, { type: number }, { type: boolean } ] } }
+    FunnelEventResult:
+      type: object
+      description: v1.1 – S10
+      properties:
+        accepted: { type: boolean }
+        reason: { type: string, enum: [ok, no_consent, disabled, rate_limited] }
     Plan:
       type: object
       properties:
@@ -2841,6 +3068,7 @@ components:
       type: object
       properties:
         valid: { type: boolean }
+        requires_login: { type: boolean, description: 'v1.1 – S10: chưa đăng nhập và mã còn điều kiện theo người dùng (người dùng mới, lượt/người, dùng thử một lần) – chưa kiểm' }
         code: { type: string }
         reason: { type: [string, 'null'], description: 'not_found | inactive | not_started | expired | plan_not_eligible | max_uses_reached | per_user_limit_reached | below_minimum; v1.1 – S8: new_users_only | program_not_eligible | min_subtotal_not_met | requires_redeem | requires_order | plan_required | trial_already_used | already_pro | guest_account' }
         kind: { type: [string, 'null'], description: 'percent | fixed | credit_bonus | trial_days (v1.1 – S8; S7 `amount` = fixed)' }
@@ -3138,6 +3366,7 @@ components:
         id: { type: string, format: uuid }
         order_id: { type: string, format: uuid }
         user_id: { type: string, format: uuid }
+        user_email: { type: [string, 'null'], description: 'v1.1 – S10: email tài khoản (chỉ admin)' }
         provider: { type: string }
         provider_txn_id: { type: [string, 'null'] }
         merchant_ref: { type: [string, 'null'] }
@@ -3154,6 +3383,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         order_id: { type: string, format: uuid }
+        user_email: { type: [string, 'null'], description: 'v1.1 – S10: email tài khoản (chỉ admin)' }
         user_id: { type: string, format: uuid }
         order_status: { type: string }
         total: { type: number }
