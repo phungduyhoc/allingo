@@ -31,6 +31,8 @@ Job (worker, hàng đợi `maintenance`; dev không có worker → API tự ch�
 | `credit.grant_monthly` | 1 giờ | cấp credit kỳ 30 ngày đến hạn (idempotent theo subscription × kỳ) |
 | `credit.expire` | 1 giờ | lô gói credit quá 12 tháng → ledger `expire` phần còn lại |
 | `billing.reconcile` | 01:30 VN | đối soát hôm qua qua `queryStatus` cho mọi cổng khả dụng (không ghi đè lần chạy đã có) |
+| `credit.grant_free_monthly` | 1 giờ | S8: Free nhận `plans['free'].credits_included` (300) mỗi tháng lịch VN, lô hết hạn đầu tháng sau (không cộng dồn) |
+| `invoice.retry` | 1′ | S8: hoá đơn điện tử thử lại theo backoff, hàng kẹt, đơn paid thiếu hoá đơn – xem `docs/runbooks/invoices.md` |
 
 Chạy tay: `POST /v1/admin/billing/jobs/{job}` (200 + kết quả nếu xong trong 10 s, ngược lại 202).
 
@@ -90,7 +92,10 @@ select o.id, o.user_id, o.created_at, p.provider, p.raw_callback->>'merchant_ref
    đơn → `refunded`; subscription của đơn kết thúc ngay, entitlements hết hiệu lực (cache Redis xoá); credit còn lại của đơn
    (gói credit hoặc credit tháng của subscription) → ledger `refund` âm; phần đã tiêu không thu hồi (không làm số dư âm) –
    hiện ở `revoked.credits_shortfall` và `note` của ledger. Audit `order.refund`, outbox `order.refunded`.
-3. Chỉ đơn `paid` hoàn được (khác → 409). TODO S8: gọi API hoàn tiền tự động của cổng (`PaymentProvider.refund`).
+3. Chỉ đơn `paid` hoàn được (khác → 409). Chưa gọi API hoàn tiền tự động của cổng (`PaymentProvider.refund`) – làm tay ở bước 1.
+4. S8: hoá đơn điện tử của đơn tự chuyển `cancel_pending → cancelled` (job `invoice.cancel`); credit tặng kèm đơn (credit_bonus,
+   lô `promo` ref `promotion:<order>`) còn lại cũng bị thu hồi (ledger `refund`, không làm số dư âm); lượt mã vẫn tính là đã dùng.
+   Xem `docs/runbooks/invoices.md` §1, §3.
 
 ## 5. Đối soát
 

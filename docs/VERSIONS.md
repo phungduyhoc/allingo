@@ -21,5 +21,6 @@
 | Vercel AI SDK | 7.0.x | |
 | Playwright | 1.64.x | |
 | web-push | 3.6.x | Sprint 6 – Web Push VAPID (aes128gcm) trong `apps/api` (growth); khoá qua env `VAPID_*` |
+| handlebars / nodemailer | 4.7.x / 10.3.x | Sprint 8 dùng lại (đã có từ S0/S1): mẫu thông báo vi/en, email SMTP/SES; Resend gọi HTTP bằng fetch; PDF hoá đơn mock tự dựng – không thêm thư viện |
 
 Cập nhật khi nâng cấp; thay đổi major cần ADR.

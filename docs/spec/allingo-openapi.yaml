@@ -18,6 +18,7 @@ info:
     - Realtime: WebSocket `wss://api.allingo.vn/v1/ws` (Socket.IO), sự kiện `submission.graded`, `plan.updated`, `credits.changed`, `notification.new`; v1.1 – S7: `order.updated` `{order_id, status, paid_at}`, `credits.changed` `{balance | null}`, `entitlements.changed` `{}`.
     - Thanh toán (v1.1 – S7, ADR-0012 webhook-first): quyền chỉ mở khi webhook/IPN đã xác minh chữ ký (hoặc job đối chiếu `queryStatus`); return URL chỉ hiển thị. Tiền VND nguyên.
     - Streaming AI: `text/event-stream` cho chat và giải thích (`event: delta|done|error`).
+    - v1.1 – S8: hoá đơn điện tử tự phát hành sau `order.paid` (`Order.invoice`, PDF URL ký 10 phút); khuyến mãi đầy đủ (percent | fixed | credit_bonus | trial_days, không cộng dồn) + dùng thử Pro; referral; thông báo đa kênh (Socket.IO `notification.new` = NotificationItem); header tuỳ chọn `X-Device-Fingerprint` ở /auth/register, /auth/otp/verify, /auth/oauth/{provider} (server chỉ lưu sha256 – chống lạm dụng referral).
   contact:
     name: Allingo Engineering
 servers:
@@ -1020,15 +1021,37 @@ paths:
   /promotions/validate:
     post:
       tags: [Billing]
-      summary: Kiểm tra mã giảm giá cho gói
-      description: 'v1.1 – S7: mã cố định từ seed (WELCOME10, TOEIC50K, YEARLY20…), điều kiện cơ bản: hiệu lực, gói áp dụng, tổng lượt, lượt/người (chỉ đơn đã thanh toán), tối thiểu 10.000 đ sau giảm. Luôn 200; `valid = false` kèm `reason`.'
+      summary: Kiểm tra mã khuyến mãi (cho gói hoặc đổi trực tiếp)
+      description: |
+        v1.1 – S8 (đầy đủ): loại `percent | fixed | credit_bonus | trial_days` (S7 `amount` = `fixed`); điều kiện gói/loại gói/chương trình,
+        người dùng mới (chưa có đơn đã thanh toán, tài khoản ≤ 30 ngày), thời gian, tổng lượt (đã dùng + đang giữ bởi đơn chờ thanh toán),
+        lượt/người, tổng tối thiểu; không cộng dồn (một mã/đơn). Có `price_id`/`plan_id` → đánh giá như POST /orders; không gói → như
+        POST /promotions/redeem (trial_days, credit_bonus standalone; mã cần đơn → `plan_required`). Luôn 200; `valid = false` kèm `reason`.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [code], properties: { code: { type: string, maxLength: 40 }, plan_id: { type: string, format: uuid }, price_id: { type: string, format: uuid, description: 'v1.1 – một trong plan_id/price_id' } } }
+            schema: { type: object, required: [code], properties: { code: { type: string, maxLength: 40 }, plan_id: { type: string, format: uuid }, price_id: { type: string, format: uuid, description: 'v1.1 – một trong plan_id/price_id (tuỳ chọn từ S8)' }, program: { type: string, enum: [toeic, ielts, jlpt, hsk], description: 'v1.1 – S8: chương trình dùng thử (trial_days)' } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PromotionValidation' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+  /promotions/redeem:
+    post:
+      tags: [Billing]
+      summary: Đổi mã không qua đơn – dùng thử Pro (trial_days) hoặc tặng credit (credit_bonus standalone) (v1.1 – S8)
+      description: |
+        trial_days → subscription `trialing` [now, now + N ngày) của gói `conditions.trial_plan_code` (mặc định `<program>_pro_monthly`),
+        entitlements nguồn `trial`, KHÔNG cấp credit; một lần/người (UNIQUE) – đã dùng → 400 `details.promotion.reason = trial_already_used`,
+        đang Pro → `already_pro`. Hết trial: job `subscription.expire` → `expired` + thông báo `billing.trial_ended`, hạ Free.
+        credit_bonus standalone → ledger `promo` (lô hết hạn `conditions.credit_valid_days`). Outbox `promotion.redeemed`.
+        Mã không áp dụng → 400 `validation_failed` (`details.promotion = {code, reason}`); khách → `guest_account`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PromotionRedeemInput' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PromotionRedeemResult' } } } }
         '400': { $ref: '#/components/responses/Error' }
   /orders:
     post:
@@ -1040,6 +1063,10 @@ paths:
         cùng khoá + cùng body → 200 trả đơn cũ; cùng khoá khác body → 409 `conflict` (`details.reason = idempotency_key_reused`).
         Tài khoản khách → 403 (`details.reason = guest_account`); `ff.billing.checkout` tắt → 503 `feature_disabled`;
         mã giảm không áp dụng → 400 `validation_failed` (`details.promotion = {code, reason}`).
+        v1.1 – S8: mã được khoá + GIỮ LƯỢT (reserved) trong cùng transaction tạo đơn; đơn chờ thanh toán cũ của chính người dùng với cùng
+        mã bị thay thế (`expired`, nhả lượt); `discount` = số giảm, `promotion_id`; credit_bonus cộng credit khi thanh toán.
+        `buyer_info` (hoá đơn điện tử): `type = business` bắt buộc `tax_code` (MST VN 10/13 số, kiểm tra chữ số), `company`, `address`
+        – sai → 400 `validation_failed` (issues path `buyer_info.tax_code`…); cá nhân thiếu tên/email → hồ sơ tài khoản.
       parameters: [ { $ref: '#/components/parameters/IdempotencyKey' } ]
       requestBody:
         required: true
@@ -1064,7 +1091,7 @@ paths:
     get:
       tags: [Billing]
       summary: Trạng thái đơn hàng, thanh toán, hoá đơn
-      description: 'v1.1 – S7: web polling sau khi cổng chuyển về (hoặc nghe Socket.IO `order.updated`); đơn quá hạn được chuyển `expired` khi đọc; đơn của người khác → 404.'
+      description: 'v1.1 – S7: web polling sau khi cổng chuyển về (hoặc nghe Socket.IO `order.updated`); đơn quá hạn được chuyển `expired` khi đọc; đơn của người khác → 404. v1.1 – S8: `invoice` (status pending → issued trong vài giây sau thanh toán; `pdf_url` ký 10 phút – gọi lại để lấy URL mới), `promotion`, `buyer_info`.'
       parameters: [ { $ref: '#/components/parameters/OrderId' } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Order' } } } }
@@ -1180,12 +1207,12 @@ paths:
     get:
       tags: [Growth]
       summary: Kênh & khung giờ thông báo
-      description: 'v1.1 – S6: chưa có hàng → trả mặc định DDL (email/push/inapp bật, zalo tắt, 22:00–07:00, nhắc 20:00).'
+      description: 'v1.1 – S6: chưa có hàng → trả mặc định DDL (email/push/inapp bật, zalo tắt, 22:00–07:00, nhắc 20:00). v1.1 – S8: `categories` (learning/billing/marketing × email/push/inapp; marketing email theo đồng ý marketing khi chưa lưu), `frequency` (≤ 1 email marketing/7 ngày, ≤ 2 push/ngày – chỉ đọc), `timezone` (giờ yên lặng theo Asia/Ho_Chi_Minh).'
       responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPreferences' } } } } }
     patch:
       tags: [Growth]
       summary: Cập nhật kênh/khung giờ
-      description: 'v1.1 – S6: cập nhật một phần (channels gộp theo khoá); giờ dạng HH:MM, ≤ 5 giờ nhắc. Trả bản đầy đủ.'
+      description: 'v1.1 – S6: cập nhật một phần (channels gộp theo khoá); giờ dạng HH:MM, ≤ 5 giờ nhắc. Trả bản đầy đủ. v1.1 – S8: `categories` gộp theo loại/kênh.'
       requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPreferences' } } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPreferences' } } } }
@@ -1229,15 +1256,92 @@ paths:
     get:
       tags: [Growth]
       summary: Thông báo in-app
-      description: 'v1.1 – S7: billing.subscription_expiring (7/3/1 ngày trước hết kỳ), billing.subscription_expired, billing.order_paid; web dịch theo `template_code` + `payload`.'
-      parameters: [ { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
+      description: 'v1.1 – S7: billing.subscription_expiring (7/3/1 ngày trước hết kỳ), billing.subscription_expired, billing.order_paid; web dịch theo `template_code` + `payload`. v1.1 – S8: mọi mẫu NotificationService (billing.invoice_issued, billing.trial_*, growth.referral_rewarded, learning.*), `title`/`body`/`url` đã dựng theo ngôn ngữ người dùng (dự phòng), `unread=true` chỉ chưa đọc, `unread_count`; realtime Socket.IO `notification.new`.'
+      parameters: [ { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }, { name: unread, in: query, schema: { type: boolean }, description: 'v1.1 – S8' } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/NotificationItem' } }, next_cursor: { type: [string, 'null'] } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/NotificationItem' } }, next_cursor: { type: [string, 'null'] }, unread_count: { type: integer, description: 'v1.1 – S8' } } } } } }
+  /me/notifications/{notificationId}/read:
+    post:
+      tags: [Growth]
+      summary: Đánh dấu đã đọc một thông báo in-app (v1.1 – S8)
+      description: 'Idempotent; thông báo của người khác → 404.'
+      parameters: [ { name: notificationId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationItem' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+  /me/notifications/read-all:
+    post:
+      tags: [Growth]
+      summary: Đánh dấu đã đọc tất cả thông báo in-app (v1.1 – S8)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { updated: { type: integer }, unread_count: { type: integer } } } } } }
+  /notifications/unsubscribe:
+    get:
+      tags: [Growth]
+      security: []
+      summary: Link huỷ đăng ký trong email – chuyển tới trang quản lý thông báo của web (v1.1 – S8)
+      description: 'Không đổi trạng thái (email client hay tải trước link). Token ký HMAC (`v1.<user>.<category|all>.<sig>`, không hết hạn); sai → 400. 302 tới `${WEB}/notifications/manage?token=&unsubscribe=<category>`.'
+      parameters: [ { name: token, in: query, required: true, schema: { type: string } } ]
+      responses:
+        '302': { description: Chuyển tới trang quản lý của web }
+        '400': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Growth]
+      security: []
+      summary: Huỷ nhận email một loại (one-click RFC 8058 `List-Unsubscribe-Post`) (v1.1 – S8)
+      description: 'Tắt `categories.<category>.email` (token `all` → mọi loại). Email giao dịch (biên lai, hoá đơn) vẫn gửi. Body tuỳ ý (`List-Unsubscribe=One-Click`).'
+      parameters: [ { name: token, in: query, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { unsubscribed: { type: boolean }, category: { type: string, enum: [learning, billing, marketing, all] }, channel: { type: string, enum: [email] } } } } } }
+        '400': { $ref: '#/components/responses/Error' }
+  /notifications/manage:
+    get:
+      tags: [Growth]
+      security: []
+      summary: Tuỳ chọn thông báo theo token trong email (không cần đăng nhập) (v1.1 – S8)
+      parameters: [ { name: token, in: query, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationManage' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Growth]
+      security: []
+      summary: Cập nhật tuỳ chọn theo token (categories, channels.email) (v1.1 – S8)
+      parameters: [ { name: token, in: query, required: true, schema: { type: string } } ]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { categories: { $ref: '#/components/schemas/NotificationCategoriesPatch' }, channels: { type: object, properties: { email: { type: boolean } } } } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationManage' } } } }
+        '400': { $ref: '#/components/responses/Error' }
   /me/referral:
     get:
       tags: [Growth]
       summary: Mã/link giới thiệu, thống kê, credit đã nhận
-      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ReferralSummary' } } } } }
+      description: 'v1.1 – S8: mã 8 ký tự (cấp lười), link chia sẻ có UTM (trang OG `/r/{code}`), landing_url web, link chia sẻ Facebook/Messenger (Zalo: web dùng Zalo Share SDK với `share.zalo`), thống kê joined/started/upgraded, credit nhận (ledger `referral`), trần thưởng tháng, 20 lượt gần nhất (tên đã che). Khách → 403.'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ReferralSummary' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+  /referrals/{code}:
+    get:
+      tags: [Growth]
+      security: []
+      summary: Dữ liệu trang chia sẻ referral (OG + thưởng cho người mới) cho web (v1.1 – S8)
+      parameters: [ { name: code, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ReferralLanding' } } } }
+  /r/{code}:
+    get:
+      tags: [Growth]
+      security: []
+      summary: Link chia sẻ referral – HTML có thẻ OG (crawler Facebook/Zalo) + chuyển hướng tới trang đăng ký web kèm `ref` và UTM (v1.1 – S8)
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+        - { name: utm_source, in: query, schema: { type: string } }
+        - { name: utm_medium, in: query, schema: { type: string } }
+        - { name: utm_campaign, in: query, schema: { type: string } }
+        - { name: utm_content, in: query, schema: { type: string } }
+        - { name: utm_term, in: query, schema: { type: string } }
+      responses:
+        '200': { description: 'text/html (meta refresh)', content: { text/html: { schema: { type: string } } } }
   /integrations/google-calendar:
     post:
       tags: [Growth]
@@ -1471,11 +1575,120 @@ paths:
     post:
       tags: [Admin]
       summary: Chạy ngay một job billing (v1.1 – S7)
-      description: 'order.expire | payment.reconcile | subscription.expire | credit.grant_monthly | credit.expire | billing.reconcile. Chạy inline xong trong 10 s → 200 kèm kết quả; đưa vào hàng đợi → 202.'
-      parameters: [ { name: job, in: path, required: true, schema: { type: string, enum: [order.expire, payment.reconcile, subscription.expire, credit.grant_monthly, credit.expire, billing.reconcile] } } ]
+      description: 'order.expire | payment.reconcile | subscription.expire | credit.grant_monthly | credit.expire | billing.reconcile | credit.grant_free_monthly (S8: Free 300 credit/tháng) | invoice.retry (S8: thử lại hoá đơn theo backoff). Chạy inline xong trong 10 s → 200 kèm kết quả; đưa vào hàng đợi → 202.'
+      parameters: [ { name: job, in: path, required: true, schema: { type: string, enum: [order.expire, payment.reconcile, subscription.expire, credit.grant_monthly, credit.expire, billing.reconcile, credit.grant_free_monthly, invoice.retry] } } ]
       responses:
         '200': { description: Đã chạy xong, content: { application/json: { schema: { type: object, properties: { job: { type: string }, job_id: { type: string }, mode: { type: string }, status: { type: string }, result: { type: object } } } } } }
         '202': { description: Đã đưa vào hàng đợi, content: { application/json: { schema: { type: object, properties: { job: { type: string }, job_id: { type: string }, mode: { type: string }, status: { type: string } } } } } }
+  /admin/billing/payments:
+    get:
+      tags: [Admin]
+      summary: Danh sách thanh toán có lọc (v1.1 – S8)
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [initiated, success, failed, refunded] } }
+        - { name: provider, in: query, schema: { type: string, enum: [vnpay, momo, zalopay, mock] } }
+        - { name: order_id, in: query, schema: { type: string, format: uuid } }
+        - { name: user_id, in: query, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/AdminPayment' } }, next_cursor: { type: [string, 'null'] } } } } } }
+  /admin/billing/invoices:
+    get:
+      tags: [Admin]
+      summary: Danh sách hoá đơn điện tử có lọc (v1.1 – S8)
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, issued, error, failed, cancel_pending, cancelled, skipped] } }
+        - { name: order_id, in: query, schema: { type: string, format: uuid } }
+        - { name: user_id, in: query, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/AdminInvoice' } }, next_cursor: { type: [string, 'null'] } } } } } }
+  /admin/billing/invoices/reconciliation:
+    get:
+      tags: [Admin]
+      summary: Đối chiếu hoá đơn tháng – hoá đơn hiệu lực = đơn paid − refunded (theo paid_at, giờ VN) (v1.1 – S8)
+      parameters: [ { name: month, in: query, required: true, schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$', example: '2026-11' } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/InvoiceReconciliation' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+  /admin/billing/subscriptions:
+    get:
+      tags: [Admin]
+      summary: Danh sách subscription có lọc (v1.1 – S8)
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [trialing, active, past_due, cancelled, expired, lifetime] } }
+        - { name: user_id, in: query, schema: { type: string, format: uuid } }
+        - { name: plan_code, in: query, schema: { type: string } }
+        - { name: program, in: query, schema: { type: string, enum: [toeic, ielts, jlpt, hsk] } }
+        - { name: expiring_within_days, in: query, schema: { type: integer, minimum: 1, maximum: 365 } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: 'Subscription + user_id, created_at', content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Subscription' } }, next_cursor: { type: [string, 'null'] } } } } } }
+  /admin/billing/dead-letters:
+    get:
+      tags: [Admin]
+      summary: Dead-letter job hoá đơn (invoice.issue | invoice.cancel) – ops.jobs_deadletter (v1.1 – S8)
+      parameters:
+        - { name: job, in: query, schema: { type: string, enum: [invoice.issue, invoice.cancel] } }
+        - { name: include_resolved, in: query, schema: { type: boolean, default: false } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/DeadLetter' } }, next_cursor: { type: [string, 'null'] } } } } } }
+  /admin/billing/dead-letters/{deadLetterId}/retry:
+    post:
+      tags: [Admin]
+      summary: Thử lại job hoá đơn trong dead-letter (đặt lại số lần thử, audit) (v1.1 – S8)
+      description: 'Chạy inline xong trong 10 s → `outcome` (status issued | error | failed …); hàng đợi → `outcome = null`, `mode = queued`. Đã xử lý → 409 `already_resolved`.'
+      parameters: [ { name: deadLetterId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { dead_letter: { $ref: '#/components/schemas/DeadLetter' }, outcome: { type: [object, 'null'] }, mode: { type: string, enum: [inline, queued] } } } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /admin/promotions:
+    get:
+      tags: [Admin]
+      summary: Danh sách khuyến mãi + thống kê lượt (v1.1 – S8)
+      parameters:
+        - { name: active, in: query, schema: { type: boolean } }
+        - { name: kind, in: query, schema: { type: string, enum: [percent, fixed, credit_bonus, trial_days] } }
+        - { name: q, in: query, schema: { type: string } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/PromotionAdmin' } }, next_cursor: { type: [string, 'null'] } } } } } }
+    post:
+      tags: [Admin]
+      summary: Tạo khuyến mãi (audit promotion.create) (v1.1 – S8)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PromotionInput' } } } }
+      responses:
+        '201': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PromotionAdmin' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /admin/promotions/{promotionId}:
+    get:
+      tags: [Admin]
+      summary: Chi tiết khuyến mãi (v1.1 – S8)
+      parameters: [ { name: promotionId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PromotionAdmin' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Admin]
+      summary: Sửa khuyến mãi – mã không đổi được (audit promotion.update) (v1.1 – S8)
+      parameters: [ { name: promotionId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PromotionPatch' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PromotionAdmin' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
   /admin/plans:
     put:
       tags: [Admin]
@@ -1486,7 +1699,7 @@ paths:
     put:
       tags: [Admin]
       summary: Bật/tắt feature flag theo quy tắc
-      description: 'v1.1 – S7: `rules = {percent, user_ids[], plan_kinds[], programs[]}`; cờ tắt vẫn bật cho `user_ids` (tester). Audit `flag.update`. S7 dùng `ff.billing.checkout`.'
+      description: 'v1.1 – S7: `rules = {percent, user_ids[], plan_kinds[], programs[]}`; cờ tắt vẫn bật cho `user_ids` (tester). Audit `flag.update`. S7 dùng `ff.billing.checkout`. v1.1 – S8: `rules.config` – cấu hình tính năng (`ff.growth.referral`: `{rewards: {started: {referrer, referee}, upgraded: {…}}, monthly_cap, abuse_window_hours, require_verified_email}`).'
       parameters: [ { name: key, in: path, required: true, schema: { type: string } } ]
       requestBody: { content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean }, rules: { type: object } } } } } }
       responses: { '200': { description: OK } }
@@ -1494,9 +1707,22 @@ paths:
     post:
       tags: [Admin]
       summary: Cấp/điều chỉnh credit thủ công (ghi audit)
+      description: 'v1.1 – S8: ledger reason `admin_adjust` (ref_type `admin`, ref_id = admin), `note` = lý do bắt buộc (3–500 ký tự), audit `user.grant_credits` có admin id; `delta` âm làm số dư < 0 → 409 `insufficient_balance`; `expires_at` (tuỳ chọn, delta > 0) → lô có hạn. Người dùng không tồn tại → 404.'
       parameters: [ { name: userId, in: path, required: true, schema: { type: string, format: uuid } } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [delta, note], properties: { delta: { type: integer }, note: { type: string } } } } } }
-      responses: { '200': { description: OK } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [delta, note], properties: { delta: { type: integer }, note: { type: string, minLength: 3, maxLength: 500 }, expires_at: { type: string, format: date-time, description: v1.1 – S8 } } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AdminCreditAdjustResult' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /admin/users/{userId}/credits/ledger:
+    get:
+      tags: [Admin]
+      summary: Số dư + ledger credit của người dùng (cursor id giảm dần) (v1.1 – S8)
+      parameters: [ { name: userId, in: path, required: true, schema: { type: string, format: uuid } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { user_id: { type: string, format: uuid }, balance: { type: integer }, data: { type: array, items: { $ref: '#/components/schemas/LedgerEntry' } }, next_cursor: { type: [string, 'null'] } } } } } }
+        '404': { $ref: '#/components/responses/Error' }
   /admin/notifications/test:
     post:
       tags: [Admin]
@@ -2275,7 +2501,9 @@ components:
         features: { type: object }
     BuyerInfo:
       type: object
+      description: 'v1.1 – S8: thông tin xuất hoá đơn điện tử. `type` mặc định business khi có tax_code. Doanh nghiệp: tax_code (MST 10 số hoặc 13 số `0123456789-001`, kiểm tra chữ số), company, address bắt buộc.'
       properties:
+        type: { type: string, enum: [personal, business], description: v1.1 – S8 }
         name: { type: string }
         email: { type: string, format: email }
         tax_code: { type: string }
@@ -2297,9 +2525,27 @@ components:
         total: { type: number }
         status: { type: string, enum: [pending, paid, failed, cancelled, refunded, expired] }
         payments: { type: array, items: { type: object, properties: { id: { type: string, format: uuid }, provider: { type: string }, status: { type: string, description: 'initiated | success | failed | refunded' }, amount: { type: number }, created_at: { type: string, format: date-time }, confirmed_at: { type: string, format: date-time, nullable: true } } } }
-        invoice: { type: object, nullable: true, properties: { invoice_no: { type: string }, pdf_url: { type: string }, issued_at: { type: string, format: date-time } } }
+        invoice: { $ref: '#/components/schemas/OrderInvoice' }
+        promotion: { type: object, nullable: true, description: v1.1 – S8, properties: { id: { type: string, format: uuid }, code: { type: string }, kind: { type: string, enum: [percent, fixed, credit_bonus, trial_days] }, value: { type: number }, bonus_credits: { type: integer } } }
+        buyer_info: { type: object, nullable: true, description: 'v1.1 – S8: thông tin xuất hoá đơn đã chuẩn hoá', properties: { type: { type: string, enum: [personal, business] }, name: { type: [string, 'null'] }, email: { type: [string, 'null'] }, tax_code: { type: [string, 'null'] }, company: { type: [string, 'null'] }, address: { type: [string, 'null'] } } }
         created_at: { type: string, format: date-time }
         expires_at: { type: string, format: date-time }
+    OrderInvoice:
+      type: object
+      nullable: true
+      description: 'v1.1 – S8: hoá đơn điện tử của đơn (null khi đơn chưa thanh toán). Trạng thái pending → issued (lỗi: error → thử lại 1/5/15/60/240 phút → failed = dead-letter); hoàn tiền → cancel_pending → cancelled; hoàn tiền trước khi phát hành → skipped.'
+      properties:
+        status: { type: string, enum: [pending, issued, error, failed, cancel_pending, cancelled, skipped] }
+        provider: { type: string, description: 'mock | misa | viettel' }
+        series: { type: [string, 'null'], description: Ký hiệu hoá đơn }
+        invoice_no: { type: [string, 'null'] }
+        lookup_code: { type: [string, 'null'], description: Mã tra cứu trên cổng nhà cung cấp }
+        lookup_url: { type: [string, 'null'] }
+        pdf_url: { type: [string, 'null'], description: 'URL ký 10 phút (bucket invoices); null khi chưa phát hành' }
+        pdf_expires_at: { type: [string, 'null'], format: date-time }
+        issued_at: { type: [string, 'null'], format: date-time }
+        cancelled_at: { type: [string, 'null'], format: date-time }
+        buyer_type: { type: [string, 'null'], enum: [personal, business, null] }
     Subscription:
       type: object
       properties:
@@ -2362,8 +2608,14 @@ components:
       properties:
         valid: { type: boolean }
         code: { type: string }
-        reason: { type: [string, 'null'], description: 'not_found | inactive | not_started | expired | plan_not_eligible | max_uses_reached | per_user_limit_reached | below_minimum' }
-        kind: { type: [string, 'null'], description: 'percent | amount' }
+        reason: { type: [string, 'null'], description: 'not_found | inactive | not_started | expired | plan_not_eligible | max_uses_reached | per_user_limit_reached | below_minimum; v1.1 – S8: new_users_only | program_not_eligible | min_subtotal_not_met | requires_redeem | requires_order | plan_required | trial_already_used | already_pro | guest_account' }
+        kind: { type: [string, 'null'], description: 'percent | fixed | credit_bonus | trial_days (v1.1 – S8; S7 `amount` = fixed)' }
+        promotion_id: { type: [string, 'null'], format: uuid, description: v1.1 – S8 }
+        name: { $ref: '#/components/schemas/I18nText' }
+        applies_to: { type: [string, 'null'], enum: [order, redeem, null], description: 'v1.1 – S8: order → POST /orders; redeem → POST /promotions/redeem' }
+        bonus_credits: { type: integer, description: 'v1.1 – S8: credit_bonus' }
+        trial_days: { type: [integer, 'null'], description: 'v1.1 – S8: trial_days' }
+        stackable: { type: boolean, description: 'v1.1 – S8: luôn false (một mã/đơn)' }
         value: { type: number, nullable: true }
         subtotal: { type: number }
         discount: { type: number }
@@ -2409,6 +2661,10 @@ components:
         scheduled_at: { type: string, format: date-time }
         sent_at: { type: string, format: date-time, nullable: true }
         read_at: { type: string, format: date-time, nullable: true }
+        category: { type: [string, 'null'], description: 'v1.1 – S8: learning | billing | marketing | system' }
+        title: { type: [string, 'null'], description: 'v1.1 – S8: nội dung đã dựng theo ngôn ngữ người dùng (dự phòng)' }
+        body: { type: [string, 'null'] }
+        url: { type: [string, 'null'], description: Đường dẫn tương đối trong web }
     Entitlements:
       type: object
       properties:
@@ -2425,6 +2681,37 @@ components:
         reminder_times: { type: array, items: { type: string } }
         updated_at: { type: string, format: date-time, description: v1.1 – S6 }
         push_subscriptions: { type: integer, description: 'v1.1 – S6: số thiết bị đã đăng ký Web Push' }
+        categories: { $ref: '#/components/schemas/NotificationCategories' }
+        frequency: { type: object, description: 'v1.1 – S8: chỉ đọc', properties: { marketing_email_per_week: { type: integer }, push_per_day: { type: integer } } }
+        timezone: { type: string, description: 'v1.1 – S8: chỉ đọc – Asia/Ho_Chi_Minh' }
+    NotificationCategories:
+      type: object
+      description: 'v1.1 – S8: bật/tắt theo loại × kênh. Kênh tắt ở `channels` thắng; email/in-app giao dịch (biên lai, hoá đơn) luôn gửi'
+      properties:
+        learning: { $ref: '#/components/schemas/CategoryChannels' }
+        billing: { $ref: '#/components/schemas/CategoryChannels' }
+        marketing: { $ref: '#/components/schemas/CategoryChannels' }
+    NotificationCategoriesPatch:
+      type: object
+      description: 'v1.1 – S8: cập nhật một phần theo loại/kênh'
+      properties:
+        learning: { type: object, additionalProperties: { type: boolean } }
+        billing: { type: object, additionalProperties: { type: boolean } }
+        marketing: { type: object, additionalProperties: { type: boolean } }
+    CategoryChannels:
+      type: object
+      properties:
+        email: { type: boolean }
+        push: { type: boolean }
+        inapp: { type: boolean }
+    NotificationManage:
+      allOf:
+        - { $ref: '#/components/schemas/NotificationPreferences' }
+        - type: object
+          description: 'v1.1 – S8: trang quản lý bằng token email'
+          properties:
+            email_masked: { type: [string, 'null'] }
+            token_category: { type: string, enum: [learning, billing, marketing, all] }
     PushSubscriptionInput:
       type: object
       description: 'PushSubscription.toJSON() của trình duyệt (v1.1 – S6)'
@@ -2508,10 +2795,190 @@ components:
       type: object
       properties:
         code: { type: string }
-        link: { type: string, format: uri }
+        link: { type: string, format: uri, description: 'v1.1 – S8: trang OG /r/{code} có UTM' }
         joined: { type: integer }
         upgraded: { type: integer }
         credits_earned: { type: integer }
+        landing_url: { type: string, description: 'v1.1 – S8: trang đăng ký web có ref + UTM' }
+        share: { type: object, properties: { facebook: { type: string }, zalo: { type: string, description: 'link cho Zalo Share SDK (data-href)' }, messenger: { type: string }, text: { type: string } } }
+        og: { type: object, properties: { title: { type: string }, description: { type: string }, image: { type: string } } }
+        enabled: { type: boolean, description: 'ff.growth.referral' }
+        started: { type: integer, description: v1.1 – S8 }
+        rewards: { type: object, properties: { this_month: { type: integer }, monthly_cap: { type: integer }, skipped: { type: integer } } }
+        config: { type: object, properties: { rewards: { type: object }, monthly_cap: { type: integer } } }
+        recent: { type: array, items: { type: object, properties: { id: { type: string, format: uuid }, display_name: { type: string }, status: { type: string, enum: [joined, started, upgraded] }, joined_at: { type: string, format: date-time }, started_at: { type: [string, 'null'] }, upgraded_at: { type: [string, 'null'] }, rewarded: { type: object, properties: { started: { type: boolean }, upgraded: { type: boolean } } }, blocked_reason: { type: [string, 'null'], enum: [self_referral, duplicate_device, duplicate_ip, null] } } } }
+    ReferralLanding:
+      type: object
+      description: v1.1 – S8
+      properties:
+        code: { type: string }
+        valid: { type: boolean }
+        referrer_name: { type: [string, 'null'] }
+        reward: { type: object, properties: { referee_started: { type: integer }, referee_upgraded: { type: integer } } }
+        og: { type: object, properties: { title: { type: string }, description: { type: string }, image: { type: string }, url: { type: string } } }
+        register_url: { type: string }
+    PromotionRedeemInput:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string, maxLength: 40 }
+        program: { type: string, enum: [toeic, ielts, jlpt, hsk], description: 'trial_days: chương trình dùng thử (mặc định chương trình đầu của điều kiện hoặc toeic)' }
+    PromotionRedeemResult:
+      type: object
+      description: v1.1 – S8
+      properties:
+        code: { type: string }
+        kind: { type: string, enum: [trial_days, credit_bonus] }
+        redemption_id: { type: string, format: uuid }
+        credits_granted: { type: integer }
+        balance: { type: integer }
+        subscription: { allOf: [ { $ref: '#/components/schemas/Subscription' } ], nullable: true }
+        trial_ends_at: { type: [string, 'null'], format: date-time }
+    PromotionConditions:
+      type: object
+      description: v1.1 – S8
+      properties:
+        program_codes: { type: array, items: { type: string, enum: [toeic, ielts, jlpt, hsk] } }
+        plan_kinds: { type: array, items: { type: string, enum: [monthly, yearly, lifetime, combo, credit_pack] } }
+        new_users_only: { type: boolean }
+        new_user_max_days: { type: integer, default: 30 }
+        min_subtotal: { type: integer }
+        trial_plan_code: { type: string }
+        standalone: { type: boolean, description: 'credit_bonus: đổi trực tiếp không cần mua' }
+        credit_valid_days: { type: integer, default: 365 }
+    PromotionInput:
+      type: object
+      required: [code, kind, value, valid_from, valid_to]
+      properties:
+        code: { type: string, pattern: '^[A-Za-z0-9_-]{3,40}$', description: Chuẩn hoá chữ hoa }
+        kind: { type: string, enum: [percent, fixed, credit_bonus, trial_days], description: '`amount` (S7) được nhận như fixed' }
+        value: { type: number, description: 'percent ≤ 100; fixed ≥ 1.000 đ; trial_days 1–90; credit_bonus số credit' }
+        name: { $ref: '#/components/schemas/I18nText' }
+        plan_codes: { type: array, items: { type: string } }
+        valid_from: { type: string, format: date-time }
+        valid_to: { type: string, format: date-time }
+        max_uses: { type: [integer, 'null'] }
+        per_user_limit: { type: integer, default: 1 }
+        is_active: { type: boolean, default: true }
+        conditions: { $ref: '#/components/schemas/PromotionConditions' }
+    PromotionPatch:
+      type: object
+      description: 'Như PromotionInput nhưng mọi trường tuỳ chọn, không có `code`'
+      properties:
+        kind: { type: string, enum: [percent, fixed, credit_bonus, trial_days] }
+        value: { type: number }
+        name: { $ref: '#/components/schemas/I18nText' }
+        plan_codes: { type: array, items: { type: string } }
+        valid_from: { type: string, format: date-time }
+        valid_to: { type: string, format: date-time }
+        max_uses: { type: [integer, 'null'] }
+        per_user_limit: { type: integer }
+        is_active: { type: boolean }
+        conditions: { $ref: '#/components/schemas/PromotionConditions' }
+    PromotionAdmin:
+      type: object
+      description: v1.1 – S8
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        kind: { type: string, enum: [percent, fixed, credit_bonus, trial_days] }
+        value: { type: number }
+        name: { $ref: '#/components/schemas/I18nText' }
+        plan_ids: { type: array, items: { type: string, format: uuid } }
+        plan_codes: { type: array, items: { type: string } }
+        conditions: { $ref: '#/components/schemas/PromotionConditions' }
+        valid_from: { type: string, format: date-time }
+        valid_to: { type: string, format: date-time }
+        max_uses: { type: [integer, 'null'] }
+        used_count: { type: integer }
+        per_user_limit: { type: integer }
+        is_active: { type: boolean }
+        stackable: { type: boolean }
+        stats: { type: object, properties: { reserved: { type: integer }, redeemed: { type: integer }, released: { type: integer }, discount_total: { type: number }, credits_total: { type: integer } } }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AdminPayment:
+      type: object
+      description: v1.1 – S8
+      properties:
+        id: { type: string, format: uuid }
+        order_id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        provider: { type: string }
+        provider_txn_id: { type: [string, 'null'] }
+        merchant_ref: { type: [string, 'null'] }
+        amount: { type: number }
+        currency: { type: string }
+        status: { type: string, enum: [initiated, success, failed, refunded] }
+        signature_valid: { type: [boolean, 'null'] }
+        created_at: { type: string, format: date-time }
+        confirmed_at: { type: [string, 'null'], format: date-time }
+        flags: { type: array, items: { type: string, enum: [duplicate_order_payment, amount_mismatch, refunded_manual] } }
+    AdminInvoice:
+      type: object
+      description: v1.1 – S8
+      properties:
+        id: { type: string, format: uuid }
+        order_id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        order_status: { type: string }
+        total: { type: number }
+        status: { type: string, enum: [pending, issued, error, failed, cancel_pending, cancelled, skipped] }
+        provider: { type: string }
+        series: { type: [string, 'null'] }
+        invoice_no: { type: [string, 'null'] }
+        lookup_code: { type: [string, 'null'] }
+        buyer_type: { type: [string, 'null'] }
+        attempts: { type: integer }
+        last_error: { type: [string, 'null'], description: Mã lỗi nhà cung cấp (không có dữ liệu người mua) }
+        next_retry_at: { type: [string, 'null'], format: date-time }
+        issued_at: { type: [string, 'null'], format: date-time }
+        cancelled_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    InvoiceReconciliation:
+      type: object
+      description: v1.1 – S8
+      properties:
+        month: { type: string }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        orders_paid: { type: integer, description: 'Đơn thanh toán trong tháng (gồm đơn đã hoàn tiền)' }
+        orders_refunded: { type: integer }
+        expected_invoices: { type: integer, description: orders_paid − orders_refunded }
+        invoices_issued: { type: integer }
+        invoices_cancelled: { type: integer }
+        invoices_pending: { type: integer }
+        invoices_failed: { type: integer }
+        matched: { type: boolean }
+        missing: { type: array, items: { type: object, properties: { order_id: { type: string, format: uuid }, invoice_status: { type: [string, 'null'] } } } }
+        unexpected: { type: array, items: { type: object, properties: { order_id: { type: string, format: uuid }, invoice_status: { type: string }, order_status: { type: string } } } }
+    DeadLetter:
+      type: object
+      description: 'ops.jobs_deadletter (v1.1 – S8)'
+      properties:
+        id: { type: string, format: uuid }
+        queue: { type: string }
+        job: { type: string }
+        business_id: { type: string, description: 'order_id với job hoá đơn' }
+        payload: { type: object }
+        error: { type: [string, 'null'] }
+        attempts: { type: [integer, 'null'] }
+        failed_at: { type: string, format: date-time }
+        resolved_at: { type: [string, 'null'], format: date-time }
+        retried_at: { type: [string, 'null'], format: date-time }
+        retried_by: { type: [string, 'null'], format: uuid }
+    AdminCreditAdjustResult:
+      type: object
+      description: v1.1 – S8
+      properties:
+        user_id: { type: string, format: uuid }
+        delta: { type: integer }
+        balance_after: { type: integer }
+        ledger_id: { type: integer }
+        reason: { type: string, enum: [admin_adjust] }
+        note: { type: string }
+        actor_id: { type: string, format: uuid }
     OrganizationInput:
       type: object
       required: [name, type]
