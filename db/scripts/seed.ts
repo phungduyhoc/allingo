@@ -1,6 +1,6 @@
  
 // pnpm db:seed --set core,demo   (demo bị chặn khi APP_ENV=production)
-// pnpm db:seed --set dictionary   (chỉ nhập từ điển mở vào catalog.vocab_items – core cũng chạy bước này)
+// pnpm db:seed --set dictionary   (chỉ nhập từ điển mở vào catalog.vocab_items + bộ TOEIC 600 – core cũng chạy bước này)
 import { createDb } from '../src/client.js';
 import { ensureMonthPartitions } from '../src/partitions.js';
 import { seedCatalog } from '../seed/core/catalog.js';
@@ -8,6 +8,7 @@ import { seedBilling } from '../seed/core/billing.js';
 import { seedPrompts } from '../seed/core/prompts.js';
 import { seedDemo } from '../seed/demo/index.js';
 import { seedDictionary } from '../seed/dictionary.js';
+import { seedToeic600 } from '../seed/core/vocab-toeic600.js';
 
 const args = process.argv.slice(2);
 const setArg = args.find((a) => a.startsWith('--set'));
@@ -38,6 +39,10 @@ try {
     const d = await seedDictionary(db);
     if (d) console.log(`[seed:dictionary] ${d.total} mục: +${d.inserted} mới, ${d.updated} cập nhật, ${d.unchanged} giữ nguyên, ${d.skipped} bỏ qua`);
     else console.warn('[seed:dictionary] chưa có db/seed/dictionary/toeic-core-en-vi.ts – bỏ qua');
+    // S10: bộ từ "TOEIC 600 theo chủ đề" dựng từ từ điển (idempotent)
+    const v = await seedToeic600(db);
+    if (v) console.log(`[seed:vocab] TOEIC 600: ${v.lists} bộ, ${v.words} từ (+${v.inserted} mục mới, −${v.removed} mục bỏ)`);
+    else console.warn('[seed:vocab] từ điển chưa đủ dữ liệu – bỏ qua TOEIC 600');
   }
   if (sets.includes('demo')) {
     await seedDemo(db);

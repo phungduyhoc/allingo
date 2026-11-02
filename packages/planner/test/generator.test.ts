@@ -65,6 +65,20 @@ describe('PlanGenerator – ví dụ TOEIC demo', () => {
     expect(plan.weeks[0]!.tasks.some((t) => t.task_type === 'grammar' && t.ref_type === 'lesson')).toBe(true);
   });
 
+  it('S10: ôn sổ lỗi 1 lần/tuần từ tuần 2 (10 phút, ngày giữa tuần, không ref); tắt bằng reviewErrors=false', () => {
+    expect(plan.weeks[0]!.tasks.some((t) => t.task_type === 'review_errors')).toBe(false);
+    for (const w of plan.weeks.slice(1)) {
+      const re = w.tasks.filter((t) => t.task_type === 'review_errors');
+      expect(re).toHaveLength(1);
+      expect(re[0]!.ref_type).toBeNull();
+      expect(re[0]!.est_minutes).toBe(10);
+      expect(re[0]!.due_date).toBe(w.study_dates[Math.floor((w.study_dates.length - 1) / 2)]);
+    }
+    const off = generatePlan({ ...base, reviewErrors: false });
+    expect(off.weeks.flatMap((w) => w.tasks).some((t) => t.task_type === 'review_errors')).toBe(false);
+    expect(validatePlan(off, base)).toEqual([]);
+  });
+
   it('mọi task đúng ngày học (không giao chủ nhật/thứ sáu)', () => {
     for (const t of plan.weeks.flatMap((w) => w.tasks)) expect(['mon', 'tue', 'wed', 'thu', 'sat']).toContain(weekdayOf(t.due_date));
   });

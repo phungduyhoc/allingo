@@ -13,3 +13,4 @@ export {
 } from './demo/toeic-listening-01.js';
 export { READING_FULL_01, READING_DRILLS } from './demo/toeic-reading-01.js';
 export { importDictionary, seedDictionary, loadDictionaryModule, dictionaryAttribution, formatAttribution, toVocabRow, normalizePos, type DictEntry, type DictionaryModule, type DictionaryImportResult } from './dictionary.js';
+export { seedToeic600, selectToeic600, toeic600ListId, stableUuid, TOEIC600_TOPICS, TOEIC600_TOTAL, type Toeic600Candidate, type Toeic600Topic, type Toeic600SeedResult } from './core/vocab-toeic600.js';

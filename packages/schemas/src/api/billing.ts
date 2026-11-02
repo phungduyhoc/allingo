@@ -238,6 +238,8 @@ export type PromotionRejectReason = (typeof PROMOTION_REJECT_REASONS)[number];
 
 export const promotionValidateResultSchema = z.object({
   valid: z.boolean(),
+  /** v1.1 – S10: gọi ẩn danh và mã còn điều kiện theo người dùng chưa kiểm (người dùng mới, lượt/người, dùng thử một lần) */
+  requires_login: z.boolean().optional(),
   code: z.string(),
   reason: z.enum(PROMOTION_REJECT_REASONS).nullable(),
   /** v1.1 – S8: percent | fixed | credit_bonus | trial_days (S7 trả `amount` – nay là `fixed`) */
@@ -501,6 +503,8 @@ export const adminPaymentSchema = z.object({
   id: uuidSchema,
   order_id: uuidSchema,
   user_id: uuidSchema,
+  /** v1.1 – S10: email tài khoản (chỉ admin; không ghi log) */
+  user_email: z.string().nullable().optional(),
   provider: z.string(),
   provider_txn_id: z.string().nullable(),
   merchant_ref: z.string().nullable(),
@@ -526,6 +530,8 @@ export const adminInvoiceSchema = z.object({
   id: uuidSchema,
   order_id: uuidSchema,
   user_id: uuidSchema,
+  /** v1.1 – S10: email tài khoản (chỉ admin; không ghi log) */
+  user_email: z.string().nullable().optional(),
   order_status: z.enum(ORDER_STATUSES),
   total: z.number(),
   status: z.enum(INVOICE_STATUSES),

@@ -19,6 +19,7 @@ import {
   pgPolicy,
   primaryKey,
   check,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { ScoreBreakdown, AttemptDraftState } from '@allingo/schemas';
@@ -29,6 +30,7 @@ import {
   catalogMediaAssets,
   catalogPrograms,
   catalogQuestions,
+  catalogQuestionVersions,
   catalogSections,
   catalogSkills,
   catalogSubskills,
@@ -109,6 +111,8 @@ export const learnEnrollments = learn.table(
     isActive: boolean('is_active').default(true).notNull(),
     startedAt: timestamp('started_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    // v1.1 – Sprint 10 (migration 0007): trọng số FSRS-5 tối ưu theo người dùng
+    fsrsParams: jsonb('fsrs_params'),
   },
   (table) => [
     foreignKey({
@@ -508,8 +512,27 @@ export const learnErrorLogEntries = learn.table(
     reasonOverride: learnErrorKind('reason_override'),
     resolvedAt: timestamp('resolved_at', { withTimezone: true, mode: 'date' }),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    // v1.1 – Sprint 10 (migration 0007): phiên bản câu, attempt gần nhất, gộp trùng câu, ghi chú
+    questionVersionId: uuid('question_version_id'),
+    attemptId: uuid('attempt_id'),
+    occurrences: integer().default(1).notNull(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    note: text(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
   },
   (table) => [
+    uniqueIndex('ux_error_log_user_question').using('btree', table.userId.asc().nullsLast().op('uuid_ops'), table.questionId.asc().nullsLast().op('uuid_ops')).where(sql`(question_id IS NOT NULL)`),
+    index('ix_error_log_open').using('btree', table.userId.asc().nullsLast().op('uuid_ops'), table.programCode.asc().nullsLast().op('text_ops'), table.createdAt.asc().nullsLast().op('timestamptz_ops')).where(sql`(resolved_at IS NULL)`),
+    foreignKey({
+      columns: [table.questionVersionId],
+      foreignColumns: [catalogQuestionVersions.id],
+      name: 'error_log_entries_question_version_id_fkey',
+    }),
+    foreignKey({
+      columns: [table.attemptId],
+      foreignColumns: [learnAttempts.id],
+      name: 'error_log_entries_attempt_id_fkey',
+    }).onDelete('set null'),
     index('ix_error_log_user_recent').using(
       'btree',
       table.userId.asc().nullsLast().op('timestamptz_ops'),
@@ -604,6 +627,8 @@ export const learnSrsReviews = learn.table(
       table.cardId.asc().nullsLast().op('timestamptz_ops'),
       table.reviewedAt.desc().nullsFirst().op('timestamptz_ops'),
     ),
+    // v1.1 – Sprint 10 (migration 0007): POST /me/srs/review idempotent theo (card_id, reviewed_at)
+    uniqueIndex('ux_srs_reviews_card_time').using('btree', table.cardId.asc().nullsLast().op('uuid_ops'), table.reviewedAt.asc().nullsLast().op('timestamptz_ops')),
     foreignKey({
       columns: [table.cardId],
       foreignColumns: [learnSrsCards.id],

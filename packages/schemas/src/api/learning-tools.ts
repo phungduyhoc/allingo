@@ -97,28 +97,37 @@ export const ttsQuerySchema = z.object({ text: z.string().trim().min(1).max(500)
 export const ttsResultSchema = z.object({ url: z.string(), duration_ms: z.number().int(), expires_at: z.string().nullable(), cached: z.boolean(), voice: z.string() });
 export type TtsResult = z.infer<typeof ttsResultSchema>;
 
-// ----------------------------------------------------------------------------- SRS (thẻ từ vựng – FSRS lịch ở S10)
+// ----------------------------------------------------------------------------- SRS (thẻ ôn tập – FSRS-5 từ S10)
 export const SRS_CARD_TYPES = ['vocab', 'error', 'grammar', 'phoneme', 'sentence'] as const;
+/** S10: loại thẻ tạo được qua POST /me/srs/cards (phoneme/sentence – GĐ2 shadowing) */
+export const SRS_CREATABLE_CARD_TYPES = ['vocab', 'error', 'grammar'] as const;
+export const SRS_STATES = ['new', 'learning', 'review', 'relearning'] as const;
 export const srsCardCreateSchema = z
   .object({
     program: programCodeSchema,
     card_type: z.enum(SRS_CARD_TYPES),
+    /** vocab: vocab_item_id · error: error_log_entry_id · grammar: grammar_topic_id */
     ref_id: uuidSchema.optional(),
+    /** Chỉ vocab: tra từ điển theo headword (không có → mục draft từ bản dịch AI đã cache) */
     headword: z.string().trim().min(1).max(100).optional(),
-    /** passage | dictionary | review | manual | feedback | lesson */
+    /** passage | dictionary | review | manual | feedback | lesson | error_log | vocab_list */
     source_type: z.string().max(32).optional(),
     source_id: uuidSchema.optional(),
     /** Câu chứa từ (lưu vào payload để ôn theo ngữ cảnh), ≤ 300 ký tự */
     context: z.string().trim().max(300).optional(),
   })
-  .refine((v) => !!(v.ref_id ?? v.headword), { message: 'ref_id or headword is required', path: ['ref_id'] });
+  .refine((v) => !!(v.ref_id ?? v.headword), { message: 'ref_id or headword is required', path: ['ref_id'] })
+  .refine((v) => v.card_type === 'vocab' || !!v.ref_id, { message: 'ref_id is required for this card_type', path: ['ref_id'] });
 export type SrsCardCreate = z.infer<typeof srsCardCreateSchema>;
+
+/** Ngày đến hạn xem trước cho 4 nút (Again/Hard/Good/Easy) – S10 */
+export const srsPreviewSchema = z.object({ again: z.string(), hard: z.string(), good: z.string(), easy: z.string() });
 
 export const srsCardSchema = z.object({
   id: uuidSchema,
   card_type: z.string(),
   ref_id: uuidSchema,
-  state: z.enum(['new', 'learning', 'review', 'relearning']),
+  state: z.enum(SRS_STATES),
   due_at: z.string(),
   stability: z.number().nullable(),
   difficulty: z.number().nullable(),
@@ -127,6 +136,18 @@ export const srsCardSchema = z.object({
   payload: z.record(z.string(), z.unknown()),
   /** v1.1 – S6: false khi thẻ đã tồn tại (POST idempotent theo user × card_type × ref_id) */
   created: z.boolean().optional(),
+  /** v1.1 – S10 */
+  last_review_at: z.string().nullable().optional(),
+  source_type: z.string().nullable().optional(),
+  suspended: z.boolean().optional(),
+  /** stability ≥ 21 ngày ở trạng thái review */
+  mastered: z.boolean().optional(),
+  /** Lịch nếu chọn từng nút (GET /me/srs/due) */
+  preview: srsPreviewSchema.optional(),
+  /** POST /me/srs/review: review trùng (card_id, reviewed_at) đã ghi trước đó – không đổi lịch */
+  duplicate: z.boolean().optional(),
+  /** POST /me/srs/review: thẻ đến hạn lại trong ≤ 20 phút (Again/Hard) → quay lại trong phiên */
+  in_session: z.boolean().optional(),
 });
 export type SrsCard = z.infer<typeof srsCardSchema>;
 

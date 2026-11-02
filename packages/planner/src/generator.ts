@@ -33,6 +33,8 @@ export const DEFAULT_WEEKS = 8;
 export const MAX_WEEKS = 26;
 export const VOCAB_REVIEW_MINUTES = 5;
 export const CHECKIN_MINUTES = 5;
+/** S10: ôn sổ lỗi (10 lỗi chưa hiểu cũ nhất) – một lần/tuần từ tuần 2, ngày học giữa tuần */
+export const REVIEW_ERRORS_MINUTES = 10;
 export const MIN_WEEKLY_MINUTES = 60;
 export const MAX_WEEKLY_MINUTES = 2100;
 export const PLAN_CYCLE: readonly PlanPhase[] = PLAN_PHASES;
@@ -208,6 +210,12 @@ export function generatePlan(input: PlanInput): GeneratedPlan {
           bump('full_test', ft.minutes);
           hasFull = true;
         }
+      }
+      // 3b) S10: ôn sổ lỗi giữa tuần (từ tuần 2 – đã có bài làm), không trỏ nội dung catalog (ref null)
+      if (input.reviewErrors !== false && w.week_no >= 2 && dates.length >= 2 && budget - used >= REVIEW_ERRORS_MINUTES + CHECKIN_MINUTES) {
+        const mid = dates[Math.floor((dates.length - 1) / 2)]!;
+        add({ due_date: mid, task_type: 'review_errors', ref_type: null, ref_id: null, title: t('Ôn sổ lỗi – 10 lỗi chưa hiểu', 'Review your error log – 10 open mistakes'), est_minutes: REVIEW_ERRORS_MINUTES, evidence: { code: 'review_errors', params: { count: 10 } } });
+        bump('review_errors', REVIEW_ERRORS_MINUTES);
       }
       // 4) tuần mô phỏng không có full test → đề mini tính giờ
       if (phase === 'simulation' && !hasFull) {

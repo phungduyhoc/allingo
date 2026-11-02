@@ -49,7 +49,8 @@ CREATE TABLE iam.users (
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now(),
   deleted_at      timestamptz,
-  referral_code   text UNIQUE                          -- v1.1 – Sprint 8: mã giới thiệu của người dùng (cấp lười khi GET /me/referral)
+  referral_code   text UNIQUE,                         -- v1.1 – Sprint 8: mã giới thiệu của người dùng (cấp lười khi GET /me/referral)
+  attribution     jsonb                                -- v1.1 – Sprint 10: UTM/referrer lần chạm đầu khi đăng ký {utm_source, utm_medium, utm_campaign, utm_term, utm_content, referrer_host, landing_path, captured_at}
 );
 CREATE TRIGGER trg_users_updated BEFORE UPDATE ON iam.users FOR EACH ROW EXECUTE FUNCTION ops.set_updated_at();
 
@@ -535,6 +536,7 @@ CREATE TABLE learn.enrollments (
   is_active      boolean NOT NULL DEFAULT true,
   started_at     timestamptz NOT NULL DEFAULT now(),
   updated_at     timestamptz NOT NULL DEFAULT now(),
+  fsrs_params    jsonb,                                 -- v1.1 – Sprint 10: trọng số FSRS-5 tối ưu theo người dùng {model, w[19], review_count, loss_default, loss_optimized, optimized_at}
   UNIQUE (user_id, program_code)
 );
 CREATE TRIGGER trg_enrollments_updated BEFORE UPDATE ON learn.enrollments FOR EACH ROW EXECUTE FUNCTION ops.set_updated_at();
@@ -744,9 +746,18 @@ CREATE TABLE learn.error_log_entries (
   reason_auto       jsonb,                               -- {kind, evidence:{paraphrase_pairs[]...}}
   reason_override   learn.error_kind,                    -- người học đổi
   resolved_at       timestamptz,
-  created_at        timestamptz NOT NULL DEFAULT now()
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  question_version_id uuid REFERENCES catalog.question_versions(id),   -- v1.1 – Sprint 10: phiên bản câu đã làm (§5.9)
+  attempt_id        uuid REFERENCES learn.attempts(id) ON DELETE SET NULL, -- v1.1 – Sprint 10: attempt gần nhất có lỗi
+  occurrences       integer NOT NULL DEFAULT 1,                         -- v1.1 – Sprint 10: số lần sai (gộp trùng câu)
+  last_seen_at      timestamptz NOT NULL DEFAULT now(),                 -- v1.1 – Sprint 10: lần sai gần nhất
+  note              text,                                               -- v1.1 – Sprint 10: ghi chú người học
+  updated_at        timestamptz NOT NULL DEFAULT now()                  -- v1.1 – Sprint 10
 );
 CREATE INDEX ix_error_log_user_recent ON learn.error_log_entries(user_id, program_code, created_at DESC);
+CREATE TRIGGER trg_error_log_entries_updated BEFORE UPDATE ON learn.error_log_entries FOR EACH ROW EXECUTE FUNCTION ops.set_updated_at();  -- v1.1 – Sprint 10
+CREATE UNIQUE INDEX ux_error_log_user_question ON learn.error_log_entries(user_id, question_id) WHERE question_id IS NOT NULL;  -- v1.1 – Sprint 10: gộp trùng câu
+CREATE INDEX ix_error_log_open ON learn.error_log_entries(user_id, program_code, created_at) WHERE resolved_at IS NULL;  -- v1.1 – Sprint 10: lỗi chưa hiểu (review_errors, drill)
 
 CREATE TABLE learn.srs_cards (                           -- FSRS cho từ vựng, lỗi, ngữ pháp, âm, câu
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -779,6 +790,7 @@ CREATE TABLE learn.srs_reviews (
   reviewed_at    timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_srs_reviews_card ON learn.srs_reviews(card_id, reviewed_at DESC);
+CREATE UNIQUE INDEX ux_srs_reviews_card_time ON learn.srs_reviews(card_id, reviewed_at);  -- v1.1 – Sprint 10: POST /me/srs/review idempotent theo (card_id, reviewed_at)
 
 CREATE TABLE learn.notes (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),

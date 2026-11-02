@@ -148,6 +148,8 @@ export const DOMAIN_EVENTS = {
   BADGE_AWARDED: 'badge.awarded',
   /** S9: bài học hoàn thành (producer ở sprint bài học; learning đã nghe để tự done task lesson/grammar) */
   LESSON_COMPLETED: 'lesson.completed',
+  /** S10: sổ lỗi cập nhật sau attempt.graded (số mục mới/gộp) – analytics xoá cache thống kê */
+  ERROR_LOG_UPDATED: 'error_log.updated',
 } as const;
 export type DomainEvent = (typeof DOMAIN_EVENTS)[keyof typeof DOMAIN_EVENTS];
 
@@ -186,6 +188,10 @@ export const JOB_NAMES = {
   PLAN_EXPIRE_TASKS: 'plan.expire_tasks',
   /** S9 – nhắc học theo giờ ưa thích + nhắc chuỗi sắp mất 20:00 (giờ người học) */
   STUDY_REMINDER: 'notify.study_reminder',
+  /** S10 – tối ưu trọng số FSRS-5 theo người dùng (≥ 1.000 review, hằng tuần) */
+  SRS_OPTIMIZE: 'srs.optimize',
+  /** S10 – email/in-app tóm tắt tuần sáng thứ Hai (giờ VN) */
+  WEEKLY_SUMMARY: 'notify.weekly_summary',
 } as const;
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
 

@@ -14,7 +14,7 @@ export function inventoryIndex(inv: ContentInventory): Record<PlanRefType, Set<s
 
 /** Task trỏ nội dung có thật (checkin không có ref) */
 export function taskRefIsReal(task: Pick<PlannedTask, 'task_type' | 'ref_type' | 'ref_id'>, index: Record<PlanRefType, Set<string>>): boolean {
-  if (task.task_type === 'checkin') return task.ref_type === null && task.ref_id === null;
+  if (task.task_type === 'checkin' || task.task_type === 'review_errors') return task.ref_type === null && task.ref_id === null;
   if (!task.ref_type || !task.ref_id) return false;
   return index[task.ref_type]?.has(task.ref_id) ?? false;
 }

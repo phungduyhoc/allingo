@@ -57,6 +57,8 @@ export const iamUsers = iam.table(
     deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
     // v1.1 – Sprint 8 (migration 0005): mã giới thiệu (cấp lười)
     referralCode: text('referral_code'),
+    // v1.1 – Sprint 10 (migration 0007): UTM/referrer lần chạm đầu khi đăng ký
+    attribution: jsonb(),
   },
   (table) => [unique('users_email_key').on(table.email), unique('users_phone_key').on(table.phone), unique('users_referral_code_key').on(table.referralCode)],
 );

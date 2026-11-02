@@ -113,8 +113,8 @@ export const FEATURE_GATES = {
   srs_new_cards: {
     entitlement: null,
     quota: 'srs_new_cards',
-    endpoints: ['POST /me/srs/cards'],
-    note: 'Thẻ SRS mới – Free 10/ngày, Pro 30/ngày (không cần quyền riêng)',
+    endpoints: ['GET /me/srs/due (giới hạn thẻ mới/ngày trong phiên)', 'POST /me/srs/review (lần ôn đầu của thẻ new tiêu 1 lượt)'],
+    note: 'Thẻ mới được HỌC mỗi ngày – Free 10/ngày, Pro 30/ngày (không cần quyền riêng). S10: thêm thẻ / thêm cả bộ không tiêu quota (A153)',
   },
   grade_writing: {
     entitlement: 'grade_writing',

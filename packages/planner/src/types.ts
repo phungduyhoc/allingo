@@ -91,11 +91,13 @@ export interface PlanInput {
   defaultWeeks?: number;
   /** Mặc định 26 */
   maxWeeks?: number;
+  /** S10: task ôn sổ lỗi hằng tuần (mặc định true) */
+  reviewErrors?: boolean;
 }
 
 export interface TaskEvidence {
   /** Mã lý do (web dịch `plan.evidence.<code>`) */
-  code: 'daily_vocab' | 'weekly_checkin' | 'cadence_full_test' | 'final_simulation' | 'weak_section' | 'focus_section' | 'foundation_lesson' | 'simulation_mini' | 'plan_adjust';
+  code: 'daily_vocab' | 'weekly_checkin' | 'cadence_full_test' | 'final_simulation' | 'weak_section' | 'focus_section' | 'foundation_lesson' | 'simulation_mini' | 'plan_adjust' | 'review_errors';
   params: Record<string, string | number>;
 }
 

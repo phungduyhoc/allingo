@@ -19,7 +19,8 @@ export const planPhaseSchema = z.enum(['foundation', 'practice', 'simulation']);
 
 /** Cách mở nội dung của task (web gọi POST /attempts {mode, test_set_id | section_id, plan_task_id} hoặc mở bài học/bộ từ) */
 export const planTaskLaunchSchema = z.object({
-  kind: z.enum(['attempt', 'lesson', 'vocab_list', 'checkin']),
+  /** S10: `review_errors` → web mở sổ lỗi (GET /me/errors?status=open&sort=oldest&limit=10) / POST /me/errors/drill {plan_task_id} */
+  kind: z.enum(['attempt', 'lesson', 'vocab_list', 'checkin', 'review_errors']),
   mode: z.enum(['exam', 'practice', 'drill', 'timed_drill']).nullable(),
   test_set_id: uuidSchema.nullable(),
   section_id: uuidSchema.nullable(),
@@ -46,6 +47,10 @@ export const planTaskSchema = z.object({
   launch: planTaskLaunchSchema.nullable(),
   /** Quá hạn (ngày < hôm nay, còn pending) – tự `expired` sau 3 ngày */
   overdue: z.boolean(),
+  /** S10 – vocab_review: số thẻ đến hạn ngay + thẻ mới còn được học hôm nay (null khi không áp dụng) */
+  srs_due: z.number().int().nullable().optional(),
+  /** S10 – review_errors: số lỗi chưa hiểu (task lấy 10 lỗi cũ nhất) */
+  errors_open: z.number().int().nullable().optional(),
 });
 export type PlanTask = z.infer<typeof planTaskSchema>;
 

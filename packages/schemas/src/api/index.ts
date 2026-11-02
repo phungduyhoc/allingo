@@ -9,6 +9,8 @@ export * from './learning-tools.js';
 export * from './billing.js';
 export * from './growth.js';
 export * from './learning-plan.js';
+export * from './learning-s10.js';
+import { attributionInputSchema, statsS10Schema } from './learning-s10.js';
 
 // ----------------------------------------------------------------------------- Auth / Me
 export const registerInputSchema = z.object({
@@ -23,6 +25,8 @@ export const registerInputSchema = z.object({
   /** Đồng ý điều khoản + chính sách (bắt buộc theo PDPL); false → 400. Thiếu = client cũ, coi như đã hiển thị văn bản đồng ý khi đăng ký */
   accept_terms: z.boolean().optional(),
   marketing_opt_in: z.boolean().optional(),
+  /** v1.1 – S10: UTM/referrer lần chạm đầu (lưu iam.users.attribution khi tạo tài khoản) */
+  attribution: attributionInputSchema.optional(),
 });
 export type RegisterInput = z.infer<typeof registerInputSchema>;
 
@@ -62,6 +66,8 @@ export const otpVerifyInputSchema = z
     display_name: z.string().min(1).max(80).optional(),
     ui_locale: localeSchema.optional(),
     referral_code: z.string().max(32).optional(),
+    /** v1.1 – S10: chỉ lưu khi OTP tạo tài khoản mới */
+    attribution: attributionInputSchema.optional(),
   })
   .refine((v) => !!v.phone !== !!v.email, { message: 'Provide exactly one of phone or email', path: ['phone'] });
 export type OtpVerifyInput = z.infer<typeof otpVerifyInputSchema>;
@@ -84,6 +90,8 @@ export const oauthInputSchema = z
     link_confirm: z.boolean().optional(),
     /** Apple chỉ gửi tên ở lần đăng nhập đầu, client chuyển tiếp */
     display_name: z.string().min(1).max(80).optional(),
+    /** v1.1 – S10: chỉ lưu khi OAuth tạo tài khoản mới */
+    attribution: attributionInputSchema.optional(),
   })
   .refine((v) => !!v.id_token || !!v.code, { message: 'id_token or code is required', path: ['id_token'] });
 export type OAuthInput = z.infer<typeof oauthInputSchema>;
@@ -420,6 +428,8 @@ export const statsSchema = z.object({
   /** v1.1 – S9 */
   badges: z.object({ earned: z.number().int(), total: z.number().int(), latest: z.array(z.object({ code: z.string(), earned_at: z.string() })) }).optional(),
   plan: z.object({ plan_id: z.string(), week_pct: z.number(), forecast: z.string(), days_to_exam: z.number().int().nullable() }).nullable().optional(),
+  /** v1.1 – S10: dashboard đầy đủ (analytics, cache 1 giờ) */
+  ...statsS10Schema.partial().shape,
 });
 export type Stats = z.infer<typeof statsSchema>;
 
