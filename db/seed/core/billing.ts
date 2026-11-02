@@ -4,6 +4,7 @@ import {
   billingFeatureFlags,
   billingPlans,
   billingPrices,
+  billingPromotions,
   billingQuotas,
   iamRoles,
   learnBadges,
@@ -180,13 +181,25 @@ const FLAGS: Array<{ key: string; enabled: boolean; rules?: Record<string, unkno
   { key: 'ff.ai.explain', enabled: true },
   { key: 'ff.ai.tutor', enabled: true },
   { key: 'ff.ai.diagnose', enabled: false },
-  { key: 'ff.billing.checkout', enabled: false },
+  // S7: checkout bật mặc định cho DB mới (seed onConflictDoNothing – DB đã có giữ giá trị hiện tại); tắt bằng PUT /admin/flags
+  { key: 'ff.billing.checkout', enabled: true },
   { key: 'ff.growth.referral', enabled: false },
   { key: 'ff.growth.beta_gate', enabled: false },
   { key: 'ff.learning.study_plan', enabled: false },
   { key: 'ff.catalog.program.ielts', enabled: false },
   { key: 'ff.catalog.program.jlpt', enabled: false },
   { key: 'ff.catalog.program.hsk', enabled: false },
+];
+
+/**
+ * Mã khuyến mãi cố định S7 (POST /promotions/validate, POST /orders). Chỉ validate điều kiện cơ bản; S8 làm đầy đủ.
+ * `plans`: mã gói áp dụng (rỗng = mọi gói). Seed cập nhật định nghĩa nhưng KHÔNG đặt lại `used_count`.
+ */
+export const PROMOTIONS: Array<{ code: string; kind: 'percent' | 'amount'; value: number; plans: string[]; validFrom: string; validTo: string; maxUses: number | null; perUserLimit: number }> = [
+  { code: 'WELCOME10', kind: 'percent', value: 10, plans: [], validFrom: '2026-01-01T00:00:00+07:00', validTo: '2028-01-01T00:00:00+07:00', maxUses: 10_000, perUserLimit: 1 },
+  { code: 'TOEIC50K', kind: 'amount', value: 50_000, plans: ['toeic_pro_monthly', 'toeic_pro_yearly', 'toeic_pro_lifetime'], validFrom: '2026-01-01T00:00:00+07:00', validTo: '2028-01-01T00:00:00+07:00', maxUses: 1000, perUserLimit: 1 },
+  { code: 'YEARLY20', kind: 'percent', value: 20, plans: ['toeic_pro_yearly', 'ielts_pro_yearly', 'jlpt_pro_yearly', 'hsk_pro_yearly', 'combo_all_yearly'], validFrom: '2026-01-01T00:00:00+07:00', validTo: '2028-01-01T00:00:00+07:00', maxUses: null, perUserLimit: 2 },
+  { code: 'EXPIRED2025', kind: 'percent', value: 30, plans: [], validFrom: '2025-01-01T00:00:00+07:00', validTo: '2026-01-01T00:00:00+07:00', maxUses: null, perUserLimit: 1 },
 ];
 
 export async function seedBilling(db: Db): Promise<void> {
@@ -258,6 +271,28 @@ export async function seedBilling(db: Db): Promise<void> {
         .set({ amount: String(p.price.amount), compareAt: p.price.compareAt ? String(p.price.compareAt) : null })
         .where(sql`${billingPrices.id} = ${existing[0]!.id}`);
     }
+  }
+
+  for (const p of PROMOTIONS) {
+    const planIds = p.plans.map((c) => planId.get(c)).filter((x): x is string => !!x);
+    const values = {
+      code: p.code,
+      kind: p.kind,
+      value: String(p.value),
+      planIds: planIds.length ? planIds : null,
+      validFrom: new Date(p.validFrom),
+      validTo: new Date(p.validTo),
+      maxUses: p.maxUses,
+      perUserLimit: p.perUserLimit,
+      isActive: true,
+    };
+    await db
+      .insert(billingPromotions)
+      .values(values)
+      .onConflictDoUpdate({
+        target: billingPromotions.code,
+        set: { kind: values.kind, value: values.value, planIds: values.planIds, validFrom: values.validFrom, validTo: values.validTo, maxUses: values.maxUses, perUserLimit: values.perUserLimit },
+      });
   }
 
   await db

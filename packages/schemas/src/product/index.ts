@@ -124,6 +124,13 @@ export const DOMAIN_EVENTS = {
   ATTEMPT_GRADED: 'attempt.graded',
   AI_TASK_COMPLETED: 'ai_task.completed',
   ORDER_PAID: 'order.paid',
+  /** S7: hoàn tiền thủ công (admin) – thu hồi entitlement/credit */
+  ORDER_REFUNDED: 'order.refunded',
+  /** S7: nhắc hết hạn trước 7/3/1 ngày (growth tạo ops.notifications) */
+  SUBSCRIPTION_EXPIRING: 'subscription.expiring',
+  /** S7: hết kỳ → hạ Free (growth thông báo) */
+  SUBSCRIPTION_EXPIRED: 'subscription.expired',
+  SUBSCRIPTION_CANCELLED: 'subscription.cancelled',
   CONTENT_PUBLISHED: 'content.published',
   CONTENT_RETIRED: 'content.retired',
 } as const;
@@ -141,6 +148,13 @@ export const JOB_NAMES = {
   SUMMARY_ATTEMPT: 'summary.attempt',
   /** Chạy eval set cho một phiên bản prompt (POST /admin/eval-runs) */
   EVAL_RUN: 'eval.run',
+  /** S7 – billing (hàng đợi maintenance, worker chạy định kỳ; POST /admin/billing/jobs/{job} chạy ngay) */
+  ORDER_EXPIRE: 'order.expire',
+  PAYMENT_RECONCILE: 'payment.reconcile',
+  SUBSCRIPTION_EXPIRE: 'subscription.expire',
+  CREDIT_GRANT_MONTHLY: 'credit.grant_monthly',
+  CREDIT_EXPIRE: 'credit.expire',
+  BILLING_RECONCILE: 'billing.reconcile',
 } as const;
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
 
@@ -150,3 +164,4 @@ export const EMBEDDING_DUPLICATE_THRESHOLD = 0.92;
 export const EMBEDDING_DIMENSIONS = 1536;
 /** Tóm tắt tiến bộ sau mỗi N bài đã chấm */
 export const SUMMARY_EVERY_N_ATTEMPTS = 3;
+export * from './entitlements.js';

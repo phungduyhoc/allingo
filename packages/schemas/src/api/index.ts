@@ -1,10 +1,12 @@
 import { z } from 'zod';
 import { isoDateSchema, localeSchema, localizedTextSchema, programCodeSchema, uuidSchema } from '../common.js';
 import { answerInputSchema } from '../question/answer.js';
+import { planPriceSchema } from './billing.js';
 
 export * from './attempt.js';
 export * from './media.js';
 export * from './learning-tools.js';
+export * from './billing.js';
 
 // ----------------------------------------------------------------------------- Auth / Me
 export const registerInputSchema = z.object({
@@ -415,7 +417,8 @@ export const planSchema = z.object({
   programs: z.array(z.string()),
   name: localizedTextSchema,
   description: localizedTextSchema.nullable(),
-  price: z.object({ amount: z.number(), currency: z.string(), compare_at: z.number().nullable() }).nullable(),
+  /** Giá hiện hành (VND); `id` = price_id cho POST /orders (v1.1 – S7) */
+  price: planPriceSchema.nullable(),
   credits_included: z.number().int(),
   credits_period: z.string().nullable(),
   duration_days: z.number().int().nullable(),
