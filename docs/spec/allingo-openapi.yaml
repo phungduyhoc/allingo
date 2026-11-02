@@ -15,7 +15,8 @@ info:
     - Idempotency: POST tạo đơn hàng / submission / order dùng header `Idempotency-Key` (UUID), hiệu lực 24 giờ.
     - Rate limit: header `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After`.
     - Quota/credit: 429 `quota_exceeded` (kèm `details.feature`, `details.reset_at`, `details.quota` = QuotaExceededDetails – v1.1) / 402 `insufficient_credits`.
-    - Realtime: WebSocket `wss://api.allingo.vn/v1/ws` (Socket.IO), sự kiện `submission.graded`, `plan.updated`, `credits.changed`, `notification.new`.
+    - Realtime: WebSocket `wss://api.allingo.vn/v1/ws` (Socket.IO), sự kiện `submission.graded`, `plan.updated`, `credits.changed`, `notification.new`; v1.1 – S7: `order.updated` `{order_id, status, paid_at}`, `credits.changed` `{balance | null}`, `entitlements.changed` `{}`.
+    - Thanh toán (v1.1 – S7, ADR-0012 webhook-first): quyền chỉ mở khi webhook/IPN đã xác minh chữ ký (hoặc job đối chiếu `queryStatus`); return URL chỉ hiển thị. Tiền VND nguyên.
     - Streaming AI: `text/event-stream` cho chat và giải thích (`event: delta|done|error`).
   contact:
     name: Allingo Engineering
@@ -1012,6 +1013,7 @@ paths:
       tags: [Billing]
       security: []
       summary: Gói & giá hiện hành theo chương trình/khu vực
+      description: 'v1.1 – S7: gói của chương trình + combo + gói credit + Free; `price.id` là `price_id` cho POST /orders; mỗi gói một giá hiện hành (valid_from ≤ now < valid_to).'
       parameters: [ { $ref: '#/components/parameters/ProgramQuery' }, { name: region, in: query, schema: { type: string, default: VN } } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Plan' } } } } }
@@ -1019,65 +1021,137 @@ paths:
     post:
       tags: [Billing]
       summary: Kiểm tra mã giảm giá cho gói
+      description: 'v1.1 – S7: mã cố định từ seed (WELCOME10, TOEIC50K, YEARLY20…), điều kiện cơ bản: hiệu lực, gói áp dụng, tổng lượt, lượt/người (chỉ đơn đã thanh toán), tối thiểu 10.000 đ sau giảm. Luôn 200; `valid = false` kèm `reason`.'
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [code, plan_id], properties: { code: { type: string }, plan_id: { type: string, format: uuid } } }
+            schema: { type: object, required: [code], properties: { code: { type: string, maxLength: 40 }, plan_id: { type: string, format: uuid }, price_id: { type: string, format: uuid, description: 'v1.1 – một trong plan_id/price_id' } } }
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { valid: { type: boolean }, discount: { type: number }, total: { type: number }, currency: { type: string } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PromotionValidation' } } } }
+        '400': { $ref: '#/components/responses/Error' }
   /orders:
     post:
       tags: [Billing]
       summary: Tạo đơn hàng (giá chốt, mã giảm) – chưa thanh toán
+      description: |
+        v1.1 – S7: giá tính ở server từ `price_id` (ưu tiên) hoặc giá hiện hành của `plan_id`; `quantity` = 1 (B2C). Đơn `pending`
+        hết hạn sau 30 phút (`expires_at`, job `order.expire`). `Idempotency-Key` (UUID) bắt buộc, phạm vi theo người dùng:
+        cùng khoá + cùng body → 200 trả đơn cũ; cùng khoá khác body → 409 `conflict` (`details.reason = idempotency_key_reused`).
+        Tài khoản khách → 403 (`details.reason = guest_account`); `ff.billing.checkout` tắt → 503 `feature_disabled`;
+        mã giảm không áp dụng → 400 `validation_failed` (`details.promotion = {code, reason}`).
       parameters: [ { $ref: '#/components/parameters/IdempotencyKey' } ]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [plan_id], properties: { plan_id: { type: string, format: uuid }, promotion_code: { type: string }, quantity: { type: integer, default: 1 }, buyer_info: { $ref: '#/components/schemas/BuyerInfo' } } }
+            schema: { type: object, properties: { price_id: { type: string, format: uuid, description: v1.1 }, plan_id: { type: string, format: uuid }, promotion_code: { type: string }, quantity: { type: integer, default: 1, minimum: 1, maximum: 1 }, buyer_info: { $ref: '#/components/schemas/BuyerInfo' } } }
       responses:
         '201': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Order' } } } }
+        '200': { description: Trùng Idempotency-Key – đơn đã tạo, content: { application/json: { schema: { $ref: '#/components/schemas/Order' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /me/orders:
+    get:
+      tags: [Billing]
+      summary: Lịch sử đơn hàng của tôi (v1.1 – S7)
+      parameters: [ { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Order' } }, next_cursor: { type: [string, 'null'] } } } } } }
   /orders/{orderId}:
     get:
       tags: [Billing]
       summary: Trạng thái đơn hàng, thanh toán, hoá đơn
+      description: 'v1.1 – S7: web polling sau khi cổng chuyển về (hoặc nghe Socket.IO `order.updated`); đơn quá hạn được chuyển `expired` khi đọc; đơn của người khác → 404.'
       parameters: [ { $ref: '#/components/parameters/OrderId' } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Order' } } } }
+        '404': { $ref: '#/components/responses/Error' }
   /orders/{orderId}/pay:
     post:
       tags: [Billing]
       summary: Khởi tạo thanh toán với cổng → URL/deeplink chuyển hướng
+      description: |
+        v1.1 – S7: tạo một lần thanh toán `initiated` (mã tham chiếu mới mỗi lần) rồi gọi cổng. Đơn `pending|failed|cancelled` chưa hết hạn
+        mới trả được (khác → 409 `details.reason = order_not_payable`). Cổng không khả dụng (thiếu credential/không bật, payos/stripe chưa có
+        adapter) → 503 `feature_disabled`; cổng từ chối/lỗi mạng → 502 `payment_failed`. `return_url` phải thuộc origin web (mặc định
+        `${WEB}/checkout/result`); cổng chuyển trình duyệt về `GET /payments/return/{provider}` rồi API 302 tới `return_url?order_id=&status=&provider=`.
       parameters: [ { $ref: '#/components/parameters/OrderId' } ]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [provider], properties: { provider: { type: string, enum: [vnpay, momo, zalopay, payos, stripe] }, return_url: { type: string, format: uri } } }
+            schema: { type: object, required: [provider], properties: { provider: { type: string, enum: [vnpay, momo, zalopay, payos, stripe, mock] }, return_url: { type: string, format: uri }, locale: { type: string, enum: [vi, en] } } }
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { payment_id: { type: string, format: uuid }, redirect_url: { type: string }, qr_code: { type: string }, expires_at: { type: string, format: date-time } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PaymentIntent' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '502': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /payments/providers:
+    get:
+      tags: [Billing]
+      security: []
+      summary: Cổng thanh toán khả dụng + cờ checkout (v1.1 – S7)
+      description: 'Chỉ liệt kê cổng đã bật (PAYMENT_PROVIDERS) VÀ đủ credential; cổng thiếu cấu hình không xuất hiện → web ẩn nút. `mock` chỉ ở dev/test.'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PaymentProviders' } } } }
+  /payments/return/{provider}:
+    get:
+      tags: [Webhooks]
+      security: []
+      summary: Cổng chuyển trình duyệt về sau thanh toán – CHỈ hiển thị (v1.1 – S7)
+      description: 'Không cấp quyền. Xác minh chữ ký (nếu có) để hiển thị; trạng thái đọc từ DB. Mặc định 302 tới `return_url` của /pay kèm `order_id`, `status`, `provider`; `Accept: application/json` hoặc `?format=json` → 200 JSON.'
+      parameters: [ { name: provider, in: path, required: true, schema: { type: string, enum: [vnpay, momo, zalopay, mock] } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PaymentReturn' } } } }
+        '302': { description: Chuyển về trang kết quả của web }
+        '404': { $ref: '#/components/responses/Error' }
   /webhooks/payments/{provider}:
     post:
       tags: [Webhooks]
       security: []
       summary: Callback IPN từ cổng (xác minh chữ ký, idempotent theo provider_txn_id)
-      parameters: [ { name: provider, in: path, required: true, schema: { type: string } } ]
+      description: |
+        v1.1 – S7: MoMo IPN (JSON, phản hồi 204), ZaloPay callback (`{data, mac, type}`, phản hồi `{return_code, return_message}`), mock (dev).
+        Một transaction: payments (UNIQUE provider + provider_txn_id) → orders.paid → subscription/entitlements/credit → outbox `order.paid`.
+        Sai chữ ký/payload → 400 (thân theo định dạng cổng) + audit `payment.webhook_rejected`; cổng không khả dụng → 404.
+      parameters: [ { name: provider, in: path, required: true, schema: { type: string, enum: [vnpay, momo, zalopay, mock] } } ]
       requestBody: { content: { application/json: { schema: { type: object } }, application/x-www-form-urlencoded: { schema: { type: object } } } }
       responses:
         '200': { description: Theo định dạng từng cổng yêu cầu }
+        '204': { description: MoMo – đã nhận IPN }
+        '400': { description: Sai chữ ký / payload (thân theo định dạng cổng) }
+        '404': { $ref: '#/components/responses/Error' }
+    get:
+      tags: [Webhooks]
+      security: []
+      summary: VNPay IPN (GET + query vnp_*) – v1.1 S7
+      description: 'VNPay 2.1.0 gọi IPN URL bằng GET; phản hồi `{RspCode, Message}` (00 xác nhận · 01 không thấy đơn · 02 đã xác nhận · 04 sai số tiền · 97 sai chữ ký → HTTP 400 · 99 lỗi).'
+      parameters: [ { name: provider, in: path, required: true, schema: { type: string, enum: [vnpay, momo, zalopay, mock] } } ]
+      responses:
+        '200': { description: '{ RspCode, Message }' }
+        '400': { description: Sai chữ ký }
+        '404': { $ref: '#/components/responses/Error' }
   /me/subscriptions:
     get:
       tags: [Billing]
       summary: Gói đang có theo chương trình, chu kỳ, trạng thái gia hạn
+      description: 'v1.1 – S7: gồm kỳ nối tiếp đã mua (`upcoming = true`, mua lại cùng gói khi còn hạn); `is_current`, `days_left`.'
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Subscription' } } } } }
   /me/subscriptions/{subscriptionId}/cancel:
     post:
       tags: [Billing]
       summary: Huỷ gia hạn (dùng đến hết chu kỳ)
+      description: 'v1.1 – S7: `cancel_at_period_end = true`, giữ quyền tới `current_period_end`, ngừng cấp credit tháng; gọi lại → 200 không đổi; lifetime/đã hết hạn → 409.'
       parameters: [ { name: subscriptionId, in: path, required: true, schema: { type: string, format: uuid } } ]
-      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Subscription' } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Subscription' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
   /me/credits:
     get:
       tags: [Billing]
@@ -1088,6 +1162,7 @@ paths:
     get:
       tags: [Billing]
       summary: Lịch sử credit (nạp/tiêu)
+      description: 'v1.1 – S7: reason ∈ purchase | subscription_grant | consume | refund | expire | admin_adjust …; cursor theo id giảm dần.'
       parameters: [ { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/LedgerEntry' } }, next_cursor: { type: [string, 'null'] } } } } } }
@@ -1095,6 +1170,7 @@ paths:
     get:
       tags: [Billing]
       summary: Quyền tính năng & hạn mức còn lại hôm nay/tháng này (client dùng để gating UI)
+      description: 'v1.1 – S7: bảng gating dùng chung `packages/config/entitlements.ts` (FEATURE_GATES); thiếu quyền → 403 `forbidden` `{feature, program, gate, upgrade}`, hết quota → 429 `quota_exceeded`, thiếu credit → 402 `insufficient_credits`.'
       parameters: [ { $ref: '#/components/parameters/ProgramQuery' } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Entitlements' } } } }
@@ -1153,8 +1229,10 @@ paths:
     get:
       tags: [Growth]
       summary: Thông báo in-app
+      description: 'v1.1 – S7: billing.subscription_expiring (7/3/1 ngày trước hết kỳ), billing.subscription_expired, billing.order_paid; web dịch theo `template_code` + `payload`.'
       parameters: [ { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
-      responses: { '200': { description: OK } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/NotificationItem' } }, next_cursor: { type: [string, 'null'] } } } } } }
   /me/referral:
     get:
       tags: [Growth]
@@ -1334,6 +1412,70 @@ paths:
       description: 'v1.1 – Sprint 5: job `eval.run`; provider mock → run ghi `metrics.mock = true`, `passed = false` (không mở cổng kích hoạt).'
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [eval_set_id, prompt_version_id], properties: { eval_set_id: { type: string, format: uuid }, prompt_version_id: { type: string, format: uuid }, model: { type: string } } } } } }
       responses: { '202': { description: run_id, content: { application/json: { schema: { type: object, properties: { run_id: { type: string, format: uuid }, status: { type: string }, mock: { type: boolean }, job_id: { type: string }, mode: { type: string } } } } } } }
+  /admin/orders/{orderId}/refund:
+    post:
+      tags: [Admin]
+      summary: Hoàn tiền thủ công (v1.1 – S7)
+      description: 'Đơn `paid` → `refunded`; subscription của đơn kết thúc ngay, entitlements hết hiệu lực, credit còn lại thu hồi (ledger `refund` âm, không làm số dư âm – phần đã tiêu ghi `shortfall`); payments → `refunded`; outbox `order.refunded`; audit `order.refund`. Tiền trả lại khách thao tác ngoài hệ thống (runbook) – API hoàn tiền tự động của cổng: S8.'
+      parameters: [ { $ref: '#/components/parameters/OrderId' } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [reason], properties: { reason: { type: string, minLength: 3, maxLength: 500 }, revoke_credits: { type: boolean, default: true } } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { order: { $ref: '#/components/schemas/Order' }, revoked: { type: object }, provider_refund: { type: object } } } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /admin/billing/orders:
+    get:
+      tags: [Admin]
+      summary: Danh sách đơn có lọc (v1.1 – S7)
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, paid, failed, cancelled, refunded, expired] } }
+        - { name: provider, in: query, schema: { type: string, enum: [vnpay, momo, zalopay, mock] } }
+        - { name: user_id, in: query, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: 'Order + user_id + payments[].provider_txn_id/merchant_ref', content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Order' } }, next_cursor: { type: [string, 'null'] } } } } } }
+  /admin/billing/summary:
+    get:
+      tags: [Admin]
+      summary: Doanh thu theo ngày × cổng, đơn theo trạng thái, đơn kẹt (v1.1 – S7)
+      parameters: [ { name: from, in: query, schema: { type: string, format: date } }, { name: to, in: query, schema: { type: string, format: date } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { by_day: { type: array, items: { type: object } }, orders_by_status: { type: object }, stuck_pending: { type: integer }, revenue_total: { type: number } } } } } }
+  /admin/billing/reconciliations:
+    get:
+      tags: [Admin]
+      summary: Các lần đối soát (v1.1 – S7)
+      parameters: [ { name: provider, in: query, schema: { type: string, enum: [vnpay, momo, zalopay, mock] } }, { $ref: '#/components/parameters/Limit' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ReconciliationRun' } } } } }
+    post:
+      tags: [Admin]
+      summary: Đối soát một cổng × ngày với sao kê CSV hoặc queryStatus (v1.1 – S7)
+      description: 'CSV theo mẫu `docs/runbooks/payments.md` gửi trong JSON `{ csv }` (multipart: S8). UNIQUE (provider, for_date) – chạy lại ghi đè. Job `billing.reconcile` chạy hằng ngày 01:30 giờ VN (queryStatus, không ghi đè lần chạy đã có).'
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [provider], properties: { provider: { type: string, enum: [vnpay, momo, zalopay, mock] }, for_date: { type: string, format: date }, source: { type: string, enum: [csv, query], default: csv }, csv: { type: string } } } } } }
+      responses:
+        '201': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ReconciliationRun' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+  /admin/billing/reconciliations/{runId}:
+    get:
+      tags: [Admin]
+      summary: Báo cáo một lần đối soát; `format=csv` → tải danh sách lệch (v1.1 – S7)
+      parameters: [ { name: runId, in: path, required: true, schema: { type: string, format: uuid } }, { name: format, in: query, schema: { type: string, enum: [json, csv], default: json } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ReconciliationRun' } }, text/csv: { schema: { type: string } } } }
+        '404': { $ref: '#/components/responses/Error' }
+  /admin/billing/jobs/{job}:
+    post:
+      tags: [Admin]
+      summary: Chạy ngay một job billing (v1.1 – S7)
+      description: 'order.expire | payment.reconcile | subscription.expire | credit.grant_monthly | credit.expire | billing.reconcile. Chạy inline xong trong 10 s → 200 kèm kết quả; đưa vào hàng đợi → 202.'
+      parameters: [ { name: job, in: path, required: true, schema: { type: string, enum: [order.expire, payment.reconcile, subscription.expire, credit.grant_monthly, credit.expire, billing.reconcile] } } ]
+      responses:
+        '200': { description: Đã chạy xong, content: { application/json: { schema: { type: object, properties: { job: { type: string }, job_id: { type: string }, mode: { type: string }, status: { type: string }, result: { type: object } } } } } }
+        '202': { description: Đã đưa vào hàng đợi, content: { application/json: { schema: { type: object, properties: { job: { type: string }, job_id: { type: string }, mode: { type: string }, status: { type: string } } } } } }
   /admin/plans:
     put:
       tags: [Admin]
@@ -1344,6 +1486,7 @@ paths:
     put:
       tags: [Admin]
       summary: Bật/tắt feature flag theo quy tắc
+      description: 'v1.1 – S7: `rules = {percent, user_ids[], plan_kinds[], programs[]}`; cờ tắt vẫn bật cho `user_ids` (tester). Audit `flag.update`. S7 dùng `ff.billing.checkout`.'
       parameters: [ { name: key, in: path, required: true, schema: { type: string } } ]
       requestBody: { content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean }, rules: { type: object } } } } } }
       responses: { '200': { description: OK } }
@@ -2125,7 +2268,7 @@ components:
         programs: { type: array, items: { type: string } }
         name: { $ref: '#/components/schemas/I18nText' }
         description: { $ref: '#/components/schemas/I18nText' }
-        price: { type: object, properties: { amount: { type: number }, compare_at: { type: number, nullable: true }, currency: { type: string } } }
+        price: { type: object, nullable: true, properties: { id: { type: string, format: uuid, description: 'price_id cho POST /orders (v1.1 – S7)' }, amount: { type: number }, compare_at: { type: number, nullable: true }, currency: { type: string }, valid_to: { type: string, format: date-time, nullable: true } } }
         credits_included: { type: integer }
         credits_period: { type: string, nullable: true }
         duration_days: { type: integer, nullable: true }
@@ -2143,13 +2286,17 @@ components:
       properties:
         id: { type: string, format: uuid }
         plan: { $ref: '#/components/schemas/Plan' }
+        price_id: { type: string, format: uuid, description: v1.1 – S7 }
+        promotion_code: { type: string, nullable: true, description: v1.1 – S7 }
+        paid_at: { type: string, format: date-time, nullable: true, description: v1.1 – S7 }
+        payable: { type: boolean, description: 'v1.1 – S7: còn gọi /pay được (pending|failed|cancelled và chưa hết hạn)' }
         quantity: { type: integer }
         currency: { type: string }
         subtotal: { type: number }
         discount: { type: number }
         total: { type: number }
         status: { type: string, enum: [pending, paid, failed, cancelled, refunded, expired] }
-        payments: { type: array, items: { type: object, properties: { provider: { type: string }, status: { type: string }, confirmed_at: { type: string, format: date-time, nullable: true } } } }
+        payments: { type: array, items: { type: object, properties: { id: { type: string, format: uuid }, provider: { type: string }, status: { type: string, description: 'initiated | success | failed | refunded' }, amount: { type: number }, created_at: { type: string, format: date-time }, confirmed_at: { type: string, format: date-time, nullable: true } } } }
         invoice: { type: object, nullable: true, properties: { invoice_no: { type: string }, pdf_url: { type: string }, issued_at: { type: string, format: date-time } } }
         created_at: { type: string, format: date-time }
         expires_at: { type: string, format: date-time }
@@ -2163,6 +2310,10 @@ components:
         current_period_start: { type: string, format: date-time }
         current_period_end: { type: string, format: date-time, nullable: true }
         cancel_at_period_end: { type: boolean }
+        is_current: { type: boolean, description: 'v1.1 – S7: start ≤ now < end' }
+        upcoming: { type: boolean, description: 'v1.1 – S7: kỳ nối tiếp đã mua, chưa bắt đầu' }
+        days_left: { type: integer, nullable: true, description: v1.1 – S7 }
+        source_order_id: { type: string, format: uuid, nullable: true, description: v1.1 – S7 }
     CreditBalance:
       type: object
       properties:
@@ -2176,8 +2327,88 @@ components:
         delta: { type: integer }
         balance_after: { type: integer }
         reason: { type: string }
-        ref: { type: object, nullable: true }
+        ref: { type: object, nullable: true, properties: { type: { type: string }, id: { type: string, nullable: true } } }
+        expires_at: { type: string, format: date-time, nullable: true, description: 'v1.1 – S7: lô gói credit hết hạn sau 12 tháng' }
+        note: { type: string, nullable: true, description: v1.1 – S7 }
         created_at: { type: string, format: date-time }
+    PaymentIntent:
+      type: object
+      description: Kết quả POST /orders/{id}/pay (v1.1 – S7)
+      properties:
+        payment_id: { type: string, format: uuid }
+        order_id: { type: string, format: uuid }
+        provider: { type: string, enum: [vnpay, momo, zalopay, mock] }
+        method: { type: string, enum: [redirect, qr, deeplink], description: 'Cách mở: redirect → mở redirect_url; qr → hiển thị qr_code; deeplink → mở app ví' }
+        redirect_url: { type: string, nullable: true }
+        qr_code: { type: string, nullable: true }
+        deeplink: { type: string, nullable: true }
+        expires_at: { type: string, format: date-time }
+    PaymentProviders:
+      type: object
+      properties:
+        checkout_enabled: { type: boolean }
+        providers: { type: array, items: { type: object, properties: { code: { type: string, enum: [vnpay, momo, zalopay, mock] }, methods: { type: array, items: { type: string, enum: [redirect, qr, deeplink] } }, sandbox: { type: boolean } } } }
+    PaymentReturn:
+      type: object
+      properties:
+        order_id: { type: string, format: uuid, nullable: true }
+        status: { type: string, description: 'Trạng thái đơn trong DB (pending → web polling)' }
+        provider: { type: string }
+        provider_status: { type: string, nullable: true, description: 'Cổng báo trên URL (chỉ hiển thị)' }
+        signature_valid: { type: boolean }
+        redirect_url: { type: string }
+    PromotionValidation:
+      type: object
+      properties:
+        valid: { type: boolean }
+        code: { type: string }
+        reason: { type: [string, 'null'], description: 'not_found | inactive | not_started | expired | plan_not_eligible | max_uses_reached | per_user_limit_reached | below_minimum' }
+        kind: { type: [string, 'null'], description: 'percent | amount' }
+        value: { type: number, nullable: true }
+        subtotal: { type: number }
+        discount: { type: number }
+        total: { type: number }
+        currency: { type: string }
+    ReconciliationRun:
+      type: object
+      description: billing.reconciliation_runs (v1.1 – S7)
+      properties:
+        id: { type: string, format: uuid }
+        provider: { type: string }
+        for_date: { type: string, format: date }
+        status: { type: string, enum: [matched, mismatched, error] }
+        expected_total: { type: number, nullable: true }
+        actual_total: { type: number, nullable: true }
+        mismatches: { type: array, items: { $ref: '#/components/schemas/ReconciliationMismatch' } }
+        mismatch_count: { type: integer }
+        run_at: { type: string, format: date-time }
+        source: { type: string, nullable: true }
+        system_count: { type: integer, nullable: true }
+        statement_count: { type: integer, nullable: true }
+        matched_count: { type: integer, nullable: true }
+    ReconciliationMismatch:
+      type: object
+      properties:
+        type: { type: string, enum: [missing_in_statement, missing_in_system, amount_mismatch, status_mismatch] }
+        provider_txn_id: { type: string, nullable: true }
+        merchant_ref: { type: string, nullable: true }
+        order_id: { type: string, nullable: true }
+        system_amount: { type: number, nullable: true }
+        statement_amount: { type: number, nullable: true }
+        system_status: { type: string, nullable: true }
+        statement_status: { type: string, nullable: true }
+    NotificationItem:
+      type: object
+      description: ops.notifications channel inapp (v1.1 – S7)
+      properties:
+        id: { type: string, format: uuid }
+        channel: { type: string }
+        template_code: { type: string }
+        payload: { type: object }
+        status: { type: string }
+        scheduled_at: { type: string, format: date-time }
+        sent_at: { type: string, format: date-time, nullable: true }
+        read_at: { type: string, format: date-time, nullable: true }
     Entitlements:
       type: object
       properties:
