@@ -1,13 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
 import argon2 from 'argon2';
 
-import { DOMAIN_EVENTS, GUEST_SESSION_DAYS, type AuthTokens, type GuestSession, type LoginInput, type OtpVerifyInput, type RegisterInput } from '@allingo/schemas';
+import { DOMAIN_EVENTS, GUEST_SESSION_DAYS, type AttributionInput, type AuthTokens, type GuestSession, type LoginInput, type OtpVerifyInput, type RegisterInput } from '@allingo/schemas';
 import { ENV, type Env } from '../../config/env.js';
 import { DbService } from '../../shared/db/db.module.js';
 import { OutboxService } from '../../shared/events/outbox.service.js';
 import { JwtService } from '../../shared/auth/jwt.service.js';
 import { Unauthorized } from '../../shared/http/errors.js';
 import { t } from '../../shared/i18n/messages.js';
+import { sanitizeAttribution, type StoredAttribution } from './attribution.js';
 import { ConsentsService } from './consents.service.js';
 import { MergeService } from './merge.service.js';
 import { OtpService } from './otp/otp.service.js';
@@ -48,9 +49,11 @@ export class AuthService {
     const result = await this.dbs.db.transaction(async (tx) => {
       const user = await this.users.createEmailUser(tx, { email: input.email, passwordHash, displayName: input.display_name, uiLocale: input.ui_locale });
       await this.consents.recordSignupConsents(tx, user.id, { accept: input.accept_terms, marketing: input.marketing_opt_in, ip: meta.ip });
+      const attribution = this.attributionOf(input.attribution, input.referral_code);
+      await this.users.setAttribution(tx, user.id, attribution);
       await this.welcome.grant(tx, user.id, 'registered');
       if (guestId) await this.merge.mergeGuestInto(tx, guestId, user.id, meta);
-      await this.outbox.write(tx, { aggregateType: 'user', aggregateId: user.id, eventType: DOMAIN_EVENTS.USER_REGISTERED, payload: registeredPayload(user.id, 'email', !!guestId, input.referral_code, meta) });
+      await this.outbox.write(tx, { aggregateType: 'user', aggregateId: user.id, eventType: DOMAIN_EVENTS.USER_REGISTERED, payload: { ...registeredPayload(user.id, 'email', !!guestId, input.referral_code, meta), ...attributionEventFields(attribution) } });
       const roles = await this.users.getRoles(user.id, tx);
       const tokens = await this.sessions.create(tx, { id: user.id, isGuest: false }, roles, { device: deviceOf(meta), ip: meta.ip });
       return { user, tokens };
@@ -59,6 +62,18 @@ export class AuthService {
     this.outbox.emitLocal(DOMAIN_EVENTS.USER_REGISTERED, registeredPayload(result.user.id, 'email', !!guestId, input.referral_code, meta));
     const dto = await this.users.toDto(result.user);
     return { tokens: result.tokens, body: { access_token: result.tokens.accessToken, expires_in: result.tokens.expiresIn, user: dto } };
+  }
+
+  /** S10: attribution đã chuẩn hoá (referrer của chính site Allingo không tính) */
+  attributionOf(input: AttributionInput | undefined, referralCode: string | undefined): StoredAttribution | null {
+    const own = [this.env.WEB_PUBLIC_URL, this.env.API_PUBLIC_URL].map((u) => {
+      try {
+        return new URL(u).hostname;
+      } catch {
+        return '';
+      }
+    });
+    return sanitizeAttribution(input, { referralCode: referralCode?.trim() || null, ownHosts: own.filter(Boolean) });
   }
 
   async login(input: LoginInput, meta: RequestMeta): Promise<{ tokens: IssuedTokens; body: AuthTokens }> {
@@ -112,8 +127,10 @@ export class AuthService {
         user = await this.users.createExternalUser(tx, { email: ident.kind === 'email' ? ident.id : null, phone: ident.kind === 'phone' ? ident.id : null, displayName: input.display_name ?? (ident.kind === 'phone' ? `User ${ident.id.slice(-4)}` : ident.id.split('@')[0]!), uiLocale: input.ui_locale });
         created = true;
         await this.consents.recordSignupConsents(tx, user.id, { ip: meta.ip });
+        const attribution = this.attributionOf(input.attribution, input.referral_code);
+        await this.users.setAttribution(tx, user.id, attribution);
         await this.welcome.grant(tx, user.id, 'registered');
-        await this.outbox.write(tx, { aggregateType: 'user', aggregateId: user.id, eventType: DOMAIN_EVENTS.USER_REGISTERED, payload: registeredPayload(user.id, ident.kind, !!guestId, input.referral_code, meta) });
+        await this.outbox.write(tx, { aggregateType: 'user', aggregateId: user.id, eventType: DOMAIN_EVENTS.USER_REGISTERED, payload: { ...registeredPayload(user.id, ident.kind, !!guestId, input.referral_code, meta), ...attributionEventFields(attribution) } });
       }
       if (user.status !== 'active') throw new Unauthorized('Account inactive');
       await this.users.linkIdentity(tx, { userId: user.id, provider: ident.kind, providerUid: ident.id, email: ident.kind === 'email' ? ident.id : null });
@@ -166,6 +183,11 @@ const DUMMY_HASH = '$argon2id$v=19$m=19456,t=2,p=1$ZHVtbXlzYWx0ZHVtbXlzYWx0$8Cq6
  */
 export function registeredPayload(userId: string, provider: string, mergedGuest: boolean, referralCode: string | undefined, meta: RequestMeta): Record<string, unknown> {
   return { user_id: userId, provider, merged_guest: mergedGuest, referral_code: referralCode?.trim().toUpperCase() || null, device_fp: typeof meta.device?.fp === 'string' ? meta.device.fp : null, ip: meta.ip ?? null };
+}
+
+/** S10: trường attribution trong payload `user.registered` (analytics/phễu) – chỉ kênh + UTM, không referrer/landing */
+export function attributionEventFields(a: StoredAttribution | null): Record<string, unknown> {
+  return a ? { attribution: { channel: a.channel, utm_source: a.utm_source, utm_medium: a.utm_medium, utm_campaign: a.utm_campaign } } : {};
 }
 
 function deviceOf(meta: RequestMeta): Record<string, unknown> {

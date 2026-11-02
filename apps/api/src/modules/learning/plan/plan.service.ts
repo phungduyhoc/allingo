@@ -30,6 +30,8 @@ import { CatalogQueryService } from '../../catalog/index.js';
 import { EnrollmentsService, UsersService } from '../../iam/index.js';
 import { AttemptsService } from '../../test-engine/index.js';
 import { GamificationService } from '../gamification/gamification.service.js';
+import { ERROR_RESOLVED_EVENT, ErrorLogService, type ErrorResolvedEvent } from '../errors/error-log.service.js';
+import { SRS_REVIEWED_EVENT, SrsService, type SrsReviewedEvent } from '../srs.service.js';
 import { TASK_EXPIRE_AFTER_DAYS, taskDto, toInventory, toProgressTasks, weekDto, type PlanRow, type StoredStrategy, type TaskRow, type WeekRow } from './plan-mapper.js';
 
 const { learnStudyPlans, learnPlanWeeks, learnPlanTasks, learnSkillMastery, learnPlanAdjustments } = schema;
@@ -38,7 +40,9 @@ type Tx = Parameters<Parameters<DbService['db']['transaction']>[0]>[0];
 export const STUDY_PLAN_FLAG = 'ff.learning.study_plan';
 const DEFAULT_TZ = 'Asia/Ho_Chi_Minh';
 /** Việc lộ trình tự đánh dấu "xong" được cộng XP + tính ngày học (không có bài làm kiểm chứng) */
-const SELF_REPORTED_TYPES = new Set(['vocab_review', 'lesson', 'grammar', 'dictation', 'shadowing']);
+const SELF_REPORTED_TYPES = new Set(['vocab_review', 'review_errors', 'lesson', 'grammar', 'dictation', 'shadowing']);
+/** S10: task review_errors tự done khi đã hiểu ≥ 10 lỗi trong ngày hoặc không còn lỗi chưa hiểu */
+const REVIEW_ERRORS_DONE_AT = 10;
 
 interface GradedPayload {
   attempt_id: string;
@@ -82,6 +86,8 @@ export class PlanService implements OnModuleInit {
     private readonly jobs: JobsService,
     private readonly realtime: RealtimeGateway,
     private readonly gamification: GamificationService,
+    private readonly srs: SrsService,
+    private readonly errorLog: ErrorLogService,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
@@ -262,6 +268,7 @@ export class PlanService implements OnModuleInit {
     const content = await this.catalog.planContent(tree.enrollment.programCode);
     const sectionCode = new Map(content.sections.map((s) => [s.id, s.code]));
     const skillCode = new Map(content.sections.map((s) => [s.skill_id, s.skill]));
+    const counts = await this.liveCounts(tree.enrollment.userId, tree.enrollment.programCode, tasks);
     const weekDtos = weeks.map((w) =>
       weekDto(
         w,
@@ -270,6 +277,7 @@ export class PlanService implements OnModuleInit {
         { today: ctx.today, locale: ctx.locale, locked: lockedFrom !== null && w.weekNo >= lockedFrom, focusSection: w.focusSectionId ? (sectionCode.get(w.focusSectionId) ?? null) : null, focusSkill: w.focusSkillId ? (skillCode.get(w.focusSkillId) ?? null) : null },
       ),
     );
+    for (const wk of weekDtos) for (const d of wk.days) d.tasks = d.tasks.map((t) => this.withCounts(t, counts, ctx.today));
     const progress = toProgressTasks(tasks);
     const curTasks = weeks[cur] ? toProgressTasks(tasks.filter((t) => t.planWeekId === weeks[cur]!.id)) : [];
     const fc = forecastStatus(progress, ctx.today);
@@ -312,13 +320,15 @@ export class PlanService implements OnModuleInit {
     const quick = quickSuggestion([...todayRows, ...overdueRows].map((t) => ({ id: t.id, due_date: t.dueDate, task_type: t.taskType, est_minutes: t.estMinutes ?? 0, status: t.status })));
     const warm = todayRows.find((t) => t.taskType === 'vocab_review' && t.status === 'pending') ?? null;
     const content = cur?.focusSectionId ? await this.catalog.planContent(program) : null;
+    const counts = await this.liveCounts(userId, program, [...todayRows, ...overdueRows]);
+    const dto = (t: TaskRow) => this.withCounts(taskDto(t, ctx.today, ctx.locale), counts, ctx.today);
     return {
       ...base,
       plan_id: tree.plan.id,
       focus: cur?.focusSectionId ? (content?.sections.find((s) => s.id === cur.focusSectionId)?.code ?? null) : null,
-      tasks: todayRows.map((t) => taskDto(t, ctx.today, ctx.locale)),
-      overdue: overdueRows.map((t) => taskDto(t, ctx.today, ctx.locale)),
-      warmup: warm ? taskDto(warm, ctx.today, ctx.locale) : null,
+      tasks: todayRows.map(dto),
+      overdue: overdueRows.map(dto),
+      warmup: warm ? dto(warm) : null,
       quick: { minutes: quick.minutes, items: quick.items.map((i) => ({ task_id: i.task.id, est_minutes: i.est_minutes, shortened: i.shortened })) },
       week: cur ? { id: cur.id, week_no: cur.weekNo, progress_pct: weekProgress(toProgressTasks(weekTasks)).pct, checkin_due: !cur.checkinDoneAt && !!checkin && checkin.dueDate <= ctx.today, checkin_done: !!cur.checkinDoneAt } : null,
     };
@@ -394,6 +404,53 @@ export class PlanService implements OnModuleInit {
   /** load_minutes của tuần = tổng phút task trừ skipped/expired */
   async refreshWeekLoad(tx: DbOrTx, weekId: string): Promise<void> {
     await tx.execute(sql`update learn.plan_weeks w set load_minutes = coalesce((select sum(coalesce(t.est_minutes, 0)) from learn.plan_tasks t where t.plan_week_id = w.id and t.status not in ('skipped','expired')), 0) where w.id = ${weekId}::uuid`);
+  }
+
+  // ------------------------------------------------------------------ S10: thẻ đến hạn / sổ lỗi
+  /** Số thẻ đến hạn + lỗi chưa hiểu (chỉ truy vấn khi có task vocab_review/review_errors) */
+  private async liveCounts(userId: string, program: string, tasks: TaskRow[]): Promise<{ srs: number | null; errors: number | null }> {
+    const needSrs = tasks.some((t) => t.taskType === 'vocab_review');
+    const needErr = tasks.some((t) => t.taskType === 'review_errors');
+    const [srs, errors] = await Promise.all([needSrs ? this.srs.dueSummary(userId, program).then((r) => r.total).catch(() => null) : null, needErr ? this.errorLog.totals(userId, program).then((r) => r.open).catch(() => null) : null]);
+    return { srs, errors };
+  }
+
+  /** Gắn số liệu sống cho task hôm nay/sắp tới (quá khứ đã chốt → null) */
+  private withCounts(t: PlanTask, counts: { srs: number | null; errors: number | null }, today: string): PlanTask {
+    const live = t.status === 'pending' && t.due_date >= addDays(today, -TASK_EXPIRE_AFTER_DAYS);
+    if (t.task_type === 'vocab_review') return { ...t, srs_due: live ? counts.srs : null };
+    if (t.task_type === 'review_errors') return { ...t, errors_open: live ? counts.errors : null };
+    return t;
+  }
+
+  /** Ôn hết thẻ đến hạn (kể cả thẻ mới trong hạn mức) → task vocab_review hôm nay done */
+  @OnEvent(`local.${SRS_REVIEWED_EVENT}`)
+  async onSrsReviewed(ev: SrsReviewedEvent): Promise<void> {
+    if (!ev?.user_id || ev.reviewed <= 0 || ev.due_now_left !== 0) return;
+    for (const program of ev.programs) await this.completeTodayOfType(ev.user_id, program, 'vocab_review', { source: 'srs', reviewed: ev.reviewed }).catch((err: Error) => this.logger.warn({ err: err.message }, 'vocab_review auto-complete failed'));
+  }
+
+  /** Đã hiểu ≥ 10 lỗi hôm nay hoặc hết lỗi chưa hiểu → task review_errors done */
+  @OnEvent(`local.${ERROR_RESOLVED_EVENT}`)
+  async onErrorResolved(ev: ErrorResolvedEvent): Promise<void> {
+    if (!ev?.user_id || (ev.open_left > 0 && ev.resolved_today < REVIEW_ERRORS_DONE_AT)) return;
+    await this.completeTodayOfType(ev.user_id, ev.program, 'review_errors', { source: 'error_log', resolved_today: ev.resolved_today }).catch((err: Error) => this.logger.warn({ err: err.message }, 'review_errors auto-complete failed'));
+  }
+
+  /** Task pending loại `type` hôm nay (hoặc quá hạn ≤ 3 ngày, gần nhất trước) của lộ trình hiện tại → done */
+  async completeTodayOfType(userId: string, program: string, type: TaskRow['taskType'], result: Record<string, unknown>): Promise<string | null> {
+    const ctx = await this.userCtx(userId);
+    const id = await this.dbs.db.transaction(async (tx) => {
+      const tree = await this.currentTree(userId, program, tx);
+      if (!tree) return null;
+      const from = addDays(ctx.today, -TASK_EXPIRE_AFTER_DAYS);
+      const pick = tree.tasks.filter((t) => t.taskType === type && t.status === 'pending' && t.dueDate <= ctx.today && t.dueDate >= from).sort((a, b) => b.dueDate.localeCompare(a.dueDate))[0];
+      if (!pick) return null;
+      const [locked] = await tx.select().from(learnPlanTasks).where(eq(learnPlanTasks.id, pick.id)).for('update');
+      return this.markDone(tx, locked!, tree.plan.id, userId, { ...result, at: this.now().toISOString() });
+    });
+    if (id) this.realtime.emitToUser(userId, 'plan.updated', { task_id: id, reason: 'task_done' });
+    return id;
   }
 
   // ------------------------------------------------------------------ tự hoàn thành từ outbox

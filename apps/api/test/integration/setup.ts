@@ -4,7 +4,7 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createDb, ensureMonthPartitions } from '@allingo/db';
-import { seedBilling, seedCatalog, seedDemo, seedDictionary, seedPrompts } from '@allingo/db/seed';
+import { seedBilling, seedCatalog, seedDemo, seedDictionary, seedPrompts, seedToeic600 } from '@allingo/db/seed';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { loadEnv, resetEnvCache } from '../../src/config/env.js';
 
@@ -33,6 +33,8 @@ export async function prepareTestDatabase(): Promise<string> {
   await seedDemo(db);
   // Từ điển mở (S6) – bỏ qua khi tệp dữ liệu chưa có; test S6 nhập thêm fixture riêng
   await seedDictionary(db);
+  // S10: bộ TOEIC 600 theo chủ đề (dựng từ từ điển)
+  await seedToeic600(db);
   await s2.end();
   return base;
 }

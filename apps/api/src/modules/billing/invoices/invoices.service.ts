@@ -22,6 +22,7 @@ import { AuditService } from '../../../shared/events/audit.service.js';
 import type { OutboxEvent } from '../../../shared/events/outbox.service.js';
 import { OutboxService } from '../../../shared/events/outbox.service.js';
 import { UserDirectory } from '../../../shared/events/user-directory.js';
+import { withUserEmails } from '../admin-emails.js';
 import { decodeCursor, encodeCursor } from '../../../shared/http/cursor.js';
 import { Conflict, NotFound, ValidationFailed } from '../../../shared/http/errors.js';
 import { JobsService } from '../../../shared/queue/jobs.service.js';
@@ -531,7 +532,7 @@ export class InvoicesService implements OnModuleInit {
       .limit(q.limit + 1);
     const page = rows.slice(0, q.limit);
     const last = page[page.length - 1];
-    return { data: page.map((r) => this.toAdmin(r)), next_cursor: rows.length > q.limit && last ? encodeCursor({ t: last.inv.createdAt.toISOString(), id: last.inv.id }) : null };
+    return { data: await withUserEmails(this.users, page.map((r) => this.toAdmin(r))), next_cursor: rows.length > q.limit && last ? encodeCursor({ t: last.inv.createdAt.toISOString(), id: last.inv.id }) : null };
   }
 
   /** Đối chiếu tháng (lịch VN, theo paid_at): hoá đơn hiệu lực phải bằng đơn paid − refunded */

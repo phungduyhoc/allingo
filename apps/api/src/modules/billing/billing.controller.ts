@@ -23,6 +23,8 @@ import {
 import { CLOCK, type Clock } from '../../shared/clock/clock.module.js';
 import { CurrentUser, Public, type AuthUser } from '../../shared/auth/auth.guard.js';
 import { DbService } from '../../shared/db/db.module.js';
+import { RedisService } from '../../shared/cache/redis.module.js';
+import { RateLimited } from '../../shared/http/errors.js';
 import { ApiZod, ZodBody, ZodParams, ZodQuery } from '../../shared/http/zod.js';
 import { CreditService } from './credit.service.js';
 import { EntitlementService } from './entitlement.service.js';
@@ -34,6 +36,9 @@ import { toVnd } from './pricing.js';
 import { PromotionsService } from './promotions.service.js';
 import { QuotaService } from './quota.service.js';
 import { SubscriptionsService } from './subscriptions.service.js';
+
+/** S10: POST /promotions/validate ẩn danh – lượt/phút/IP */
+const ANON_VALIDATE_PER_MINUTE = 30;
 
 const programQuery = z.object({ program: programCodeSchema.default('toeic') });
 const plansQuery = z.object({ program: programCodeSchema.optional(), region: z.string().max(8).default('VN') });
@@ -55,6 +60,7 @@ export class BillingController {
     private readonly subscriptions: SubscriptionsService,
     private readonly providers: PaymentProviderRegistry,
     private readonly flags: FeatureFlagService,
+    private readonly redis: RedisService,
   ) {}
 
   @Get('me/entitlements')
@@ -106,14 +112,26 @@ export class BillingController {
    * Kiểm tra mã (S8 đầy đủ) – luôn 200, `valid=false` kèm `reason`. Có gói (price_id/plan_id) → đánh giá như POST /orders;
    * không gói → như POST /promotions/redeem (trial_days, credit_bonus standalone; mã cần đơn → `plan_required`).
    */
+  @Public()
   @Post('promotions/validate')
   @HttpCode(200)
-  @ApiZod({ body: promotionValidateInputSchema, responses: { 200: promotionValidateResultSchema } })
-  async validatePromotion(@CurrentUser() user: AuthUser, @ZodBody(promotionValidateInputSchema) body: z.infer<typeof promotionValidateInputSchema>) {
+  @ApiZod({ body: promotionValidateInputSchema, responses: { 200: promotionValidateResultSchema, 429: 'empty' } })
+  async validatePromotion(@Req() req: FastifyRequest & { user?: AuthUser }, @ZodBody(promotionValidateInputSchema) body: z.infer<typeof promotionValidateInputSchema>) {
     const now = new Date(this.clock.now());
-    if (!body.price_id && !body.plan_id) return this.promotions.validate(user.id, body.code, null, 0, now, body.program);
+    // S10: cho phép ẩn danh (trang /pricing) – giới hạn 30 lần/phút/IP; có token → đánh giá đầy đủ theo người dùng (A169)
+    const userId = req.user?.id ?? null;
+    if (!userId) {
+      const n = await this.redis.safe(async (r) => {
+        const k = `promo:validate:${req.ip ?? 'unknown'}:${Math.floor(now.getTime() / 60_000)}`;
+        const v = await r.incr(k);
+        if (v === 1) await r.expire(k, 120);
+        return v;
+      });
+      if (n !== null && n > ANON_VALIDATE_PER_MINUTE) throw new RateLimited(60);
+    }
+    if (!body.price_id && !body.plan_id) return this.promotions.validate(userId, body.code, null, 0, now, body.program);
     const { plan, price } = await this.plansSvc.resolve({ priceId: body.price_id, planId: body.plan_id });
-    return this.promotions.validate(user.id, body.code, { id: plan.id, kind: plan.kind, programCodes: plan.programCodes.filter(Boolean) }, toVnd(price.amount), now, body.program);
+    return this.promotions.validate(userId, body.code, { id: plan.id, kind: plan.kind, programCodes: plan.programCodes.filter(Boolean) }, toVnd(price.amount), now, body.program);
   }
 
   /** Đổi mã không qua đơn (S8): trial_days → subscription `trialing` (một lần/người), credit_bonus standalone → ledger `promo` */

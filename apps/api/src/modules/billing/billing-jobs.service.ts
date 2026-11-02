@@ -55,7 +55,7 @@ export class BillingJobsService implements OnModuleInit, OnApplicationBootstrap,
   ) {}
 
   onModuleInit(): void {
-    for (const job of BILLING_JOBS) this.jobs.register('maintenance', job, () => this.run(job));
+    for (const job of BILLING_JOBS) this.jobs.register('maintenance', job, (p) => this.run(job, undefined, { minAgeMinutes: typeof p?.min_age_minutes === 'number' ? p.min_age_minutes : undefined }));
   }
 
   onApplicationBootstrap(): void {
@@ -63,12 +63,12 @@ export class BillingJobsService implements OnModuleInit, OnApplicationBootstrap,
   }
 
   /** Chạy một job ngay (đồng bộ) – trả kết quả đếm */
-  async run(job: BillingJob, now: Date = new Date(this.clock.now())): Promise<Record<string, number>> {
+  async run(job: BillingJob, now: Date = new Date(this.clock.now()), opts: { minAgeMinutes?: number } = {}): Promise<Record<string, number>> {
     switch (job) {
       case 'order.expire':
         return { expired: await this.orders.expireDue(now) };
       case 'payment.reconcile':
-        return this.payments.reconcilePending(now);
+        return this.payments.reconcilePending(now, opts.minAgeMinutes);
       case 'subscription.expire': {
         const e = await this.subscriptions.expireDue(now);
         const r = await this.subscriptions.remindDue(now);

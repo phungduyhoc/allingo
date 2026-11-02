@@ -159,7 +159,8 @@ describe('Sprint 9 – learning v1 (integration)', () => {
       const tasks = await dbs.db.select().from(schema.learnPlanTasks).where(inArray(schema.learnPlanTasks.planWeekId, weeks.map((w) => w.id)));
       const last = weeks.find((w) => w.weekNo === 8)!;
       expect(tasks.some((t) => t.planWeekId === last.id && t.taskType === 'full_test')).toBe(true);
-      for (const t of tasks) if (t.taskType !== 'checkin') expect(t.refId).toBeTruthy();
+      // S10: task review_errors (sổ lỗi) không trỏ nội dung catalog – như checkin (A163)
+      for (const t of tasks) if (t.taskType !== 'checkin' && t.taskType !== 'review_errors') expect(t.refId).toBeTruthy();
       const pro = await register();
       await makePro(pro);
       const pp = (await pro.call('POST', '/me/plan', planBody())).body;

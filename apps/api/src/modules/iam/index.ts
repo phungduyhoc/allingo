@@ -7,3 +7,5 @@ export { DeletionService } from './deletion.service.js';
 export { OAuthService } from './oauth/oauth.service.js';
 export { OtpService } from './otp/otp.service.js';
 export { ConsentsService } from './consents.service.js';
+// S10
+export { sanitizeAttribution, type StoredAttribution } from './attribution.js';

@@ -128,10 +128,12 @@ export class PromotionsService {
   }
 
   // ------------------------------------------------------------------ đánh giá
-  async evaluate(userId: string, code: string, plan: PromotionPlanContext | null, subtotal: number, now: Date, db: DbOrTx = this.dbs.db, opts: { mode?: 'order' | 'redeem'; program?: string | null; lock?: boolean } = {}): Promise<{ promo: PromotionRow | null; result: PromotionEvaluation }> {
+  async evaluate(userId: string | null, code: string, plan: PromotionPlanContext | null, subtotal: number, now: Date, db: DbOrTx = this.dbs.db, opts: { mode?: 'order' | 'redeem'; program?: string | null; lock?: boolean } = {}): Promise<{ promo: PromotionRow | null; result: PromotionEvaluation }> {
     const promo = await this.findByCode(code, db, opts.lock);
     const mode = opts.mode ?? (plan ? 'order' : 'redeem');
     if (!promo) return { promo, result: evaluatePromotion(null, { subtotal, now, userPaidUses: 0, mode }) };
+    // S10: ẩn danh (validate trên /pricing) – chỉ điều kiện không phụ thuộc người dùng (A169)
+    if (!userId) return { promo, result: evaluatePromotion(promo, { mode, planId: plan ? plan.id : null, planKind: plan?.kind ?? null, planPrograms: plan?.programCodes ?? null, subtotal, now, userPaidUses: 0, activeReservations: await this.activeReservations(promo.id, now, db), program: opts.program ?? promo.conditions?.program_codes?.[0] ?? 'toeic' }) };
     const [uses, reserved, user] = await Promise.all([this.userUses(userId, promo.id, now, db), this.activeReservations(promo.id, now, db), this.userContext(userId, db)]);
     let trialUsed = false;
     let alreadyPro = false;
@@ -145,13 +147,16 @@ export class PromotionsService {
   }
 
   /** POST /promotions/validate – luôn 200; không có gói → đánh giá như đổi mã (trial/credit standalone) */
-  async validate(userId: string, code: string, plan: PromotionPlanContext | null, subtotal: number, now: Date, program?: string): Promise<PromotionValidateResult> {
+  async validate(userId: string | null, code: string, plan: PromotionPlanContext | null, subtotal: number, now: Date, program?: string): Promise<PromotionValidateResult> {
     const { promo, result } = await this.evaluate(userId, code, plan, subtotal, now, this.dbs.db, { mode: plan ? 'order' : 'redeem', program: program ?? null });
     let reason = result.ok ? null : result.reason;
     // Mã cần đơn nhưng gọi validate không có gói → plan_required (không phải requires_order)
     if (!plan && reason === 'requires_order') reason = 'plan_required';
+    // Ẩn danh: điều kiện theo người dùng chưa kiểm (mọi mã có lượt/người; người dùng mới; dùng thử một lần/người)
+    const requiresLogin = !userId && !!promo && result.ok;
     return {
       valid: result.ok,
+      ...(userId ? {} : { requires_login: requiresLogin }),
       code: normalizePromoCode(code),
       reason,
       kind: promo ? (promotionKind(promo.kind)) : null,

@@ -1,11 +1,12 @@
 import { randomInt } from 'node:crypto';
 import { Injectable, type OnModuleInit } from '@nestjs/common';
-import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import type { Locale, ProgramCode, User } from '@allingo/schemas';
 import { DbService, type DbOrTx } from '../../shared/db/db.module.js';
 import { UserDirectory, type UserContact } from '../../shared/events/user-directory.js';
 import { Conflict, NotFound } from '../../shared/http/errors.js';
+import type { StoredAttribution } from './attribution.js';
 
 export type IdentityRow = typeof iamAuthIdentities.$inferSelect;
 export type AuthProviderCode = IdentityRow['provider'];
@@ -121,6 +122,15 @@ export class UsersService implements OnModuleInit {
       .returning();
     await tx.insert(iamUserRoles).values({ userId: row!.id, roleCode: 'learner' }).onConflictDoNothing();
     return row!;
+  }
+
+  /**
+   * S10: UTM/referrer lần chạm đầu (iam.users.attribution) – chỉ ghi khi TẠO tài khoản và cột còn trống (không ghi đè).
+   * Đầu vào đã chuẩn hoá bằng `sanitizeAttribution` (không PII).
+   */
+  async setAttribution(tx: DbOrTx, userId: string, attribution: StoredAttribution | null): Promise<void> {
+    if (!attribution) return;
+    await tx.update(iamUsers).set({ attribution }).where(and(eq(iamUsers.id, userId), isNull(iamUsers.attribution)));
   }
 
   async findByPhone(phone: string, db: DbOrTx = this.dbs.db): Promise<UserRow | null> {

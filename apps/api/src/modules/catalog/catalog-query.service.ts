@@ -340,6 +340,26 @@ export class CatalogQueryService {
   }
 
   /**
+   * S10 – đúng các câu theo question_id (bản ĐÃ PHÁT HÀNH hiện hành, câu đã gỡ bị bỏ qua) – "làm lại câu sai" từ sổ lỗi.
+   * Câu cùng passage xếp liền nhau (group_key = passage_id), thứ tự theo section rồi số câu gốc; KHÔNG kéo thêm câu khác của nhóm.
+   */
+  async loadPublishedByQuestionIds(program: string, questionIds: string[]): Promise<LoadedQuestion[]> {
+    if (questionIds.length === 0) return [];
+    const rows = await this.dbs.db
+      .select({ q: catalogQuestions, v: catalogQuestionVersions, s: catalogSections, skill: catalogSkills.code, p: catalogPassages, topic: catalogTopics.code })
+      .from(catalogQuestions)
+      .innerJoin(catalogQuestionVersions, eq(catalogQuestionVersions.id, catalogQuestions.currentVersionId))
+      .innerJoin(catalogSections, eq(catalogSections.id, catalogQuestions.sectionId))
+      .innerJoin(catalogSkills, eq(catalogSkills.id, catalogSections.skillId))
+      .leftJoin(catalogPassages, eq(catalogPassages.id, catalogQuestions.passageId))
+      .leftJoin(catalogTopics, eq(catalogTopics.id, catalogQuestions.topicId))
+      .where(and(eq(catalogQuestions.programCode, program), eq(catalogQuestions.status, 'published'), inArray(catalogQuestions.id, questionIds)))
+      .orderBy(catalogSections.sortOrder, sql`coalesce(${catalogQuestions.passageId}, ${catalogQuestions.id})`, sql`case when (${catalogQuestionVersions.metadata} ->> 'number') ~ '^[0-9]{1,6}$' then (${catalogQuestionVersions.metadata} ->> 'number')::int end nulls last`, catalogQuestions.id);
+    const subskills = await this.subskillsFor(rows.map((r) => r.q.id));
+    return rows.map((r, i) => this.toLoaded(r.q, r.v, { id: r.s.id, code: r.s.code, skill: r.skill }, r.p, r.topic, subskills.get(r.q.id) ?? [], { group_key: r.q.passageId ?? null, order_no: i + 1, points: 1 }));
+  }
+
+  /**
    * Ngân hàng câu đã phát hành (bản hiện hành) của chương trình theo section – đầu vào generateMiniTest.
    * group_key = passage_id; order = số câu gốc trong metadata (nếu có).
    */
@@ -660,7 +680,73 @@ export class CatalogQueryService {
   }
 
   async vocabLists(program: string) {
-    return this.dbs.db.select().from(schema.catalogVocabLists).where(eq(schema.catalogVocabLists.programCode, program)).orderBy(schema.catalogVocabLists.sortOrder);
+    return this.dbs.db.select().from(schema.catalogVocabLists).where(eq(schema.catalogVocabLists.programCode, program)).orderBy(schema.catalogVocabLists.sortOrder, schema.catalogVocabLists.id);
+  }
+
+  /** S10: bộ từ hệ thống + của người dùng (owner_user_id) theo chương trình */
+  async vocabListsFor(program: string, userId: string) {
+    return this.dbs.db
+      .select()
+      .from(schema.catalogVocabLists)
+      .where(and(eq(schema.catalogVocabLists.programCode, program), sql`(${schema.catalogVocabLists.ownerUserId} is null or ${schema.catalogVocabLists.ownerUserId} = ${userId}::uuid)`))
+      .orderBy(schema.catalogVocabLists.sortOrder, schema.catalogVocabLists.id);
+  }
+
+  async vocabListById(id: string) {
+    const [row] = await this.dbs.db.select().from(schema.catalogVocabLists).where(eq(schema.catalogVocabLists.id, id)).limit(1);
+    return row ?? null;
+  }
+
+  /** S10: vocab_item_id theo bộ (đếm tiến độ, thêm cả bộ) – thứ tự trong bộ */
+  async vocabListItemIds(listIds: string[]): Promise<Map<string, string[]>> {
+    const out = new Map<string, string[]>(listIds.map((id) => [id, []]));
+    if (!listIds.length) return out;
+    const rows = await this.dbs.db
+      .select({ listId: schema.catalogVocabListItems.listId, itemId: schema.catalogVocabListItems.vocabItemId })
+      .from(schema.catalogVocabListItems)
+      .where(inArray(schema.catalogVocabListItems.listId, listIds))
+      .orderBy(schema.catalogVocabListItems.listId, schema.catalogVocabListItems.sortOrder);
+    for (const r of rows) out.get(r.listId)?.push(r.itemId);
+    return out;
+  }
+
+  /** S10: trang mục trong bộ theo sort_order (cursor = sort_order cuối) */
+  async vocabListItemsPage(listId: string, afterSort: number | null, limit: number) {
+    return this.dbs.db
+      .select({ item: schema.catalogVocabItems, sort: schema.catalogVocabListItems.sortOrder })
+      .from(schema.catalogVocabListItems)
+      .innerJoin(schema.catalogVocabItems, eq(schema.catalogVocabItems.id, schema.catalogVocabListItems.vocabItemId))
+      .where(and(eq(schema.catalogVocabListItems.listId, listId), afterSort !== null ? sql`${schema.catalogVocabListItems.sortOrder} > ${afterSort}` : sql`true`))
+      .orderBy(schema.catalogVocabListItems.sortOrder)
+      .limit(limit);
+  }
+
+  /** S10: id mục từ theo headword (bắt đầu bằng / chứa, không phân biệt hoa thường) – lọc GET /me/srs/cards?q= */
+  async vocabItemIdsByHeadword(program: string, q: string, limit = 500): Promise<string[]> {
+    const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const rows = await this.dbs.db
+      .select({ id: schema.catalogVocabItems.id })
+      .from(schema.catalogVocabItems)
+      .where(and(eq(schema.catalogVocabItems.programCode, program), sql`${schema.catalogVocabItems.headword} ilike ${like}`))
+      .limit(limit);
+    return rows.map((r) => r.id);
+  }
+
+  async vocabItemsByIds(ids: string[]) {
+    if (!ids.length) return [];
+    return this.dbs.db.select().from(schema.catalogVocabItems).where(inArray(schema.catalogVocabItems.id, ids));
+  }
+
+  /** S10: mã chủ đề theo id (catalog.topics) – bộ từ theo chủ đề */
+  async topicCodes(ids: string[]): Promise<Map<string, string>> {
+    if (!ids.length) return new Map();
+    const rows = await this.dbs.db.select({ id: catalogTopics.id, code: catalogTopics.code }).from(catalogTopics).where(inArray(catalogTopics.id, ids));
+    return new Map(rows.map((r) => [r.id, r.code]));
+  }
+
+  async grammarTopicsByIds(ids: string[]) {
+    if (!ids.length) return [];
+    return this.dbs.db.select().from(schema.catalogGrammarTopics).where(inArray(schema.catalogGrammarTopics.id, ids));
   }
 
   async vocabListItems(listId: string) {

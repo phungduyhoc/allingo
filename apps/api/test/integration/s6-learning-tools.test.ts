@@ -333,7 +333,8 @@ describe('S6 learning tools (integration)', () => {
       const lk = await api.call('GET', '/dictionary/lookup?q=invoice');
       expect(lk.body).toMatchObject({ saved: true, srs_card_id: cards[0] });
       const ent = await api.call('GET', '/me/entitlements?program=toeic');
-      expect(ent.body.quotas.find((q: { feature: string }) => q.feature === 'srs_new_cards').used).toBe(5);
+      // S10 (A153): thêm thẻ KHÔNG tiêu quota – srs_new_cards áp khi học thẻ mới (GET /me/srs/due, POST /me/srs/review)
+      expect(ent.body.quotas.find((q: { feature: string }) => q.feature === 'srs_new_cards').used).toBe(0);
       const n = await api.call('POST', '/me/srs/cards', { program: 'toeic', card_type: 'vocab', headword: `ztermx${uniq()}` });
       expect(n.status).toBe(201);
       const [item] = await dbs.db.select().from(schema.catalogVocabItems).where(eq(schema.catalogVocabItems.id, n.body.ref_id));

@@ -135,7 +135,7 @@ const T: Record<NotificationTemplateCode, TemplateDef> = {
     channels: ['inapp', 'email'],
     transactional: false,
     quietHours: 'ignore',
-    url: '/practice',
+    url: '/{{#if program}}{{program}}{{else}}toeic{{/if}}/practice',
     locales: {
       vi: {
         subject: 'Bắt đầu dùng thử Pro {{trial_days}} ngày',
@@ -231,7 +231,7 @@ const T: Record<NotificationTemplateCode, TemplateDef> = {
     channels: ['push', 'inapp'],
     transactional: false,
     quietHours: 'skip',
-    url: '/today',
+    url: '/{{#if program}}{{program}}{{else}}toeic{{/if}}/today',
     locales: {
       vi: {
         subject: 'Đến giờ học rồi!',
@@ -255,7 +255,7 @@ const T: Record<NotificationTemplateCode, TemplateDef> = {
     channels: ['email', 'inapp'],
     transactional: false,
     quietHours: 'defer',
-    url: '/stats',
+    url: '/{{#if program}}{{program}}{{else}}toeic{{/if}}/stats',
     locales: {
       vi: {
         subject: 'Tóm tắt tuần của bạn trên Allingo',
@@ -279,7 +279,7 @@ const T: Record<NotificationTemplateCode, TemplateDef> = {
     channels: ['push', 'inapp'],
     transactional: false,
     quietHours: 'skip',
-    url: '/today',
+    url: '/{{#if program}}{{program}}{{else}}toeic{{/if}}/today',
     locales: {
       vi: {
         subject: 'Chuỗi {{streak}} ngày sắp mất!',
@@ -327,7 +327,7 @@ const T: Record<NotificationTemplateCode, TemplateDef> = {
     channels: ['inapp'],
     transactional: false,
     quietHours: 'defer',
-    url: '/plan?proposal={{proposal_id}}',
+    url: '/{{#if program}}{{program}}{{else}}toeic{{/if}}/plan?proposal={{proposal_id}}',
     locales: {
       vi: {
         subject: 'Đề xuất điều chỉnh lộ trình tuần tới',

@@ -250,8 +250,30 @@ export class DictionaryService {
   }
 
   /** Payload hiển thị thẻ (SRS) từ mục từ vựng */
+  /**
+   * Nội dung thẻ vocab (mặt trước/sau flashcard). S10 mở rộng tương thích: IPA US/UK, mọi nghĩa theo locale, ≤ 2 ví dụ (bản dịch
+   * theo locale), ≤ 3 collocation, `tts_text` (web gọi GET /tts?text= – cache TTS).
+   */
   static cardPayload(row: VocabRow, locale: string, context?: string | null): Record<string, unknown> {
-    const m = ((row.meanings as Array<LocalizedText> | null) ?? [])[0] ?? {};
-    return { headword: row.headword, pos: row.pos ?? null, ipa: row.ipaUs ?? row.ipaUk ?? null, meaning_local: pickLocalized(m, locale) || null, meaning_en: (m as { en?: string }).en ?? null, level: row.level ?? null, source: row.source, ...(context ? { context } : {}) };
+    const meanings = (row.meanings as Array<LocalizedText> | null) ?? [];
+    const m = meanings[0] ?? {};
+    const examples = ((row.examples as Array<{ text?: string; translation?: LocalizedText | string | null }> | null) ?? []).slice(0, 2).map((e) => ({ text: e.text ?? '', translation: typeof e.translation === 'string' ? e.translation : pickLocalized(e.translation ?? null, locale) || null }));
+    return {
+      headword: row.headword,
+      pos: row.pos ?? null,
+      ipa: row.ipaUs ?? row.ipaUk ?? null,
+      ipa_us: row.ipaUs ?? null,
+      ipa_uk: row.ipaUk ?? null,
+      meaning_local: pickLocalized(m, locale) || null,
+      meaning_en: (m as { en?: string }).en ?? null,
+      meanings_local: meanings.map((x) => pickLocalized(x, locale)).filter(Boolean).slice(0, 4),
+      examples,
+      collocations: ((row.collocations as string[] | null) ?? []).slice(0, 3),
+      level: row.level ?? null,
+      topics: row.topics ?? [],
+      source: row.source,
+      tts_text: row.headword,
+      ...(context ? { context } : {}),
+    };
   }
 }

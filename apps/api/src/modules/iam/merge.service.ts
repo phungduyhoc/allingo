@@ -51,6 +51,15 @@ export class MergeService {
     await tx.update(learnXpEvents).set({ userId: targetId }).where(eq(learnXpEvents.userId, guestId));
     await tx.update(learnNotes).set({ userId: targetId }).where(eq(learnNotes.userId, guestId));
     await tx.update(learnChatThreads).set({ userId: targetId }).where(eq(learnChatThreads.userId, guestId));
+    // S10: sổ lỗi UNIQUE (user_id, question_id) – cộng dồn số lần sai vào mục của tài khoản rồi xoá mục trùng của khách
+    await tx.execute(sql`
+      UPDATE learn.error_log_entries t SET occurrences = t.occurrences + g.occurrences, last_seen_at = greatest(t.last_seen_at, g.last_seen_at),
+             resolved_at = CASE WHEN g.resolved_at IS NULL OR t.resolved_at IS NULL THEN NULL ELSE greatest(t.resolved_at, g.resolved_at) END
+        FROM learn.error_log_entries g
+       WHERE g.user_id = ${guestId} AND t.user_id = ${targetId} AND g.question_id IS NOT NULL AND g.question_id = t.question_id`);
+    await tx.execute(sql`
+      DELETE FROM learn.error_log_entries g USING learn.error_log_entries t
+       WHERE g.user_id = ${guestId} AND t.user_id = ${targetId} AND g.question_id IS NOT NULL AND g.question_id = t.question_id`);
     await tx.update(learnErrorLogEntries).set({ userId: targetId }).where(eq(learnErrorLogEntries.userId, guestId));
     await tx.update(aiAiTasks).set({ userId: targetId }).where(eq(aiAiTasks.userId, guestId));
 

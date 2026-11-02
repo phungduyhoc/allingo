@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { FEATURE_GATES, evaluateGate, type FeatureCode, type GateKey } from '@allingo/schemas';
 import { Forbidden } from '../../shared/http/errors.js';
 import { EntitlementService, type EntitlementContext } from './entitlement.service.js';
-import { QuotaService, type QuotaStatus } from './quota.service.js';
+import { QuotaService, periodResetAt, type QuotaStatus } from './quota.service.js';
 
 export interface GateTicket {
   ctx: EntitlementContext;
@@ -67,6 +67,18 @@ export class FeatureGateService {
         await this.quotas.refund(userId, ctx.planKind, quotaFeature, amount);
       },
     };
+  }
+
+  /**
+   * S10: trạng thái quota của gate (không tiêu) – vd số thẻ mới còn được học hôm nay. `limit = null` = không giới hạn.
+   */
+  async quotaStatus(userId: string, program: string, gate: GateKey): Promise<{ limit: number | null; used: number; remaining: number | null; resets_at: string | null; planKind: EntitlementContext['planKind'] }> {
+    const ctx = await this.entitlements.getContext(userId, program);
+    const feature = FEATURE_GATES[gate].quota as FeatureCode | null;
+    const lim = feature ? await this.quotas.limitFor(ctx.planKind, feature) : null;
+    if (!feature || !lim) return { limit: null, used: 0, remaining: null, resets_at: null, planKind: ctx.planKind };
+    const used = await this.quotas.used(userId, feature, lim.period);
+    return { limit: lim.limit, used, remaining: Math.max(0, lim.limit - used), resets_at: periodResetAt(lim.period).toISOString(), planKind: ctx.planKind };
   }
 
   /** Giới hạn quota theo phạm vi (vd lượt/thread gia sư) cho gói hiện tại; null = không giới hạn */

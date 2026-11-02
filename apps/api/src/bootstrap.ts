@@ -41,7 +41,7 @@ export async function createApp(env: Env = loadEnv()): Promise<NestFastifyApplic
   });
   await fastify.register(fastifyCookie, { secret: env.AUTH_SECRET });
   await fastify.register(fastifyHelmet, { contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } });
-  await fastify.register(fastifyCors, { origin: env.CORS_ORIGINS.split(',').map((s) => s.trim()), credentials: true, methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Client', 'Accept-Language', 'X-Internal-Token'], exposedHeaders: ['x-trace-id'] });
+  await fastify.register(fastifyCors, { origin: env.CORS_ORIGINS.split(',').map((s) => s.trim()), credentials: true, methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Client', 'Accept-Language', 'X-Internal-Token', 'X-Device-Fingerprint'], exposedHeaders: ['x-trace-id'] });
   await fastify.register(fastifyRateLimit, { max: env.RATE_LIMIT_MAX, timeWindow: '1 minute', allowList: ['127.0.0.1'] });
   fastify.addHook('onRequest', traceIdHook);
   fastify.addHook('onResponse', (req, reply, done) => {

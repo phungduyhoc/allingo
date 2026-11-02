@@ -13,7 +13,8 @@ import { MergeService } from '../merge.service.js';
 import { SessionsService, type IssuedTokens } from '../sessions.service.js';
 import { UsersService } from '../users.service.js';
 import { WelcomeCreditsService } from '../welcome-credits.service.js';
-import { registeredPayload } from '../auth.service.js';
+import { attributionEventFields, registeredPayload } from '../auth.service.js';
+import { sanitizeAttribution } from '../attribution.js';
 import { AppleOAuthProvider } from './apple.provider.js';
 import { FacebookOAuthProvider } from './facebook.provider.js';
 import { GoogleOAuthProvider } from './google.provider.js';
@@ -107,9 +108,12 @@ export class OAuthService {
           userId = user.id;
           created = true;
           await this.consents.recordSignupConsents(tx, userId, { ip: meta.ip });
+          // S10: attribution lần chạm đầu (không PII)
+          const attribution = sanitizeAttribution(input.attribution, { referralCode: input.referral_code?.trim() || null });
+          await this.users.setAttribution(tx, userId, attribution);
           await this.welcome.grant(tx, userId, 'registered');
           if (guestId) await this.merge.mergeGuestInto(tx, guestId, userId, { ip: meta.ip, userAgent: meta.userAgent });
-          await this.outbox.write(tx, { aggregateType: 'user', aggregateId: userId, eventType: DOMAIN_EVENTS.USER_REGISTERED, payload: registeredPayload(userId, code, !!guestId, input.referral_code, meta) });
+          await this.outbox.write(tx, { aggregateType: 'user', aggregateId: userId, eventType: DOMAIN_EVENTS.USER_REGISTERED, payload: { ...registeredPayload(userId, code, !!guestId, input.referral_code, meta), ...attributionEventFields(attribution) } });
         }
         await this.users.linkIdentity(tx, { userId, provider: code, providerUid: profile.providerUid, email: profile.email, rawProfile: profile.raw });
       }

@@ -212,6 +212,17 @@ export const envSchema = z.object({
   REFERRAL_SHARE_BASE_URL: z.string().optional(),
   REFERRAL_OG_IMAGE_URL: z.string().optional(),
 
+  // Sprint 10 – thống kê & phễu: cache GET /me/stats (giây), sự kiện phễu server-side sang PostHog (không PII, user id băm)
+  STATS_CACHE_TTL_SECONDS: z.coerce.number().int().min(0).max(86_400).default(3600),
+  // auto: có POSTHOG_KEY → posthog, APP_ENV=test → memory, còn lại none | posthog | memory | none
+  ANALYTICS_SINK: z.enum(['auto', 'posthog', 'memory', 'none']).default('auto'),
+  POSTHOG_KEY: z.string().optional(),
+  POSTHOG_HOST: z.string().default('https://us.i.posthog.com'),
+  // Muối băm distinct_id (sha256(salt:user_id)); trống → dẫn xuất từ AUTH_SECRET
+  ANALYTICS_HASH_SALT: z.string().optional(),
+  // Giờ gửi tóm tắt tuần sáng thứ Hai (giờ VN)
+  WEEKLY_SUMMARY_HOUR_VN: z.coerce.number().int().min(0).max(23).default(8),
+
   OTEL_ENABLED: bool(false),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().default('http://localhost:4318'),
   OTEL_SERVICE_NAME: z.string().default('allingo-api'),

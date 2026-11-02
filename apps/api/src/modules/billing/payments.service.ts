@@ -246,8 +246,9 @@ export class PaymentsService {
    * Lần thanh toán `initiated` quá PAYMENT_RECONCILE_AFTER_MINUTES (≤ 48 giờ) của đơn chưa trả → queryStatus; paid → confirm
    * (cấp quyền như webhook), failed → đánh dấu; pending/không thấy → để lần sau. Lỗi một cổng không chặn cổng khác.
    */
-  async reconcilePending(now: Date = this.now()): Promise<{ checked: number; paid: number; failed: number; errors: number }> {
-    const cutoff = new Date(now.getTime() - this.env.PAYMENT_RECONCILE_AFTER_MINUTES * 60_000);
+  async reconcilePending(now: Date = this.now(), minAgeMinutes?: number): Promise<{ checked: number; paid: number; failed: number; errors: number }> {
+    // S10: chạy tay (admin) có thể bỏ ngưỡng tuổi tối thiểu (`min_age_minutes`, 0 = mọi lần thanh toán đang chờ)
+    const cutoff = new Date(now.getTime() - (minAgeMinutes ?? this.env.PAYMENT_RECONCILE_AFTER_MINUTES) * 60_000 + (minAgeMinutes === 0 ? 1 : 0));
     const rows = await this.dbs.db
       .select({ payment: billingPayments, orderStatus: billingOrders.status })
       .from(billingPayments)

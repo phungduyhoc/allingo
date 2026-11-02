@@ -495,7 +495,7 @@ describe('S8 hoá đơn · khuyến mãi · referral · thông báo (integration
       await notify.send(u.id, 'learning.study_reminder', { minutes: 15 }, { channels: ['inapp'] });
       const list = await u.call('GET', '/me/notifications');
       expect(list.body.unread_count).toBe(2);
-      expect(list.body.data[0]).toMatchObject({ template_code: 'learning.study_reminder', category: 'learning', title: 'Đến giờ học rồi!', url: '/today', status: 'sent' });
+      expect(list.body.data[0]).toMatchObject({ template_code: 'learning.study_reminder', category: 'learning', title: 'Đến giờ học rồi!', url: '/toeic/today', status: 'sent' });
       const id = list.body.data[1].id as string;
       expect((await u.call('POST', `/me/notifications/${id}/read`)).body).toMatchObject({ id, status: 'read' });
       expect((await u.call('GET', '/me/notifications?unread=true')).body.data).toHaveLength(1);

@@ -704,6 +704,92 @@ export class AttemptsService {
     return this.assemble(userId, attemptId, questions, { testSet: null });
   }
 
+  /**
+   * S10 – "làm lại câu sai" (sổ lỗi): attempt `timed_drill` từ ĐÚNG các câu đã chọn (bản phát hành hiện hành, câu đã gỡ bỏ qua),
+   * giới hạn giờ theo Part như timed_drill, tiêu quota `part_drill`; `plan_task_id` (task review_errors) để learning tự done task.
+   */
+  async createFromQuestions(userId: string, input: { program: ProgramCode; questionIds: string[]; planTaskId?: string | null }): Promise<Attempt> {
+    const questions = await this.catalog.loadPublishedByQuestionIds(input.program, input.questionIds);
+    if (questions.length === 0) throw new NotFound('questions');
+    const ticket = await this.gate.consume(userId, input.program, 'part_drill');
+    try {
+      const timeLimitSec = await this.timedDrillBudget(questions);
+      const draft: AttemptDraftState = {
+        question_order: questions.map((x) => ({ question_id: x.question_id, question_version_id: x.question_version_id, section_code: x.section_code, group_key: x.group_key, order_no: x.order_no })),
+        time_limit_sec: timeLimitSec,
+        expires_at: new Date(Date.now() + timeLimitSec * 1000).toISOString(),
+        section_elapsed_sec: {},
+        ui_state: {},
+        events: [],
+        audio_plays: {},
+        answered_count: 0,
+        last_saved_at: null,
+      };
+      const sectionCodes = [...new Set(questions.map((q) => q.section_code))];
+      const sectionId = sectionCodes.length === 1 ? questions[0]!.section_id : null;
+      const attemptId = await this.dbs.db.transaction(async (tx) => {
+        await this.enrollments.ensure(userId, input.program, tx);
+        const [row] = await tx.insert(learnAttempts).values({ userId, programCode: input.program, sectionId, mode: 'timed_drill', status: 'in_progress', draftState: draft, planTaskId: input.planTaskId ?? null }).returning({ id: learnAttempts.id });
+        await this.outbox.write(tx, { aggregateType: 'attempt', aggregateId: row!.id, eventType: DOMAIN_EVENTS.ATTEMPT_STARTED, payload: { attempt_id: row!.id, user_id: userId, program: input.program, mode: 'timed_drill', test_set_id: null, question_count: questions.length, source: 'error_log' } });
+        return row!.id;
+      });
+      this.logger.info({ attempt_id: attemptId, questions: questions.length, time_limit_sec: timeLimitSec }, 'error drill attempt created');
+      return this.assemble(userId, attemptId, questions, { testSet: null });
+    } catch (err) {
+      await ticket.release();
+      throw err;
+    }
+  }
+
+  /**
+   * S10 – câu SAI/bỏ trống của một attempt đã chấm (learning dựng sổ lỗi): phiên bản đã làm, Part, dạng, subskill, chủ đề,
+   * thời gian, câu trả lời. Không trả đáp án đúng (learning chỉ lưu tham chiếu). null nếu attempt chưa chấm.
+   */
+  async wrongAnswersOf(attemptId: string): Promise<{
+    attempt: { id: string; userId: string; program: string; mode: string; submittedAt: Date | null; autoSubmitted: boolean };
+    items: Array<{ attempt_answer_id: string | null; question_id: string; question_version_id: string; section_code: string; skill_code: string; question_type: string; subskill_codes: string[]; topic_code: string | null; time_spent_ms: number | null; answered: boolean; community_avg_time_ms: number | null }>;
+  } | null> {
+    const [row] = await this.dbs.db.select().from(learnAttempts).where(eq(learnAttempts.id, attemptId)).limit(1);
+    if (!row || row.status !== 'graded') return null;
+    const draft = this.draftOf(row);
+    const answers = await this.dbs.db.select().from(learnAttemptAnswers).where(eq(learnAttemptAnswers.attemptId, attemptId));
+    const byQ = new Map(answers.map((a) => [a.questionId, a]));
+    const wrong = draft.question_order.filter((o) => byQ.get(o.question_id)?.isCorrect === false);
+    const versions = await this.catalog.loadByVersionIds(wrong.map((o) => o.question_version_id));
+    const items = [];
+    for (const o of wrong) {
+      const q = versions.get(o.question_version_id);
+      const a = byQ.get(o.question_id)!;
+      if (!q) continue;
+      items.push({
+        attempt_answer_id: a.id,
+        question_id: o.question_id,
+        question_version_id: o.question_version_id,
+        section_code: o.section_code,
+        skill_code: (row.programCode === 'toeic' ? TOEIC_PART_SKILL[o.section_code] : undefined) ?? q.skill_code,
+        question_type: q.question_type,
+        subskill_codes: q.subskill_codes,
+        topic_code: q.topic_code ?? null,
+        time_spent_ms: a.timeSpentMs ?? null,
+        answered: isAnswered((a.answer) ?? null),
+        community_avg_time_ms: q.avg_time_ms,
+      });
+    }
+    const breakdown = row.scoreBreakdown as { auto_submitted?: boolean } | null;
+    return { attempt: { id: row.id, userId: row.userId, program: row.programCode, mode: row.mode, submittedAt: row.submittedAt ?? null, autoSubmitted: !!breakdown?.auto_submitted }, items };
+  }
+
+  /** S10 – câu trả lời (đã chấm) theo id để hiển thị sổ lỗi: answer + thời gian; id lỏng (bảng partition) */
+  async answersByIds(userId: string, answerIds: string[]): Promise<Map<string, { answer: unknown; time_spent_ms: number | null; question_version_id: string }>> {
+    if (!answerIds.length) return new Map();
+    const rows = await this.dbs.db
+      .select({ id: learnAttemptAnswers.id, answer: learnAttemptAnswers.answer, time: learnAttemptAnswers.timeSpentMs, qv: learnAttemptAnswers.questionVersionId })
+      .from(learnAttemptAnswers)
+      .innerJoin(learnAttempts, eq(learnAttempts.id, learnAttemptAnswers.attemptId))
+      .where(and(eq(learnAttempts.userId, userId), inArray(learnAttemptAnswers.id, answerIds)));
+    return new Map(rows.map((r) => [r.id, { answer: r.answer, time_spent_ms: r.time ?? null, question_version_id: r.qv }]));
+  }
+
   /** Job: tự nộp attempt exam quá hạn (worker, mỗi phút) */
   async expireOverdue(limit = 100): Promise<number> {
     const rows = await this.dbs.db

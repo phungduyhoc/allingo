@@ -10,6 +10,7 @@ import { OutboxService } from '../../shared/events/outbox.service.js';
 import { UserDirectory } from '../../shared/events/user-directory.js';
 import { decodeCursor, encodeCursor } from '../../shared/http/cursor.js';
 import { Conflict, NotFound } from '../../shared/http/errors.js';
+import { withUserEmails } from './admin-emails.js';
 import { getLogger } from '../../shared/telemetry/logger.js';
 import { CreditService } from './credit.service.js';
 import { EntitlementService } from './entitlement.service.js';
@@ -103,7 +104,7 @@ export class BillingAdminService {
     const txnMap = new Map(txns.map((t) => [t.id, { provider_txn_id: t.txn, merchant_ref: ((t.raw as Record<string, unknown> | null)?.merchant_ref as string | undefined) ?? null }]));
     const last = page[page.length - 1];
     return {
-      data: dtos.map((d, i) => ({ ...d, user_id: page[i]!.userId, payments: d.payments.map((p) => ({ ...p, ...(txnMap.get(p.id) ?? { provider_txn_id: null, merchant_ref: null }) })) })),
+      data: await withUserEmails(this.users, dtos.map((d, i) => ({ ...d, user_id: page[i]!.userId, payments: d.payments.map((p) => ({ ...p, ...(txnMap.get(p.id) ?? { provider_txn_id: null, merchant_ref: null }) })) }))),
       next_cursor: rows.length > q.limit && last ? encodeCursor({ t: last.createdAt.toISOString(), id: last.id }) : null,
     };
   }
@@ -178,11 +179,11 @@ export class BillingAdminService {
     const page = rows.slice(0, q.limit);
     const last = page[page.length - 1];
     return {
-      data: page.map(({ p, userId }) => {
+      data: await withUserEmails(this.users, page.map(({ p, userId }) => {
         const raw = (p.rawCallback ?? {}) as Record<string, unknown>;
         const flags = [raw.duplicate_order_payment ? 'duplicate_order_payment' : null, raw.reason === 'amount_mismatch' ? 'amount_mismatch' : null, raw.refund ? 'refunded_manual' : null].filter((x): x is string => !!x);
         return { id: p.id, order_id: p.orderId, user_id: userId, provider: p.provider === 'manual' ? 'mock' : p.provider, provider_txn_id: p.providerTxnId ?? null, merchant_ref: (raw.merchant_ref as string | undefined) ?? null, amount: Number(p.amount), currency: p.currency.trim(), status: p.status, signature_valid: p.signatureValid ?? null, created_at: p.createdAt.toISOString(), confirmed_at: p.confirmedAt?.toISOString() ?? null, flags };
-      }),
+      })),
       next_cursor: rows.length > q.limit && last ? encodeCursor({ t: last.p.createdAt.toISOString(), id: last.p.id }) : null,
     };
   }
@@ -209,6 +210,6 @@ export class BillingAdminService {
       .limit(q.limit + 1);
     const page = rows.slice(0, q.limit);
     const last = page[page.length - 1];
-    return { data: page.map((r) => ({ ...this.subscriptions.toDto(r.s, r.p, now), user_id: r.s.userId, created_at: r.s.createdAt.toISOString() })), next_cursor: rows.length > q.limit && last ? encodeCursor({ t: last.s.createdAt.toISOString(), id: last.s.id }) : null };
+    return { data: await withUserEmails(this.users, page.map((r) => ({ ...this.subscriptions.toDto(r.s, r.p, now), user_id: r.s.userId, created_at: r.s.createdAt.toISOString() }))), next_cursor: rows.length > q.limit && last ? encodeCursor({ t: last.s.createdAt.toISOString(), id: last.s.id }) : null };
   }
 }

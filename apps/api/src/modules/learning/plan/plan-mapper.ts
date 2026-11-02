@@ -61,6 +61,7 @@ const EVIDENCE: Record<string, { vi: string; en: string }> = {
   foundation_lesson: { vi: 'Tuần nền: củng cố kiến thức {section}.', en: 'Foundation week: strengthen {section} basics.' },
   simulation_mini: { vi: 'Tuần mô phỏng: làm đề mini tính giờ.', en: 'Simulation week: timed mini test.' },
   plan_adjust: { vi: 'Đã điều chỉnh theo check-in của bạn.', en: 'Adjusted after your check-in.' },
+  review_errors: { vi: 'Ôn lại {count} lỗi chưa hiểu cũ nhất trong sổ lỗi.', en: 'Review your {count} oldest open mistakes.' },
 };
 
 export function evidenceParams(raw: unknown): { code: string | null; params: Record<string, string | number> } {
@@ -79,6 +80,7 @@ export function evidenceText(code: string | null, params: Record<string, string 
 export function launchOf(t: Pick<TaskRow, 'taskType' | 'refType' | 'refId'>): PlanTask['launch'] {
   const base = { mode: null, test_set_id: null, section_id: null, lesson_id: null, vocab_list_id: null };
   if (t.taskType === 'checkin') return { ...base, kind: 'checkin' };
+  if (t.taskType === 'review_errors') return { ...base, kind: 'review_errors', mode: 'timed_drill' };
   if (!t.refType || !t.refId) return null;
   if (t.refType === 'lesson') return { ...base, kind: 'lesson', lesson_id: t.refId };
   if (t.refType === 'vocab_list') return { ...base, kind: 'vocab_list', vocab_list_id: t.refId };

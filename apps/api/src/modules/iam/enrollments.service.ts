@@ -62,6 +62,17 @@ export class EnrollmentsService {
   }
 
   /** S9 – nhiều enrollment theo id (learning: người học của các lộ trình cần nhắc) */
+  /** S10: trọng số FSRS-5 tối ưu theo (người dùng, chương trình) – learn.enrollments.fsrs_params */
+  async fsrsParams(userId: string, program: string): Promise<{ w?: number[]; model?: string } | null> {
+    const [row] = await this.dbs.db.select({ p: learnEnrollments.fsrsParams }).from(learnEnrollments).where(and(eq(learnEnrollments.userId, userId), eq(learnEnrollments.programCode, program))).limit(1);
+    return (row?.p as { w?: number[]; model?: string } | null) ?? null;
+  }
+
+  async setFsrsParams(userId: string, program: ProgramCode, params: Record<string, unknown>): Promise<void> {
+    const row = await this.ensure(userId, program);
+    await this.dbs.db.update(learnEnrollments).set({ fsrsParams: params }).where(eq(learnEnrollments.id, row.id));
+  }
+
   async byIds(ids: string[]): Promise<Row[]> {
     if (!ids.length) return [];
     return this.dbs.db.select().from(learnEnrollments).where(inArray(learnEnrollments.id, [...new Set(ids)]));

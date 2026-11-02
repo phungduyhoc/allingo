@@ -49,6 +49,8 @@ const runParam = z.object({ runId: z.uuid() });
 const runQuery = z.object({ format: z.enum(['json', 'csv']).default('json') });
 const runsQuery = z.object({ provider: paymentProviderCodeSchema.optional(), limit: z.coerce.number().int().min(1).max(100).default(30) });
 const jobParam = z.object({ job: z.enum(BILLING_JOBS) });
+/** v1.1 – S10: tham số chạy tay (chỉ admin) – `min_age_minutes` bỏ ngưỡng PAYMENT_RECONCILE_AFTER_MINUTES của payment.reconcile */
+const jobBody = z.object({ min_age_minutes: z.number().int().min(0).max(1440).optional() }).strict();
 const flagParam = z.object({ key: z.string().regex(/^ff\.[a-z0-9_]+(\.[a-z0-9_]+)+$/) });
 // S8: `rules.config` – cấu hình tính năng (vd ff.growth.referral: rewards, monthly_cap…)
 const flagBody = z.object({ enabled: z.boolean().optional(), rules: z.object({ percent: z.number().min(0).max(100).optional(), user_ids: z.array(z.uuid()).max(500).optional(), plan_kinds: z.array(z.string()).max(10).optional(), programs: z.array(z.string()).max(10).optional(), config: z.record(z.string(), z.unknown()).optional() }).optional() });
@@ -123,10 +125,11 @@ export class BillingAdminController {
   /** Chạy ngay một job billing (đơn kẹt, đối soát…) – inline xong trong 10 s → 200 + kết quả, nếu không 202 */
   @Post('billing/jobs/:job')
   @HttpCode(202)
-  @ApiZod({ responses: { 200: z.record(z.string(), z.unknown()), 202: z.record(z.string(), z.unknown()) } })
-  async runJob(@ZodParams(jobParam) p: z.infer<typeof jobParam>, @Res({ passthrough: true }) reply: FastifyReply) {
+  @ApiZod({ body: jobBody, responses: { 200: z.record(z.string(), z.unknown()), 202: z.record(z.string(), z.unknown()), 400: 'empty' } })
+  async runJob(@ZodParams(jobParam) p: z.infer<typeof jobParam>, @ZodBody(jobBody) body: z.infer<typeof jobBody>, @Res({ passthrough: true }) reply: FastifyReply) {
     const job: BillingJob = p.job;
-    const d = await this.jobs.dispatch('maintenance', job, `manual-${Date.now()}`, {});
+    const params = body.min_age_minutes !== undefined ? { min_age_minutes: body.min_age_minutes } : {};
+    const d = await this.jobs.dispatch('maintenance', job, `manual-${Date.now()}`, params);
     if (d.done) {
       let timer: NodeJS.Timeout | undefined;
       const result = await Promise.race([d.done, new Promise((r) => (timer = setTimeout(() => r(undefined), 10_000)))]).finally(() => clearTimeout(timer));
@@ -167,7 +170,7 @@ export class BillingAdminController {
   }
 
   @Get('billing/subscriptions')
-  @ApiZod({ query: adminSubscriptionsQuerySchema, responses: { 200: pageSchema(subscriptionSchema.extend({ user_id: z.uuid().nullable(), created_at: z.string() })) } })
+  @ApiZod({ query: adminSubscriptionsQuerySchema, responses: { 200: pageSchema(subscriptionSchema.extend({ user_id: z.uuid().nullable(), user_email: z.string().nullable().optional(), created_at: z.string() })) } })
   subscriptionsList(@ZodQuery(adminSubscriptionsQuerySchema) q: z.infer<typeof adminSubscriptionsQuerySchema>) {
     return this.admin.listSubscriptions(q);
   }

@@ -16,7 +16,6 @@ const programParam = z.object({ program: programCodeSchema });
 const levelQuery = z.object({ level: z.string().max(16).optional() });
 const idParam = z.object({ testSetId: z.uuid() });
 const lessonParam = z.object({ lessonId: z.uuid() });
-const listParam = z.object({ listId: z.uuid() });
 const programQuery = z.object({ program: programCodeSchema.default('toeic') });
 
 @ApiTags('Catalog')
@@ -122,20 +121,5 @@ export class CatalogController {
     if (!r) throw new NotFound('lesson', p.lessonId);
     return { id: r.lesson.id, program: r.lesson.programCode, kind: r.lesson.kind, title: r.lesson.title, summary: r.lesson.summary, est_minutes: r.lesson.estMinutes, is_free: r.lesson.isFree, steps: r.steps.map((s) => ({ step_no: s.sortOrder, type: s.stepType, content: s.content })) };
   }
-
-  @Public()
-  @Get('vocab/lists')
-  @ApiZod({ query: programQuery, responses: { 200: z.array(z.record(z.string(), z.unknown())) } })
-  async vocabLists(@ZodQuery(programQuery) q: z.infer<typeof programQuery>) {
-    const rows = await this.catalog.vocabLists(q.program);
-    return rows.map((l) => ({ id: l.id, program: l.programCode, kind: l.kind, title: l.title, is_free: l.isFree }));
-  }
-
-  @Public()
-  @Get('vocab/lists/:listId/items')
-  @ApiZod({ responses: { 200: z.array(z.record(z.string(), z.unknown())) } })
-  async vocabItems(@ZodParams(listParam) p: z.infer<typeof listParam>) {
-    const rows = await this.catalog.vocabListItems(p.listId);
-    return rows.map((r) => ({ id: r.item.id, headword: r.item.headword, pos: r.item.pos, ipa_uk: r.item.ipaUk, ipa_us: r.item.ipaUs, meanings: r.item.meanings, examples: r.item.examples, level: r.item.level, sort_order: r.sort }));
-  }
+  // S10: GET /vocab/lists* chuyển sang learning/VocabController (tiến độ SRS theo người học)
 }
