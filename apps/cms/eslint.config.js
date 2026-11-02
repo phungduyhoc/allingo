@@ -14,7 +14,7 @@ const browserGlobals = Object.fromEntries(
 export default [
   ...baseConfig,
   {
-    ignores: ['.next/**', 'media/**', 'src/payload-types.ts', 'src/app/(payload)/admin/importMap.js', 'next-env.d.ts'],
+    ignores: ['.next/**', 'media/**', 'migrations/**', 'src/payload-types.ts', 'src/app/(payload)/admin/importMap.js', 'next-env.d.ts'],
   },
   {
     files: ['**/*.{ts,tsx}'],

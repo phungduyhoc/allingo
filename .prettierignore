@@ -9,3 +9,5 @@ docs/spec/*.yaml
 *.generated.*
 payload-types.ts
 db/drizzle/migrations/*.sql
+# Migration Payload do `payload migrate:create` sinh – không sửa tay
+apps/cms/migrations/

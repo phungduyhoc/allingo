@@ -31,7 +31,7 @@ az extension add --name containerapp --upgrade --yes
    - `build` đẩy image `sha-<commit>`; `terraform-apply` (duyệt) tạo hạ tầng, app chạy image đó.
      Lần đầu mất ~25–40 phút (Postgres, Redis, environment). Postgres tự restart sau khi đặt `shared_preload_libraries`.
    - App khởi động trước khi có vai trò `allingo_app` → `/v1/health/ready` trả `degraded` (db = false) tới hết bước sau; bình thường.
-   - `migrate` (duyệt): job `$P-migrate` chạy `node migrate.mjs` bằng vai trò admin; sau đó job `$P-dbtools` tạo vai trò `allingo_app`
+   - `migrate` (duyệt): job `$P-migrate` chạy `node migrate.mjs` bằng vai trò admin; sau đó job `$P-dbtools` tạo vai trò `allingo_app`. CMS (schema `cms`) KHÔNG dùng push ở production: chạy `pnpm --filter @allingo/cms payload migrate` (thư mục `apps/cms/migrations`, bắt đầu từ `20261102_024739_initial`) trước khi deploy revision CMS mới; mỗi lần đổi collection/field phải `payload migrate:create <tên>` và commit migration
      (NOBYPASSRLS) + schema `cms` + quyền.
    - `deploy` (duyệt): tạo revision mới cho 4 app (lúc này DB đã có vai trò app) → `smoke`.
 5. Seed dữ liệu lõi (`pnpm db:seed --set core`) chưa có job riêng: chạy từ máy có kết nối VNet hoặc bổ sung job seed (việc tiếp theo).
