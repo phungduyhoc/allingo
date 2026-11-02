@@ -21,13 +21,15 @@ Biến môi trường (validate bằng Zod trong `src/env.ts`):
 | `NEXT_PUBLIC_DEFAULT_LOCALE` | `vi` | Locale mặc định (`vi`, `en`) |
 | `NEXT_PUBLIC_API_MOCK` | `0` | `1` → dùng `src/mock/mock-fetch.ts` thay API (chỉ dev/e2e; mã mock bị tree-shake ở production) |
 | `E2E_CHROME_CHANNEL` | – | `chrome` để Playwright dùng Google Chrome cài sẵn khi không tải được Chromium |
+| `E2E_BASE_URL` + `E2E_NO_SERVER=1` | – | Chạy e2e với server có sẵn (vd. bản `next start -p 3100` để kiểm tra PWA/offline trên production) |
+| `E2E_CHROME_ARGS` | – | Tham số Chrome thêm, vd. `--disable-web-security` khi web chạy ở cổng ngoài `CORS_ORIGINS` của API (:3100) |
 
 ## Cấu trúc
 
 ```
 src/app/[locale]/(marketing)   landing, /login, /signup          (SSG, header/footer marketing)
 src/app/[locale]/(app)         AuthGate (GET /me 401 → về landing)
-  (shell)/toeic/dashboard, toeic/test-sets, settings, attempts/[id]/result|review   (AppShell)
+  (shell)/toeic/dashboard, toeic/test-sets, settings, settings/notifications, notes, attempts/[id]/result|review   (AppShell)
   (exam)/attempts/[id]         Exam/Practice Mode toàn màn hình (không header app)
 src/app/[locale]/offline       trang fallback offline của service worker
 src/app/manifest.ts, src/app/sw.ts   PWA (manifest + service worker Serwist runtime)
@@ -41,6 +43,14 @@ e2e/exam-layout.spec.ts        Reading Part 5–7: thanh Part, đoạn văn + th
 e2e/ai-explain.spec.ts         AI (S5): Review → Giải thích SSE (chữ hiện dần) → 👍 + ghi chú → tải lại "Giải thích có sẵn" + đánh giá được nhớ/cập nhật,
                                lỗi AI + Thử lại (mock), lần explain thứ 11 → 429 (còn 0, giờ reset VN, toast, CTA → /pricing), kết quả: Free thẻ khoá,
                                Pro tạo "Phân tích của AI" → tải lại vẫn hiện, trang đề thi "Đề đầy đủ còn y lượt tháng này"
+e2e/tutor.spec.ts              Gia sư (S6): Review → "Hỏi gia sư" → "Vì sao đáp án C sai?" → SSE + trích dẫn (bấm cuộn tới câu) + 👍 → tải lại
+                               tiếp tục đúng thread, danh sách thread; injection → thông điệp từ chối; lỗi AI + Gửi lại (mock); đang thi → 403/ẩn nút
+e2e/dictionary.spec.ts         Tra từ (S6): nhấp đúp "invoice" → IPA/nghĩa/ví dụ/phát âm, chữ dở → gợi ý, thêm 5 từ vào SRS, câu dài → dịch AI,
+                               tải lại → "Bản dịch có sẵn"; Practice có tra từ, Exam Mode không
+e2e/notes.spec.ts              Ghi chú (S6): tự lưu (POST → PATCH), Markdown, tải lại vẫn hiện, "Ghi chú của tôi" tìm kiếm/mở câu/sửa/xoá, 2.000 ký tự
+e2e/pwa.spec.ts                PWA (S6): manifest, SW (dev: cờ allingo.sw.dev), cache không có API, offline → trang offline + đề đã xem (danh sách
+                               chỉ kiểm tra trên bản production), banner cài đặt lần 2, Web Push (grantPermissions; headless không có dịch vụ push →
+                               PushManager giả) + SW hiện thông báo qua CDP ServiceWorker.deliverPushMessage
 e2e/listening.spec.ts          Listening (S4): "Bắt đầu nghe", phát một lần không tua/tạm dừng, chuyển câu theo audio, tải lại tiếp tục, URL 403 → gia hạn,
                                Practice tua/tốc độ/lặp, timed_drill, L&R → Reading, kết quả L/R/Tổng, Review transcript (mock: toeic-listening-mini-01,
                                toeic-lr-mini-01; API: toeic-listening-01-drill-part1, toeic-mini-lr-01)
@@ -49,7 +59,8 @@ packages/ui/src                component dùng chung (Button, Card, Dialog/Sheet
 
 ## Ghi chú kỹ thuật
 
-- **PWA**: `@serwist/next` chỉ hỗ trợ webpack, Next 16 build bằng Turbopack nên service worker được đóng gói riêng bằng esbuild (`scripts/build-sw.mjs`, chạy ở `prebuild`). SW precache shell + cache ảnh/audio (stale-while-revalidate), **không cache API**; chỉ đăng ký ở production.
+- **PWA**: `@serwist/next` chỉ hỗ trợ webpack, Next 16 build bằng Turbopack nên service worker được đóng gói riêng bằng esbuild (`scripts/build-sw.mjs`, chạy ở `prebuild`). SW precache shell + cache ảnh/audio (stale-while-revalidate), **không cache API**; chỉ đăng ký ở production (bản dev: đặt `localStorage['allingo.sw.dev'] = '1'`, SW nhận `?dev=1`).
+  Chi tiết S6 ở mục "Sprint 6" bên dưới.
 - **Exam Mode (Sprint 3)**: màn một trang `features/attempt` – thanh Part (`[`/`]`), lưới câu theo Part (đã trả lời/đánh dấu/đang xem), Part 6–7 đoạn văn trái – câu hỏi phải với thanh kéo `SplitPane` (`@allingo/ui`, bàn phím ←/→/Home/End/Enter; mobile xếp dọc, đoạn văn thu gọn được), câu cùng `group_key`/passage hiển thị chung đoạn văn (`[Nhãn]` → tiêu đề phụ, mốc `[131]` tô sáng theo câu đang xem), chế độ tập trung (Z/Esc), cỡ chữ 3 mức (+/−, lưu `localStorage` `allingo.exam.prefs`, bọc try/catch); phím tắt 1–4/A–D, ←/→, F.
 - **Đồng hồ**: tính từ `expires_at` + `server_time`; cảnh báo 10′/5′/1′ bằng toast + vùng `aria-live`; hết giờ tự nộp. `PUT /answers` trả 409 (quá hạn + 30 s, hoặc đã nộp) → hàng đợi đóng, nộp (idempotent) rồi mở kết quả.
 - **Offline**: `DraftQueue` gộp lô (debounce 0,8 s, 10 s/lần, khi đổi câu/ẩn tab) và giữ nháp chưa gửi trong **IndexedDB** `allingo-drafts/drafts` (fallback bộ nhớ khi IndexedDB không dùng được; tự chuyển nháp localStorage của bản cũ). Màn làm bài chỉ dựng sau khi khôi phục xong; nháp + câu đang xem (`ui_state.current_question_id`) cục bộ đè dữ liệu server. Banner "Mất kết nối…" / "Đang lưu lại…". Sự kiện phiên: `tab_hidden`, `focus_lost`, `resume`, `part_switch`.
@@ -106,3 +117,47 @@ packages/ui/src                component dùng chung (Button, Card, Dialog/Sheet
   (chủ tác vụ, gửi lại = `updated: true`), entitlements `remaining` + `reset_at` 00:00 giờ VN, 429 `details.quota` sau 10 lượt explain/ngày (Free),
   chẩn đoán AI POST/GET (Pro demo `learner_pro@allingo.dev` / `Allingo@2026` tự tạo; Free → 403 upgrade; 10 credit), `ui_state` validate bằng Zod,
   timed_drill cộng thời lượng audio. Kịch bản lỗi AI: `window.__ALLINGO_MOCK_AI_FAIL__ = 'ai_failed' | 'ai_timeout'` (lượt AI kế tiếp lỗi, hoàn quota).
+
+## Sprint 6 – gia sư AI, tra từ, ghi chú, PWA
+
+- **Gia sư** – `features/tutor/`: `chat-state.ts` (reducer thuần, có test: send → start → delta (văn bản thuần của `reply_markdown`) →
+  result thay toàn bộ chữ stream + id server + `turns`; lỗi HTTP trước stream / `error` trong luồng / đóng khi chưa có `result`; gửi lại),
+  `use-tutor-chat.ts` (thread tạo khi gửi tin đầu – không tạo thread rỗng; `GET /ai/threads/{id}` + tải tin cũ qua `/messages?cursor`),
+  `tutor-provider.tsx` (trong AppShell; `openTutor(ctx)` từ câu ở Review → tiếp tục thread gần nhất cùng `question_version_id`/attempt, không
+  thì hội thoại mới; Dashboard → tự do; giữ hội thoại khi đóng/mở lại), `tutor-panel.tsx` (tải lười; desktop trượt phải không chặn trang,
+  mobile toàn màn hình; Esc đóng, trả focus; gợi ý "Vì sao X sai?", "Cho ví dụ khác" + `suggested_followups`; trích dẫn → cuộn tới
+  `div[data-qv]` của Review hoặc mở `/attempts/{id}/review?focus=<qv>`; 👍/👎 → `/ai/feedback`; bộ đếm lượt thread (`turns`), thread không
+  giới hạn → hạn mức ngày `ai_tutor`; 429 `scope=thread` → "Hội thoại này đã hết lượt" + tạo mới; 429 ngày/402 → thông báo hạn mức chung;
+  từ chối → `tutor.refusal.<code>`; lỗi `guard_unavailable` có thông điệp riêng). Markdown hiển thị bằng `lib/markdown.ts` (parse thuần, không HTML).
+- **Tra từ** – `features/dictionary/`: vùng tra từ đánh dấu `data-lookup` (đề bài `QuestionStem`, đoạn văn `PassagePane`, transcript, dẫn chứng,
+  đoạn văn Review); `LookupLayer` (một lớp mỗi trang: Review, màn làm bài khi mode practice/drill) nghe nhấp đúp / bôi đen (mouseup) / thả Shift /
+  `selectionchange` (thiết bị cảm ứng – chạm giữ), `selection.ts` (thuần: 1 từ / cụm 2–4 / câu > 4 → `ai=always`, câu ngữ cảnh ≤ 300 ký tự),
+  popover cạnh vùng chọn (mobile: tấm dưới đáy), `lookup-card.tsx` (IPA US/UK + phát âm `audio_url` hoặc `GET /tts` giọng en-US/en-GB, nghĩa,
+  ví dụ, collocations, gợi ý khi gõ sai, nhãn "AI dịch – cần kiểm tra" khi `needs_review`, "Bản dịch có sẵn" khi `cached`, nút SRS
+  `POST /me/srs/cards` theo `vocab_item_id` hoặc headword). Không mở khi Exam Mode / có bài thi đang làm.
+- **Ghi chú** – `features/notes/`: `autosave.ts` (debounce 0,8 s, lưu nối tiếp POST → PATCH, lỗi giữ để "Lưu lại", có test), `note-editor.tsx`
+  (Review: mỗi câu một ghi chú từ `ReviewItem.note`; xoá hết chữ = DELETE; tối đa 2.000 ký tự; Exam Mode → chỉ đọc), trang `/notes`
+  ("Ghi chú của tôi": tìm kiếm debounce, cursor, mở câu trong bài xem lại, sửa/xoá tại chỗ).
+- **Khoá Exam Mode** – `lib/exam-lock.ts`: `useExamLock()` = có attempt exam `in_progress` (`/me/attempts`) HOẶC một 403 `exam_mode_locked` mới
+  hơn lần tải danh sách (bài thi mở ở tab/thiết bị khác) → ẩn gia sư/tra từ/ghi chú/giải thích + `ExamLockBanner` ("Tiếp tục bài thi").
+- **PWA** – manifest (`app/manifest.ts`: id, scope, shortcuts, icon 192/512/maskable), SW `app/sw.ts` + quy tắc thuần `lib/pwa/sw-routes.ts`
+  (có test: API – kể cả media ký trên origin API, SSE, `/api/*` – luôn NetworkOnly; `_next/static` CacheFirst; ảnh/audio SWR; điều hướng mạng →
+  lỗi thì chuyển sang `/vi|en/offline#from=<đường dẫn>`). Trang offline được SW tự lưu đúng URL lúc cài (không qua precache Serwist vì
+  `?__WB_REVISION__` làm Next không hydrate) kèm JS/CSS đọc từ HTML; danh sách "đề đã xem" (`features/offline/viewed-store.ts`, chỉ tên đề +
+  đường dẫn) ghi ở màn làm bài/kết quả/xem lại. Banner cài đặt (`features/pwa/install-banner.tsx`) sau 2 lượt truy cập (beforeinstallprompt; iOS:
+  hướng dẫn Chia sẻ → Thêm vào MH chính, "Để sau" 14 ngày). Web Push (`features/pwa/use-push.ts`): chỉ xin quyền khi bấm → VAPID →
+  `pushManager.subscribe` → `POST /me/push-subscriptions`; SW xử lý `push` (title/body null → chuỗi `push.<template>` nhúng lúc build SW từ
+  `packages/i18n`) và `notificationclick` (chỉ đường dẫn cùng origin, thêm locale). Trang `/settings/notifications`: kênh, giờ yên lặng, giờ nhắc
+  học, thiết bị đã đăng ký.
+- **Mock S6** – `src/mock/learning-tools.ts` + `src/mock/dictionary.ts` (20 từ tự biên soạn: invoice, shipment, delivery…; từ khác → "AI dịch mô
+  phỏng" có cache), threads SSE (từ chối `injection` khi tin chứa "ignore previous instructions"), lượt/thread Free 20, TTS (wav demo), SRS idempotent,
+  ghi chú (lọc HTML như API), push (khoá VAPID giả hợp lệ), Exam Mode 403. `window.__ALLINGO_MOCK_SYNC__ = true` → mock đọc lại trạng thái từ
+  localStorage trước mỗi yêu cầu (e2e nhiều tab dùng chung "máy chủ").
+- **Lighthouse (S6, 2026-11-02)** – bản `pnpm build && next start -p 3100`, `/vi/toeic/dashboard` đăng nhập khách (hồ sơ Chrome tạo sẵn
+  phiên + `--disable-storage-reset`; `--disable-web-security` vì API chỉ CORS :3000), Chrome for Testing 153: Lighthouse 13.6 mobile
+  Performance 74–76 (TBT 1,2–1,6 s, LCP 0,6–0,8 s, CLS 0,013), desktop 97; Accessibility 100; Best practices 100; SEO 100.
+  Lighthouse 11.7.1 (còn hạng mục PWA): installable-manifest, maskable-icon, splash, themed-omnibox đều đạt. Đã sửa: thứ tự tiêu đề
+  dashboard (h2 ẩn), `<dl>` sai cấu trúc ở thẻ đề, nút gia sư giữ chỗ khi chờ (CLS).
+- **Giới hạn đã biết**: bản `next dev` không hydrate được HTML trang offline lưu sẵn (HTML dev mang request id kênh debug `self.__next_r`) → e2e
+  kiểm tra danh sách đề đã xem trên bản production; Chrome headless không có dịch vụ push (`Registration failed - permission denied`) → e2e dùng
+  PushManager giả để kiểm tra luồng đăng ký với API và CDP để kiểm tra SW hiển thị thông báo.

@@ -6,6 +6,9 @@ import { defineConfig, devices } from '@playwright/test';
  */
 const useMock = process.env.E2E_REAL_API !== '1';
 const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
+// Tham số Chrome thêm (vd. `--disable-web-security` khi chạy bản production ở cổng khác 3000 mà API chỉ cho CORS :3000)
+const chromeArgs = process.env.E2E_CHROME_ARGS?.split(' ').filter(Boolean) ?? [];
+const launchOptions = chromeArgs.length ? { args: chromeArgs } : undefined;
 
 export default defineConfig({
   testDir: './e2e',
@@ -22,8 +25,8 @@ export default defineConfig({
   },
   projects: [
     // E2E_CHROME_CHANNEL=chrome để dùng Google Chrome cài sẵn trên máy khi chưa tải được Chromium của Playwright
-    { name: 'chromium', use: { ...devices['Desktop Chrome'], channel: process.env.E2E_CHROME_CHANNEL } },
-    { name: 'mobile', use: { ...devices['Pixel 7'], channel: process.env.E2E_CHROME_CHANNEL } },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], channel: process.env.E2E_CHROME_CHANNEL, launchOptions } },
+    { name: 'mobile', use: { ...devices['Pixel 7'], channel: process.env.E2E_CHROME_CHANNEL, launchOptions } },
   ],
   webServer: process.env.E2E_NO_SERVER
     ? undefined

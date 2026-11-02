@@ -1,4 +1,4 @@
-import type { AnswerInput, AttemptAiDiagnosis, AttemptMode, AttemptResult, Enrollment, Explanation, User } from '@allingo/schemas';
+import type { AnswerInput, AttemptAiDiagnosis, AttemptMode, AttemptResult, Enrollment, Explanation, Note, NotificationPreferences, RefusalCode, TutorCitation, User } from '@allingo/schemas';
 
 /** Trạng thái "máy chủ" giả lập, lưu localStorage để tải lại trang vẫn giữ phiên/nháp */
 
@@ -53,12 +53,51 @@ export interface MockState {
   feedback: Record<string, { id: string; user_id: string; rating: string; comment: string | null }>;
   /** Số dư credit AI theo user */
   credits: Record<string, number>;
+  /** S6: hội thoại gia sư (learn.chat_threads/chat_messages) */
+  threads: Record<string, MockThreadRecord>;
+  /** S6: ghi chú (learn.notes) */
+  notes: Record<string, Note & { user_id: string }>;
+  /** S6: thẻ SRS vocab – khoá `${user_id}|${ref}` */
+  srsCards: Record<string, { id: string; user_id: string; ref_id: string; headword: string; created_at: string; context: string | null }>;
+  /** S6: ai.translation_cache giả lập – khoá term|context|locale */
+  translations: Record<string, string>;
+  /** S6: ai.tts_cache giả lập – khoá voice|text */
+  tts: Record<string, string>;
+  /** S6: ops.notification_preferences */
+  prefs: Record<string, NotificationPreferences>;
+  /** S6: ops.push_subscriptions */
+  pushSubs: Record<string, { id: string; user_id: string; endpoint: string; keys: { p256dh: string; auth: string }; user_agent: string | null; locale: string | null; created_at: string }>;
+}
+
+export interface MockMessageRecord {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  ai_task_id: string | null;
+  created_at: string;
+  refused?: boolean;
+  refusal_code?: RefusalCode | null;
+  suggested_followups?: string[];
+  citations?: TutorCitation[];
+}
+
+export interface MockThreadRecord {
+  id: string;
+  user_id: string;
+  program: string;
+  title: string | null;
+  context: { kind: 'attempt' | 'question' | 'free'; attempt_id?: string; question_version_id?: string; mode: 'text' };
+  created_at: string;
+  updated_at: string;
+  /** Lượt người học đã gửi (không tính tin bị từ chối) */
+  turns_used: number;
+  messages: MockMessageRecord[];
 }
 
 const KEY = 'allingo.mock.v1';
 
 export function emptyState(): MockState {
-  return { users: {}, sessionUserId: null, attempts: {}, enrollments: {}, explanations: {}, usage: {}, xp: {}, aiTasks: {}, feedback: {}, credits: {} };
+  return { users: {}, sessionUserId: null, attempts: {}, enrollments: {}, explanations: {}, usage: {}, xp: {}, aiTasks: {}, feedback: {}, credits: {}, threads: {}, notes: {}, srsCards: {}, translations: {}, tts: {}, prefs: {}, pushSubs: {} };
 }
 
 export function loadState(): MockState {

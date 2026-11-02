@@ -33,16 +33,17 @@ export function TestSetCard({ summary, onOpen, busy, compact = false }: { summar
           <h3 className="mt-2 line-clamp-2 text-base font-semibold break-words sm:text-lg">{L(summary.title)}</h3>
         </div>
       </div>
-      <dl className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-        <dd className="tabular font-medium text-foreground">{tc('questions', { count: summary.question_count })}</dd>
-        <div className="inline-flex items-center gap-1">
+      {/* Danh sách thông tin (trước đây <dl> chỉ có <dd> – sai cấu trúc, Lighthouse a11y "definition-list") */}
+      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+        <li className="tabular font-medium text-foreground">{tc('questions', { count: summary.question_count })}</li>
+        <li className="inline-flex items-center gap-1">
           <Clock className="size-3.5" aria-hidden />
-          <dd>{summary.duration_sec ? t('duration', { minutes: Math.round(summary.duration_sec / 60) }) : t('noLimit')}</dd>
-        </div>
-        {!compact ? <dd>{t('attemptsCount', { count: summary.attempts_count })}</dd> : null}
-        {summary.best_score !== null ? <dd className="text-foreground">{t('best', { score: summary.best_score })}</dd> : null}
-        {!compact && summary.last_score !== null ? <dd>{t('last', { score: summary.last_score })}</dd> : null}
-      </dl>
+          {summary.duration_sec ? t('duration', { minutes: Math.round(summary.duration_sec / 60) }) : t('noLimit')}
+        </li>
+        {!compact ? <li>{t('attemptsCount', { count: summary.attempts_count })}</li> : null}
+        {summary.best_score !== null ? <li className="text-foreground">{t('best', { score: summary.best_score })}</li> : null}
+        {!compact && summary.last_score !== null ? <li>{t('last', { score: summary.last_score })}</li> : null}
+      </ul>
       <div className="mt-auto flex items-center justify-between gap-3">
         {locked ? <p className="text-xs text-muted-foreground">{t('lockedHint')}</p> : <span />}
         <Button variant={locked ? 'outline' : 'navy'} size="sm" disabled={locked || busy} onClick={() => onOpen(summary)} aria-label={`${t('start')}: ${L(summary.title)}`}>

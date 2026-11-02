@@ -29,6 +29,7 @@ import { SCALE_INFO, TOEIC_PART_SKILL, diagnoseAttempt, toeicLr, toeicLrEstimate
 import { env } from '@/env';
 import { MOCK_PROGRAMS, MOCK_SUBSKILL_OF_TAG, MOCK_TEST_SETS, type MockQuestion, type MockTestSet } from './fixtures';
 import { loadState, saveState, type MockAttemptRecord, type MockState, type MockUserRecord } from './state';
+import { latestNoteFor, learningToolRoutes } from './learning-tools';
 
 /**
  * fetch giả lập cho dev/e2e khi NEXT_PUBLIC_API_MOCK=1. Bám hợp đồng docs/spec/allingo-openapi.yaml + Zod
@@ -896,6 +897,8 @@ export function createMockFetch(): typeof fetch {
           audio_plays: a.audio_plays?.[q.question_id] ?? 0,
           error_entry_id: null,
           community_correct_rate: q.community_correct_rate,
+          // S6: ghi chú của người học cho câu này
+          note: latestNoteFor(state, u.id, q.question_version_id, a.id),
         });
       }
       return json(200, { attempt_id: a.id, items });
@@ -989,6 +992,28 @@ export function createMockFetch(): typeof fetch {
       if (!a.ai_diagnosis) return error(404, 'not_found', 'attempt_diagnosis not found');
       return json(200, { ...a.ai_diagnosis, attempt_id: a.id, cached: true } satisfies AttemptAiDiagnosis);
     }),
+
+    // --------------------------------------------------------------------- S6: gia sư, tra từ, TTS, SRS, ghi chú, Web Push
+    ...learningToolRoutes({
+      state,
+      persist,
+      route,
+      json,
+      error,
+      empty,
+      sse,
+      uuid,
+      nowIso,
+      requireUser,
+      openExamId: (userId) => Object.values(state.attempts).find((a) => a.user_id === userId && a.status === 'in_progress' && a.mode === 'exam')?.id ?? null,
+      quotaExceeded,
+      consumeQuota,
+      refundQuota,
+      quotaLimit: (u, feature) => quotaFor(u, feature)?.limit ?? null,
+      recordTask,
+      findQuestionByVersion: (qv) => allQuestions().find((q) => q.question_version_id === qv),
+      takeAiFailure: takeMockAiFailure,
+    }),
   ];
 
   const summarize = (t: MockTestSet, userId: string | null) => {
@@ -1014,6 +1039,9 @@ export function createMockFetch(): typeof fetch {
   return async (input, init) => {
     // Giả lập mất mạng như fetch thật (Playwright context.setOffline → navigator.onLine = false)
     if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new TypeError('Failed to fetch');
+    // E2E nhiều tab: `window.__ALLINGO_MOCK_SYNC__ = true` → đọc lại trạng thái từ localStorage trước mỗi yêu cầu
+    // (như một máy chủ dùng chung – vd. bài thi bắt đầu ở tab khác khoá gia sư ở tab này)
+    if (typeof window !== 'undefined' && (window as unknown as { __ALLINGO_MOCK_SYNC__?: unknown }).__ALLINGO_MOCK_SYNC__ === true) Object.assign(state, loadState());
     const req = input instanceof Request ? input : new Request(input, init);
     const url = new URL(req.url);
     const base = new URL(env.apiUrl);

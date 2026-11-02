@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 /** Dùng chung cho các spec Sprint 3. REAL = chạy với API thật (E2E_REAL_API=1, cần seed demo). */
 export const REAL = process.env.E2E_REAL_API === '1';
@@ -19,7 +19,11 @@ export async function startAsGuest(page: Page): Promise<void> {
 }
 
 /** Mở đề theo mã (mock và seed demo dùng mã khác nhau) và bắt đầu ở chế độ đã chọn; trả attempt id */
-export async function startTestSet(page: Page, code: { mock: string; real: string }, mode: 'exam' | 'practice'): Promise<string> {
+export async function startTestSet(
+  page: Page,
+  code: { mock: string; real: string },
+  mode: 'exam' | 'practice',
+): Promise<string> {
   await page.goto('/vi/toeic/test-sets');
   await page
     .getByTestId(`test-set-${REAL ? code.real : code.mock}`)
@@ -61,4 +65,43 @@ export async function draftsInIndexedDb(page: Page, attemptId: string): Promise<
       db.close();
     }
   }, attemptId);
+}
+
+/**
+ * S6 – chọn chữ trong một vùng tra từ (`[data-lookup]`): tìm `text` trong các text node của `root`.
+ * `how = 'dblclick'` → nhấp đúp thật vào giữa từ (trình duyệt tự chọn từ); `'select'` → đặt vùng chọn bằng Range rồi phát
+ * `mouseup` như khi người học bôi đen bằng chuột. Trả false nếu không thấy chữ.
+ */
+export async function selectInZone(
+  page: Page,
+  root: Locator,
+  text: string,
+  how: 'dblclick' | 'select' = 'select',
+): Promise<boolean> {
+  const rect = await root.evaluate(
+    (el, { needle, mode }) => {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const idx = (n.textContent ?? '').indexOf(needle);
+        if (idx < 0) continue;
+        const range = document.createRange();
+        range.setStart(n, idx);
+        range.setEnd(n, idx + needle.length);
+        (n.parentElement ?? el).scrollIntoView({ block: 'center', behavior: 'instant' });
+        const r = range.getBoundingClientRect();
+        if (mode === 'select') {
+          const sel = window.getSelection()!;
+          sel.removeAllRanges();
+          sel.addRange(range);
+          document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
+        }
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      }
+      return null;
+    },
+    { needle: text, mode: how },
+  );
+  if (!rect) return false;
+  if (how === 'dblclick') await page.mouse.dblclick(rect.x, rect.y);
+  return true;
 }

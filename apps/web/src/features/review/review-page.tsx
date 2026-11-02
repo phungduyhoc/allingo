@@ -2,11 +2,15 @@
 
 import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ChevronDown, ChevronUp, Lock } from 'lucide-react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Alert, AlertDescription, Button, buttonVariants, cn, NativeSelect, Tabs, TabsList, TabsTrigger } from '@allingo/ui';
+import { Button, buttonVariants, NativeSelect, Tabs, TabsList, TabsTrigger } from '@allingo/ui';
 import { Link } from '@/i18n/navigation';
-import { useAttemptResult, useAttemptReview, useMyAttempts } from '@/lib/queries';
+import { useAttemptResult, useAttemptReview } from '@/lib/queries';
+import { markExamLocked, useExamLock } from '@/lib/exam-lock';
+import { ExamLockBanner } from '@/features/exam-lock/exam-lock-banner';
+import { LookupLayer } from '@/features/dictionary/lookup-layer';
+import { recordViewed } from '@/features/offline/viewed-store';
 import { QuotaLeft } from '@/features/quota/quota-ui';
 import { CardSkeleton, EmptyState, ErrorState } from '@/components/states';
 import { PageHeader } from '@/components/page-header';
@@ -14,7 +18,18 @@ import { useSectionLabel } from '@/features/attempt/section-label';
 import { ReviewAudioGroup, ReviewItemCard } from './review-item';
 import { useMediaUrls } from '@/features/attempt/use-media-urls';
 import type { ReviewItem } from '@/lib/types';
-import { parseReviewFilters, reviewApiQuery, reviewFiltersReducer, reviewFiltersToSearch, stepWrong, wrongIndices, wrongPosition, type ReviewFilter, type ReviewFilterAction, type ReviewFilters } from './review-filters';
+import {
+  parseReviewFilters,
+  reviewApiQuery,
+  reviewFiltersReducer,
+  reviewFiltersToSearch,
+  stepWrong,
+  wrongIndices,
+  wrongPosition,
+  type ReviewFilter,
+  type ReviewFilterAction,
+  type ReviewFilters,
+} from './review-filters';
 
 /**
  * Xem lại: lọc Tất cả / Câu sai / Đã đánh dấu + theo Part bằng tham số API (only_wrong/flagged/section), trạng thái
@@ -52,9 +67,10 @@ export function ReviewPage({ attemptId }: { attemptId: string }) {
   const media = useMediaUrls(attemptId, mediaSource);
   // Part 3/4: câu liên tiếp cùng hội thoại/bài nói → một đầu nhóm (nghe lại cả nhóm + transcript) trước câu đầu tiên đang hiển thị
   const groupHeads = React.useMemo(() => {
-    const keyOf = (i: ReviewItem) => (i.question.passage?.kind === 'audio_script' ? (i.question.group_key ?? i.question.passage.id) : null);
+    const keyOf = (i: ReviewItem) =>
+      i.question.passage?.kind === 'audio_script' ? (i.question.group_key ?? i.question.passage.id) : null;
     const heads = new Map<number, ReviewItem[]>();
-    for (let i = 0; i < items.length; ) {
+    for (let i = 0; i < items.length;) {
       const key = keyOf(items[i]!);
       let j = i;
       while (key && j + 1 < items.length && keyOf(items[j + 1]!) === key) j++;
@@ -83,13 +99,28 @@ export function ReviewPage({ attemptId }: { attemptId: string }) {
   };
   const position = wrongPosition(wrong, cursor);
 
-  // Exam Mode (CLAUDE.md §5.8): đang có bài thi chưa nộp → API trả 403 cho giải thích → ẩn nút ngay từ đầu;
-  // biết muộn (403 từ một lần bấm) cũng khoá mọi câu còn lại
-  const exams = useMyAttempts({ status: 'in_progress', mode: 'exam' }, { staleTime: 0 });
-  const openExam = exams.data?.data.find((a) => a.status === 'in_progress' && a.mode === 'exam' && a.id !== attemptId) ?? null;
-  const [lockedByApi, setLockedByApi] = React.useState(false);
-  const onExamLocked = React.useCallback(() => setLockedByApi(true), []);
-  const examLocked = !!openExam || lockedByApi;
+  // Exam Mode (CLAUDE.md §5.8, ADR-0028): đang có bài thi chưa nộp → API trả 403 cho giải thích/gia sư/tra từ/ghi chú (ghi)
+  // → ẩn nút ngay từ đầu (/me/attempts?status=in_progress&mode=exam); biết muộn (403 từ một lần bấm) cũng khoá mọi câu
+  const lock = useExamLock(attemptId);
+  const onExamLocked = React.useCallback(() => markExamLocked(), []);
+  const examLocked = lock.locked;
+
+  // "Đề đã xem" cho trang offline
+  React.useEffect(() => {
+    recordViewed({ id: attemptId, kind: 'review', title: null, href: `/attempts/${attemptId}/review` });
+  }, [attemptId]);
+
+  // ?focus=<question_version_id> (từ trích dẫn gia sư / "Ghi chú của tôi") → cuộn tới câu một lần sau khi tải
+  const focusQv = searchParams.get('focus');
+  const focusedRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!focusQv || focusedRef.current === focusQv || items.length === 0) return;
+    const el = document.querySelector<HTMLElement>(`[data-qv="${CSS.escape(focusQv)}"]`);
+    if (!el) return;
+    focusedRef.current = focusQv;
+    el.scrollIntoView({ block: 'start' });
+    el.focus({ preventScroll: true });
+  }, [focusQv, items]);
 
   return (
     <div className="space-y-6 pb-20" data-testid="review-page">
@@ -102,21 +133,15 @@ export function ReviewPage({ attemptId }: { attemptId: string }) {
         }
       />
       {examLocked ? (
-        <Alert variant="info" data-testid="review-exam-lock">
-          <Lock aria-hidden />
-          <AlertDescription className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <span>{t('examLockBanner')}</span>
-            {openExam ? (
-              <Link href={`/attempts/${openExam.id}`} className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
-                {t('continueExam')}
-              </Link>
-            ) : null}
-          </AlertDescription>
-        </Alert>
+        <ExamLockBanner attemptId={lock.attemptId} testId="review-exam-lock" />
       ) : (
         <QuotaLeft feature="ai_explain" />
       )}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" role="group" aria-label={t('filterLabel')}>
+      <div
+        className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+        role="group"
+        aria-label={t('filterLabel')}
+      >
         <Tabs value={filters.filter} onValueChange={(v) => apply({ type: 'filter', filter: v as ReviewFilter })}>
           <TabsList aria-label={t('filterLabel')}>
             <TabsTrigger value="all" data-testid="review-filter-all">
@@ -130,7 +155,13 @@ export function ReviewPage({ attemptId }: { attemptId: string }) {
             </TabsTrigger>
           </TabsList>
         </Tabs>
-        <NativeSelect aria-label={t('filterSection')} value={filters.section ?? 'all'} onChange={(e) => apply({ type: 'section', section: e.target.value === 'all' ? null : e.target.value })} className="sm:w-56" data-testid="review-section">
+        <NativeSelect
+          aria-label={t('filterSection')}
+          value={filters.section ?? 'all'}
+          onChange={(e) => apply({ type: 'section', section: e.target.value === 'all' ? null : e.target.value })}
+          className="sm:w-56"
+          data-testid="review-section"
+        >
           <option value="all">{t('allSections')}</option>
           {sections.map((s) => (
             <option key={s} value={s}>
@@ -158,8 +189,20 @@ export function ReviewPage({ attemptId }: { attemptId: string }) {
             {items.map((item, i) => (
               <React.Fragment key={item.question.question_id}>
                 {groupHeads.has(i) ? <ReviewAudioGroup items={groupHeads.get(i)!} media={media} /> : null}
-                <div id={`review-${item.question.question_id}`} tabIndex={-1} className="scroll-mt-20 rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40">
-                  <ReviewItemCard item={item} number={item.question.order_no} attemptId={attemptId} media={media} examLocked={examLocked} onExamLocked={onExamLocked} />
+                <div
+                  id={`review-${item.question.question_id}`}
+                  data-qv={item.question.question_version_id}
+                  tabIndex={-1}
+                  className="scroll-mt-20 rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 data-[flash=true]:ring-[3px] data-[flash=true]:ring-accent/60"
+                >
+                  <ReviewItemCard
+                    item={item}
+                    number={item.question.order_no}
+                    attemptId={attemptId}
+                    media={media}
+                    examLocked={examLocked}
+                    onExamLocked={onExamLocked}
+                  />
                 </div>
               </React.Fragment>
             ))}
@@ -169,20 +212,46 @@ export function ReviewPage({ attemptId }: { attemptId: string }) {
 
       {/* Điều hướng theo lỗi: dính đáy màn hình */}
       {!review.isPending && !review.isError && items.length > 0 ? (
-        <div className="sticky bottom-3 z-20 mx-auto flex w-fit items-center gap-2 rounded-full border border-border bg-card/95 p-1.5 shadow-lg backdrop-blur" data-testid="wrong-nav">
-          <Button variant="ghost" size="sm" className="rounded-full" onClick={() => jump(-1)} disabled={stepWrong(wrong, cursor, -1) === null} data-testid="prev-wrong">
+        <div
+          className="sticky bottom-3 z-20 mx-auto flex w-fit items-center gap-2 rounded-full border border-border bg-card/95 p-1.5 shadow-lg backdrop-blur"
+          data-testid="wrong-nav"
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            className="rounded-full"
+            onClick={() => jump(-1)}
+            disabled={stepWrong(wrong, cursor, -1) === null}
+            data-testid="prev-wrong"
+          >
             <ChevronUp aria-hidden />
             {t('prevWrong')}
           </Button>
-          <span className="tabular min-w-20 text-center text-xs font-semibold text-muted-foreground" aria-live="polite" data-testid="wrong-position">
-            {position > 0 ? t('wrongNav', { current: position, total: wrong.length }) : t('wrongNavIdle', { total: wrong.length })}
+          <span
+            className="tabular min-w-20 text-center text-xs font-semibold text-muted-foreground"
+            aria-live="polite"
+            data-testid="wrong-position"
+          >
+            {position > 0
+              ? t('wrongNav', { current: position, total: wrong.length })
+              : t('wrongNavIdle', { total: wrong.length })}
           </span>
-          <Button variant="navy" size="sm" className="rounded-full" onClick={() => jump(1)} disabled={stepWrong(wrong, cursor, 1) === null} data-testid="next-wrong">
+          <Button
+            variant="navy"
+            size="sm"
+            className="rounded-full"
+            onClick={() => jump(1)}
+            disabled={stepWrong(wrong, cursor, 1) === null}
+            data-testid="next-wrong"
+          >
             {t('nextWrong')}
             <ChevronDown aria-hidden />
           </Button>
         </div>
       ) : null}
+
+      {/* S6: tra từ khi chọn chữ trong đề/đoạn văn/transcript (không mở khi đang có bài thi) */}
+      <LookupLayer enabled={!examLocked} source={{ type: 'review', attemptId }} />
     </div>
   );
 }

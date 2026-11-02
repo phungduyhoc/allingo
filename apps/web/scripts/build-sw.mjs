@@ -6,7 +6,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -16,6 +16,18 @@ const out = resolve(root, 'public/sw.js');
 const buildId = process.env.SW_BUILD_ID ?? randomUUID().slice(0, 8);
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/v1';
 const apiOrigin = new URL(apiUrl).origin;
+// Chuỗi thông báo đẩy (push.<template>.title|body) nhúng vào SW – SW không dùng được next-intl
+const messagesDir = resolve(root, '../../packages/i18n/src/messages');
+const pushI18n = Object.fromEntries(
+  ['vi', 'en'].map((locale) => {
+    try {
+      const messages = JSON.parse(readFileSync(resolve(messagesDir, `${locale}.json`), 'utf8'));
+      return [locale, messages.push ?? {}];
+    } catch {
+      return [locale, {}];
+    }
+  }),
+);
 
 mkdirSync(dirname(out), { recursive: true });
 const bin = resolve(root, 'node_modules/.bin/esbuild');
@@ -35,7 +47,8 @@ execFileSync(
     `--outfile=${out}`,
     '--define:process.env.NODE_ENV="production"',
     `--define:__SW_BUILD_ID="${buildId}"`,
-    `--define:__API_ORIGIN="${apiOrigin}"`,
+    `--define:__API_URL=${JSON.stringify(new URL(apiUrl).href)}`,
+    `--define:__PUSH_I18N=${JSON.stringify(pushI18n)}`,
   ],
   { stdio: 'inherit', cwd: root },
 );

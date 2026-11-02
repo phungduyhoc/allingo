@@ -14,8 +14,12 @@ import { StartAttemptDialog } from '@/features/test-sets/start-attempt-dialog';
 import { useStartTestSet } from '@/features/test-sets/use-start-test-set';
 import { QuotaLeft, ResetHint } from '@/features/quota/quota-ui';
 import { quotaOf } from '@/lib/quota';
+import { DashboardTutorCard } from '@/features/tutor/tutor-entry';
 
-const TrendChart = dynamic(() => import('./trend-chart'), { ssr: false, loading: () => <Skeleton className="h-44 w-full" /> });
+const TrendChart = dynamic(() => import('./trend-chart'), {
+  ssr: false,
+  loading: () => <Skeleton className="h-44 w-full" />,
+});
 
 const PROGRAM = 'toeic';
 const SHOWN_QUOTAS = ['mini_test', 'part_drill', 'ai_explain', 'full_test'] as const;
@@ -45,7 +49,8 @@ export function DashboardPage() {
         }
       />
 
-      {/* Chỉ số chính */}
+      {/* Chỉ số chính (tiêu đề ẩn giữ thứ tự h1 → h2 → h3 của thẻ – Lighthouse a11y "heading-order") */}
+      <h2 className="sr-only">{t('statsTitle')}</h2>
       {stats.isPending ? (
         <div className="grid gap-4 sm:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -64,7 +69,10 @@ export function DashboardPage() {
             <CardContent>
               {stats.data.current_estimate !== null ? (
                 <div className="flex items-baseline gap-2">
-                  <span className="tabular text-4xl font-extrabold tracking-tight text-navy dark:text-foreground" data-testid="estimate">
+                  <span
+                    className="tabular text-4xl font-extrabold tracking-tight text-navy dark:text-foreground"
+                    data-testid="estimate"
+                  >
                     {stats.data.current_estimate}
                   </span>
                   <Badge variant="gold">{tc('estimated')}</Badge>
@@ -72,17 +80,28 @@ export function DashboardPage() {
               ) : (
                 <p className="text-sm text-muted-foreground">{t('estimateNone')}</p>
               )}
-              <p className="mt-2 text-xs text-muted-foreground">{stats.data.target !== null ? t('estimateTarget', { target: stats.data.target }) : t('estimateNoTarget')}</p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {stats.data.target !== null
+                  ? t('estimateTarget', { target: stats.data.target })
+                  : t('estimateNoTarget')}
+              </p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex-row items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground">{t('streakTitle')}</CardTitle>
-              <Flame className={cn('size-4', stats.data.streak.current > 0 ? 'text-accent' : 'text-muted-foreground')} aria-hidden />
+              <Flame
+                className={cn('size-4', stats.data.streak.current > 0 ? 'text-accent' : 'text-muted-foreground')}
+                aria-hidden
+              />
             </CardHeader>
             <CardContent>
-              <div className="tabular text-4xl font-extrabold tracking-tight">{t('streakDays', { count: stats.data.streak.current })}</div>
-              <p className="mt-2 text-xs text-muted-foreground">{t('streakLongest', { count: stats.data.streak.longest })}</p>
+              <div className="tabular text-4xl font-extrabold tracking-tight">
+                {t('streakDays', { count: stats.data.streak.current })}
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {t('streakLongest', { count: stats.data.streak.longest })}
+              </p>
             </CardContent>
           </Card>
           <Card>
@@ -93,7 +112,8 @@ export function DashboardPage() {
             <CardContent>
               <div className="tabular text-4xl font-extrabold tracking-tight">{fmt.number(stats.data.xp.total)}</div>
               <p className="mt-2 text-xs text-muted-foreground">
-                {t('xpThisWeek', { count: stats.data.xp.this_week })} · {t('minutesThisWeek', { count: stats.data.minutes_this_week })}
+                {t('xpThisWeek', { count: stats.data.xp.this_week })} ·{' '}
+                {t('minutesThisWeek', { count: stats.data.minutes_this_week })}
               </p>
             </CardContent>
           </Card>
@@ -127,7 +147,13 @@ export function DashboardPage() {
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 {miniSets.data.data.slice(0, 2).map((s) => (
-                  <TestSetCard key={s.id} summary={s} compact onOpen={(x) => void ctl.open(x)} busy={ctl.checking === s.id} />
+                  <TestSetCard
+                    key={s.id}
+                    summary={s}
+                    compact
+                    onOpen={(x) => void ctl.open(x)}
+                    busy={ctl.checking === s.id}
+                  />
                 ))}
               </div>
             )}
@@ -140,13 +166,19 @@ export function DashboardPage() {
             </h2>
             <Card>
               <CardContent>
-                {stats.data && stats.data.trend_30d.length >= 2 ? <TrendChart data={stats.data.trend_30d} /> : <p className="py-6 text-center text-sm text-muted-foreground">{t('trendEmpty')}</p>}
+                {stats.data && stats.data.trend_30d.length >= 2 ? (
+                  <TrendChart data={stats.data.trend_30d} />
+                ) : (
+                  <p className="py-6 text-center text-sm text-muted-foreground">{t('trendEmpty')}</p>
+                )}
               </CardContent>
             </Card>
           </section>
         </div>
 
         <div className="space-y-6">
+          {/* Sprint 6: gia sư AI (hội thoại tự do / tiếp tục thread cũ) */}
+          <DashboardTutorCard />
           {/* Hạn mức */}
           <section aria-labelledby="quota-title" className="space-y-3">
             <h2 id="quota-title" className="text-lg font-semibold">
@@ -167,19 +199,38 @@ export function DashboardPage() {
                     .map((q) => {
                       const pct = q.limit && q.remaining !== null ? (q.remaining / q.limit) * 100 : 100;
                       return (
-                        <div key={`${q.feature}-${q.period}`} className="space-y-1.5" data-testid={`quota-${q.feature}`} data-remaining={q.remaining ?? ''}>
+                        <div
+                          key={`${q.feature}-${q.period}`}
+                          className="space-y-1.5"
+                          data-testid={`quota-${q.feature}`}
+                          data-remaining={q.remaining ?? ''}
+                        >
                           <div className="flex items-center justify-between text-sm">
                             <span className="font-medium">{t(`quotaFeature.${q.feature}`)}</span>
-                            <span className="tabular text-muted-foreground">{q.remaining === null ? t('quotaUnlimited') : t('quotaRemaining', { remaining: q.remaining, limit: q.limit ?? 0 })}</span>
+                            <span className="tabular text-muted-foreground">
+                              {q.remaining === null
+                                ? t('quotaUnlimited')
+                                : t('quotaRemaining', { remaining: q.remaining, limit: q.limit ?? 0 })}
+                            </span>
                           </div>
-                          <Progress value={pct} tone={pct < 34 ? 'gold' : 'primary'} label={t(`quotaFeature.${q.feature}`)} />
-                          {q.remaining !== null ? <ResetHint iso={q.resetAt} className="block text-xs text-muted-foreground" /> : null}
+                          <Progress
+                            value={pct}
+                            tone={pct < 34 ? 'gold' : 'primary'}
+                            label={t(`quotaFeature.${q.feature}`)}
+                          />
+                          {q.remaining !== null ? (
+                            <ResetHint iso={q.resetAt} className="block text-xs text-muted-foreground" />
+                          ) : null}
                         </div>
                       );
                     })}
                   <div className="flex items-center justify-between border-t border-border pt-3 text-sm">
                     <span className="text-muted-foreground">{t('quotaCredits', { count: ent.data.credits })}</span>
-                    {ent.data.is_pro ? <Badge variant="gold">{tc('pro')}</Badge> : <Badge variant="outline">{tc('free')}</Badge>}
+                    {ent.data.is_pro ? (
+                      <Badge variant="gold">{tc('pro')}</Badge>
+                    ) : (
+                      <Badge variant="outline">{tc('free')}</Badge>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -198,19 +249,32 @@ export function DashboardPage() {
             ) : attempts.data.data.length === 0 ? (
               <EmptyState title={t('historyEmpty')} />
             ) : (
-              <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card" data-testid="attempt-history">
+              <ul
+                className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card"
+                data-testid="attempt-history"
+              >
                 {attempts.data.data.slice(0, 6).map((a) => {
                   const inProgress = a.status === 'in_progress';
                   return (
                     <li key={a.id} className="flex items-center justify-between gap-3 px-4 py-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{a.test_set_title ? L(a.test_set_title) : a.id.slice(0, 8)}</p>
+                        <p className="truncate text-sm font-medium">
+                          {a.test_set_title ? L(a.test_set_title) : a.id.slice(0, 8)}
+                        </p>
                         <p className="text-xs text-muted-foreground">
-                          {t(`mode.${a.mode}`)} · {fmt.dateTime(new Date(a.submitted_at ?? a.started_at), { dateStyle: 'medium' })}
-                          {inProgress ? ` · ${t('historyInProgress')}` : a.scaled_score !== null ? ` · ${t('historyScore', { score: a.scaled_score })}` : ''}
+                          {t(`mode.${a.mode}`)} ·{' '}
+                          {fmt.dateTime(new Date(a.submitted_at ?? a.started_at), { dateStyle: 'medium' })}
+                          {inProgress
+                            ? ` · ${t('historyInProgress')}`
+                            : a.scaled_score !== null
+                              ? ` · ${t('historyScore', { score: a.scaled_score })}`
+                              : ''}
                         </p>
                       </div>
-                      <Link href={inProgress ? `/attempts/${a.id}` : `/attempts/${a.id}/result`} className={buttonVariants({ variant: inProgress ? 'gold' : 'ghost', size: 'sm' })}>
+                      <Link
+                        href={inProgress ? `/attempts/${a.id}` : `/attempts/${a.id}/result`}
+                        className={buttonVariants({ variant: inProgress ? 'gold' : 'ghost', size: 'sm' })}
+                      >
                         {inProgress ? t('historyContinue') : t('historyViewResult')}
                       </Link>
                     </li>

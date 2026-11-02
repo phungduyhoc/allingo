@@ -5,7 +5,21 @@ import { ChevronLeft, ChevronRight, CloudOff, LayoutGrid, RefreshCw } from 'luci
 import { useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Alert, AlertDescription, AlertTitle, Badge, Button, buttonVariants, cn, Dialog, DialogContent, DialogHeader, DialogTitle, Skeleton, SplitPane } from '@allingo/ui';
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
+  buttonVariants,
+  cn,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  Skeleton,
+  SplitPane,
+} from '@allingo/ui';
 import { Link, useRouter } from '@/i18n/navigation';
 import { queryKeys, sendAttemptEvent, useAttempt, useSubmitAttempt } from '@/lib/queries';
 import { useLocalized } from '@/lib/localized';
@@ -33,6 +47,9 @@ import { parseTranscript } from '@/features/review/transcript-format';
 import type { ListenStatus } from './question-block';
 import { timedDrillBudgetSec, useQuestionTimer } from './question-timer';
 import { QuestionCountdown } from './question-countdown';
+import { useExamLock } from '@/lib/exam-lock';
+import { LookupLayer } from '@/features/dictionary/lookup-layer';
+import { recordViewed } from '@/features/offline/viewed-store';
 import {
   answerOrEmpty,
   attemptReducer,
@@ -103,13 +120,36 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   const groups = React.useMemo(() => questionGroups(questions), [questions]);
   const feedback = React.useMemo(() => attempt.feedback ?? {}, [attempt.feedback]);
   const indexOfId = React.useMemo(() => new Map(questions.map((q, i) => [q.question_id, i])), [questions]);
+  // S6: tra từ chỉ ở Practice/drill (không bao giờ ở Exam Mode) và khi không có bài thi khác đang làm (đang tải danh sách →
+  // vẫn cho tra; nếu thật sự đang thi, API trả 403 và khoá ngay)
+  const examLock = useExamLock(attempt.id);
+  const lookupEnabled = traits.feedback && !examLock.locked;
+  // "Đề đã xem" cho trang offline (chỉ tên đề + đường dẫn, không lưu câu hỏi/đáp án)
+  const viewedTitle =
+    attempt.test_set && typeof attempt.test_set === 'object' && 'title' in attempt.test_set && attempt.test_set.title
+      ? L(attempt.test_set.title as Record<string, string>) || null
+      : null;
+  React.useEffect(() => {
+    recordViewed({
+      id: attempt.id,
+      kind: 'attempt',
+      title: viewedTitle,
+      href: `/attempts/${attempt.id}`,
+      mode: attempt.mode,
+    });
+  }, [attempt.id, attempt.mode, viewedTitle]);
 
-  const [state, dispatch] = React.useReducer(attemptReducer, undefined, () => initialAttemptState(attempt, saver.queue.pendingEntries(), saver.queue.pendingUiState()));
+  const [state, dispatch] = React.useReducer(attemptReducer, undefined, () =>
+    initialAttemptState(attempt, saver.queue.pendingEntries(), saver.queue.pendingUiState()),
+  );
   const current = questions[state.currentIndex] ?? questions[0]!;
   const sectionIdx = Math.max(0, sectionIndexOf(ranges, state.currentIndex));
   const group = groupOf(groups, state.currentIndex);
   const passage = current.passage;
-  const groupItems = passage && group ? questions.slice(group.start, group.end + 1).map((q, k) => ({ q, index: group.start + k })) : [{ q: current, index: state.currentIndex }];
+  const groupItems =
+    passage && group
+      ? questions.slice(group.start, group.end + 1).map((q, k) => ({ q, index: group.start + k }))
+      : [{ q: current, index: state.currentIndex }];
   const inGroup = groupItems.length > 1;
 
   const [prefs, setPrefs] = useExamPrefs();
@@ -130,7 +170,10 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
     enteredAtRef.current = now;
     sectionEnteredAtRef.current = now;
   }, []);
-  const sectionBase = React.useMemo(() => Object.fromEntries(attempt.sections.map((s) => [s.section_code, s.elapsed_sec])), [attempt.sections]);
+  const sectionBase = React.useMemo(
+    () => Object.fromEntries(attempt.sections.map((s) => [s.section_code, s.elapsed_sec])),
+    [attempt.sections],
+  );
   const sectionElapsed = React.useCallback(() => {
     const code = current.section_code;
     const live = (Date.now() - sectionEnteredAtRef.current) / 1000;
@@ -145,7 +188,10 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   // URL ký 10′ → gia hạn ngầm (đề L&R 120′); Exam Mode: chuỗi phát một lần toàn bộ Listening theo thứ tự đề
   const media = useMediaUrls(attempt.id, attempt.questions);
   const examLike = traits.examLike;
-  const program = React.useMemo(() => (examLike ? buildListeningProgram(questions, groups) : null), [examLike, groups, questions]);
+  const program = React.useMemo(
+    () => (examLike ? buildListeningProgram(questions, groups) : null),
+    [examLike, groups, questions],
+  );
   const navigateRef = React.useRef<(index: number) => void>(() => undefined);
   // Theo audio: đang xem câu/nhóm đang phát → tự chuyển theo; tự chuyển sang câu khác → hiện nút "Về câu đang nghe"
   const followingRef = React.useRef(true);
@@ -181,8 +227,14 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   const answerable = listening.isAnswerable;
 
   // ---------------------------------------------------------------- Practice/drill: phản hồi tức thì
-  const isLocked = React.useCallback((qid: string) => traits.feedback && (!!feedback[qid] || !!checking[qid]), [checking, feedback, traits.feedback]);
-  const refreshFeedback = React.useCallback(() => qc.invalidateQueries({ queryKey: queryKeys.attempt(attempt.id), exact: true }), [attempt.id, qc]);
+  const isLocked = React.useCallback(
+    (qid: string) => traits.feedback && (!!feedback[qid] || !!checking[qid]),
+    [checking, feedback, traits.feedback],
+  );
+  const refreshFeedback = React.useCallback(
+    () => qc.invalidateQueries({ queryKey: queryKeys.attempt(attempt.id), exact: true }),
+    [attempt.id, qc],
+  );
   const requestFeedback = React.useCallback(
     async (qid: string) => {
       setChecking((prev) => ({ ...prev, [qid]: true }));
@@ -213,7 +265,8 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
       dispatch({ type: 'answer', questionId: q.question_id, answer });
       saver.enqueue({ question_id: q.question_id, answer, flagged: state.flags[q.question_id] });
       // Practice: trắc nghiệm một đáp án → lưu ngay và hiện đúng/sai (không chờ debounce/10 s)
-      if (traits.feedback && q.question_type === 'mcq_single' && isAnswered(answer)) void requestFeedback(q.question_id);
+      if (traits.feedback && q.question_type === 'mcq_single' && isAnswered(answer))
+        void requestFeedback(q.question_id);
     },
     [answerable, indexOfId, isLocked, requestFeedback, saver, state.flags, traits.feedback],
   );
@@ -233,15 +286,26 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
       const now = Date.now();
       const delta = now - enteredAtRef.current;
       if (delta >= 500 && (isAnswered(state.answers[current.question_id]) || delta >= 3000)) {
-        saver.enqueue({ question_id: current.question_id, answer: answerOrEmpty(current, state.answers), time_spent_ms: delta });
+        saver.enqueue({
+          question_id: current.question_id,
+          answer: answerOrEmpty(current, state.answers),
+          time_spent_ms: delta,
+        });
       }
       const next = questions[index]!;
       if (next.section_code !== current.section_code) {
-        sectionAccRef.current[current.section_code] = (sectionAccRef.current[current.section_code] ?? 0) + (now - sectionEnteredAtRef.current) / 1000;
+        sectionAccRef.current[current.section_code] =
+          (sectionAccRef.current[current.section_code] ?? 0) + (now - sectionEnteredAtRef.current) / 1000;
         sectionEnteredAtRef.current = now;
-        sendAttemptEvent(attempt.id, { type: 'part_switch', meta: { from: current.section_code, to: next.section_code, question_id: next.question_id } });
+        sendAttemptEvent(attempt.id, {
+          type: 'part_switch',
+          meta: { from: current.section_code, to: next.section_code, question_id: next.question_id },
+        });
       }
-      saver.setMeta({ ui_state: { current_question_id: next.question_id, current_section_code: next.section_code }, section_elapsed_sec: sectionElapsed() });
+      saver.setMeta({
+        ui_state: { current_question_id: next.question_id, current_section_code: next.section_code },
+        section_elapsed_sec: sectionElapsed(),
+      });
       enteredAtRef.current = now;
       dispatch({ type: 'goto', index });
       void saver.flushNow();
@@ -265,13 +329,19 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
     setFollowing(true);
     if (listenStep) goTo(listenStep.questionIndex);
   }, [goTo, listenStep, setFollowing]);
-  const goToPart = React.useCallback((i: number) => {
-    const r = ranges[i];
-    if (r) userGoTo(r.start);
-  }, [ranges, userGoTo]);
+  const goToPart = React.useCallback(
+    (i: number) => {
+      const r = ranges[i];
+      if (r) userGoTo(r.start);
+    },
+    [ranges, userGoTo],
+  );
 
   // timed_drill: giới hạn giây từng câu (câu Listening do chuỗi phát điều khiển) – hết giờ câu → sang câu kế
-  const budgetSec = attempt.mode === 'timed_drill' && !program?.unlockStep.has(state.currentIndex) ? timedDrillBudgetSec(attempt.started_at, attempt.expires_at, questions.length) : null;
+  const budgetSec =
+    attempt.mode === 'timed_drill' && !program?.unlockStep.has(state.currentIndex)
+      ? timedDrillBudgetSec(attempt.started_at, attempt.expires_at, questions.length)
+      : null;
   const questionTimer = useQuestionTimer({
     attemptId: attempt.id,
     questionId: current.question_id,
@@ -404,7 +474,10 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
     },
     [t],
   );
-  const changeFont = React.useCallback((delta: 1 | -1) => setPrefs({ font: stepFont(prefs.font, delta) }), [prefs.font, setPrefs]);
+  const changeFont = React.useCallback(
+    (delta: 1 | -1) => setPrefs({ font: stepFont(prefs.font, delta) }),
+    [prefs.font, setPrefs],
+  );
 
   const listeningGate = listening.active && listening.phase === 'gate';
 
@@ -415,7 +488,14 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      )
+        return;
       if (submitOpen || gridOpen || listeningGate || e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key;
       const commands: Record<string, () => void> = {
@@ -445,7 +525,13 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
         command();
         return;
       }
-      if (!content || (content.type !== 'mcq_single' && content.type !== 'mcq_multi') || isLocked(current.question_id) || !answerable(state.currentIndex)) return;
+      if (
+        !content ||
+        (content.type !== 'mcq_single' && content.type !== 'mcq_multi') ||
+        isLocked(current.question_id) ||
+        !answerable(state.currentIndex)
+      )
+        return;
       const k = key.toUpperCase();
       const idx = /^[1-9]$/.test(k) ? Number(k) - 1 : /^[A-J]$/.test(k) ? k.charCodeAt(0) - 65 : -1;
       const opt = idx >= 0 ? content.options[idx] : undefined;
@@ -457,23 +543,70 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
         const sel = new Set(currentAnswer?.type === 'mcq_multi' ? currentAnswer.selected : []);
         if (sel.has(opt.key)) sel.delete(opt.key);
         else sel.add(opt.key);
-        setAnswerFor(current, { type: 'mcq_multi', selected: content.options.filter((o) => sel.has(o.key)).map((o) => o.key) });
+        setAnswerFor(current, {
+          type: 'mcq_multi',
+          selected: content.options.filter((o) => sel.has(o.key)).map((o) => o.key),
+        });
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [answerable, changeFont, content, current, currentAnswer, focus, goToPart, gridOpen, isLocked, listeningGate, sectionIdx, setAnswerFor, setFocusMode, state.currentIndex, submitOpen, toggleFlagFor, userGoTo]);
+  }, [
+    answerable,
+    changeFont,
+    content,
+    current,
+    currentAnswer,
+    focus,
+    goToPart,
+    gridOpen,
+    isLocked,
+    listeningGate,
+    sectionIdx,
+    setAnswerFor,
+    setFocusMode,
+    state.currentIndex,
+    submitOpen,
+    toggleFlagFor,
+    userGoTo,
+  ]);
 
   // ---------------------------------------------------------------- Dữ liệu hiển thị
   const gridItems = React.useMemo(
-    () => questions.map((q, i) => ({ questionId: q.question_id, number: i + 1, answered: isAnswered(state.answers[q.question_id]), flagged: !!state.flags[q.question_id], sectionCode: q.section_code })),
+    () =>
+      questions.map((q, i) => ({
+        questionId: q.question_id,
+        number: i + 1,
+        answered: isAnswered(state.answers[q.question_id]),
+        flagged: !!state.flags[q.question_id],
+        sectionCode: q.section_code,
+      })),
     [questions, state.answers, state.flags],
   );
-  const partItems = React.useMemo(() => ranges.map((r) => ({ code: r.code, total: r.end - r.start + 1, answered: gridItems.slice(r.start, r.end + 1).filter((g) => g.answered).length })), [gridItems, ranges]);
+  const partItems = React.useMemo(
+    () =>
+      ranges.map((r) => ({
+        code: r.code,
+        total: r.end - r.start + 1,
+        answered: gridItems.slice(r.start, r.end + 1).filter((g) => g.answered).length,
+      })),
+    [gridItems, ranges],
+  );
   const unanswered = countUnanswered(questions, state.answers);
-  const title = attempt.test_set && typeof attempt.test_set === 'object' && 'title' in attempt.test_set && attempt.test_set.title ? L(attempt.test_set.title as Record<string, string>) || t('examTitle') : t('examTitle');
+  const title =
+    attempt.test_set && typeof attempt.test_set === 'object' && 'title' in attempt.test_set && attempt.test_set.title
+      ? L(attempt.test_set.title as Record<string, string>) || t('examTitle')
+      : t('examTitle');
   const modeLabel =
-    attempt.mode === 'exam' ? t('examTitle') : attempt.mode === 'timed_drill' ? t('timedDrillTitle') : attempt.mode === 'diagnostic' ? t('diagnosticTitle') : attempt.mode === 'drill' ? t('drillTitle') : t('practiceTitle');
+    attempt.mode === 'exam'
+      ? t('examTitle')
+      : attempt.mode === 'timed_drill'
+        ? t('timedDrillTitle')
+        : attempt.mode === 'diagnostic'
+          ? t('diagnosticTitle')
+          : attempt.mode === 'drill'
+            ? t('drillTitle')
+            : t('practiceTitle');
   const bannerMode = closed ? null : !online ? 'offline' : saver.recovering && saver.pending > 0 ? 'syncing' : null;
   const disabled = submit.isPending || clock.expired || closed;
   const isLast = state.currentIndex >= questions.length - 1;
@@ -484,14 +617,30 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
     if (listening.phase === 'done') return 'played';
     if (!answerable(index)) return 'upcoming';
     const cur = listening.current;
-    if (cur?.kind === 'audio' && listening.phase !== 'gate' && (cur.role === 'group' ? index >= cur.groupStart && index <= cur.groupEnd : cur.questionIndex === index)) return 'playing';
+    if (
+      cur?.kind === 'audio' &&
+      listening.phase !== 'gate' &&
+      (cur.role === 'group' ? index >= cur.groupStart && index <= cur.groupEnd : cur.questionIndex === index)
+    )
+      return 'playing';
     return 'played';
   };
 
   const blocks = groupItems.map(({ q, index }) => {
     const audioMedia = q.media.find((m) => m.kind === 'audio');
     // Câu "nghe một lần" do chuỗi phát điều khiển; còn lại (Practice/drill, câu listen_policy = free) → trình phát tự do
-    const freeAudio = audioMedia && !program?.unlockStep.has(index) ? { src: media.resolve(audioMedia.id, audioMedia.url), onError: () => void media.refresh(), onStarted: () => sendAttemptEvent(attempt.id, { type: 'audio_started', meta: { question_id: q.question_id, asset_id: audioMedia.id } }) } : null;
+    const freeAudio =
+      audioMedia && !program?.unlockStep.has(index)
+        ? {
+            src: media.resolve(audioMedia.id, audioMedia.url),
+            onError: () => void media.refresh(),
+            onStarted: () =>
+              sendAttemptEvent(attempt.id, {
+                type: 'audio_started',
+                meta: { question_id: q.question_id, asset_id: audioMedia.id },
+              }),
+          }
+        : null;
     return (
       <QuestionBlock
         key={q.question_id}
@@ -510,7 +659,9 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
         badge={
           <>
             {!traits.examLike ? <Badge variant="secondary">{modeLabel}</Badge> : null}
-            {index === state.currentIndex && questionTimer.budgetSec !== null ? <QuestionCountdown timer={questionTimer} /> : null}
+            {index === state.currentIndex && questionTimer.budgetSec !== null ? (
+              <QuestionCountdown timer={questionTimer} />
+            ) : null}
           </>
         }
         audio={freeAudio}
@@ -533,7 +684,12 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
 
   const navRow = (
     <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
-      <Button variant="outline" onClick={() => userGoTo(state.currentIndex - 1)} disabled={state.currentIndex === 0} data-testid="prev-button">
+      <Button
+        variant="outline"
+        onClick={() => userGoTo(state.currentIndex - 1)}
+        disabled={state.currentIndex === 0}
+        data-testid="prev-button"
+      >
         <ChevronLeft aria-hidden />
         {t('prev')}
       </Button>
@@ -564,7 +720,9 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   );
 
   const highlight = markersInStem(content && 'stem' in content ? content.stem : null);
-  const rangeLabel = inGroup ? t('groupRange', { from: groupItems[0]!.index + 1, to: groupItems[groupItems.length - 1]!.index + 1 }) : undefined;
+  const rangeLabel = inGroup
+    ? t('groupRange', { from: groupItems[0]!.index + 1, to: groupItems[groupItems.length - 1]!.index + 1 })
+    : undefined;
   // Part 3/4: passage audio_script không có chữ khi đang làm bài → đầu nhóm (trạng thái nghe / trình phát practice), không chia đôi màn hình
   const audioPassage = passage?.kind === 'audio_script' ? passage : null;
   const textPassage = audioPassage ? null : passage;
@@ -572,8 +730,14 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   if (audioPassage) {
     const groupStart = groupItems[0]!.index;
     const groupStatus = listenStatusOf(groupStart);
-    const groupTranscript = traits.feedback ? (groupItems.map(({ q }) => parseTranscript(feedback[q.question_id]?.transcript)).find((x) => x?.source === 'passage') ?? null) : null;
-    const audioRange = inGroup ? t('audioGroupRange', { from: groupStart + 1, to: groupItems[groupItems.length - 1]!.index + 1 }) : undefined;
+    const groupTranscript = traits.feedback
+      ? (groupItems
+          .map(({ q }) => parseTranscript(feedback[q.question_id]?.transcript))
+          .find((x) => x?.source === 'passage') ?? null)
+      : null;
+    const audioRange = inGroup
+      ? t('audioGroupRange', { from: groupStart + 1, to: groupItems[groupItems.length - 1]!.index + 1 })
+      : undefined;
     body = (
       <div className="space-y-4">
         <AudioGroupHeader
@@ -581,7 +745,22 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
           passage={audioPassage}
           rangeLabel={audioRange}
           exam={groupStatus ? { status: groupStatus } : null}
-          player={!groupStatus && audioPassage.media_url ? { src: media.resolve(audioPassage.media_asset_id, audioPassage.media_url), onError: () => void media.refresh(), onStarted: () => sendAttemptEvent(attempt.id, { type: 'audio_started', meta: { question_id: groupItems[0]!.q.question_id, ...(audioPassage.media_asset_id ? { asset_id: audioPassage.media_asset_id } : {}) } }) } : null}
+          player={
+            !groupStatus && audioPassage.media_url
+              ? {
+                  src: media.resolve(audioPassage.media_asset_id, audioPassage.media_url),
+                  onError: () => void media.refresh(),
+                  onStarted: () =>
+                    sendAttemptEvent(attempt.id, {
+                      type: 'audio_started',
+                      meta: {
+                        question_id: groupItems[0]!.q.question_id,
+                        ...(audioPassage.media_asset_id ? { asset_id: audioPassage.media_asset_id } : {}),
+                      },
+                    }),
+                }
+              : null
+          }
           transcript={groupTranscript}
         />
         {questionsColumn}
@@ -606,7 +785,13 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
         start={
           // key theo nhóm: đổi nhóm → cuộn đoạn văn về đầu; cùng nhóm → giữ vị trí đang đọc
           <div key={group?.key} className="h-full overflow-y-auto pr-2 pb-4">
-            <PassagePane passage={textPassage} zoom={zoom} highlight={highlight} rangeLabel={rangeLabel} className="min-h-full" />
+            <PassagePane
+              passage={textPassage}
+              zoom={zoom}
+              highlight={highlight}
+              rangeLabel={rangeLabel}
+              className="min-h-full"
+            />
           </div>
         }
         end={questionsColumn}
@@ -615,7 +800,15 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   } else if (textPassage) {
     body = (
       <div className="space-y-4">
-        <PassagePane passage={textPassage} zoom={zoom} highlight={highlight} rangeLabel={rangeLabel} collapsible collapsed={passageCollapsed} onToggle={() => setPassageCollapsed((c) => !c)} />
+        <PassagePane
+          passage={textPassage}
+          zoom={zoom}
+          highlight={highlight}
+          rangeLabel={rangeLabel}
+          collapsible
+          collapsed={passageCollapsed}
+          onToggle={() => setPassageCollapsed((c) => !c)}
+        />
         {questionsColumn}
       </div>
     );
@@ -625,18 +818,40 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   const listeningNowLabel = !listenStep
     ? ''
     : listenStep.kind === 'audio' && listenStep.role === 'group'
-      ? t('listeningNowGroup', { title: listenQ?.passage?.title ?? t('audioGroupTitle'), from: listenStep.groupStart + 1, to: listenStep.groupEnd + 1 })
+      ? t('listeningNowGroup', {
+          title: listenQ?.passage?.title ?? t('audioGroupTitle'),
+          from: listenStep.groupStart + 1,
+          to: listenStep.groupEnd + 1,
+        })
       : listenStep.kind === 'pause'
         ? t('listeningNowAnswer', { number: listenStep.questionIndex + 1 })
         : t('listeningNowQuestion', { number: listenStep.questionIndex + 1 });
-  const listeningPartLabel = listenQ ? `${sectionLabel(listenQ.section_code)} · ${t('listeningQuestionCount', { count: program?.unlockStep.size ?? 0 })}` : '';
+  const listeningPartLabel = listenQ
+    ? `${sectionLabel(listenQ.section_code)} · ${t('listeningQuestionCount', { count: program?.unlockStep.size ?? 0 })}`
+    : '';
 
   // Desktop có đoạn văn: khung cố định theo chiều cao màn hình, hai khung cuộn riêng (header/banner co giãn tự nhiên)
   const splitLayout = !!textPassage && isDesktop;
   return (
-    <div className={cn('flex flex-col bg-background', splitLayout ? 'h-dvh overflow-hidden' : 'min-h-dvh', focus && 'pt-2')} data-testid="attempt-runner" data-focus={focus} data-mode={attempt.mode} data-store={saver.storeKind}>
+    <div
+      className={cn(
+        'flex flex-col bg-background',
+        splitLayout ? 'h-dvh overflow-hidden' : 'min-h-dvh',
+        focus && 'pt-2',
+      )}
+      data-testid="attempt-runner"
+      data-focus={focus}
+      data-mode={attempt.mode}
+      data-store={saver.storeKind}
+    >
       {focus ? (
-        <FocusBar remaining={clock.remaining} tone={clock.tone} saveStatus={saver.status} pending={saver.pending} onExit={() => setFocusMode(false)} />
+        <FocusBar
+          remaining={clock.remaining}
+          tone={clock.tone}
+          saveStatus={saver.status}
+          pending={saver.pending}
+          onExit={() => setFocusMode(false)}
+        />
       ) : (
         <>
           <ExamHeader
@@ -657,7 +872,16 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
       )}
 
       {/* Dính dưới header (56 px) + thanh công cụ (45 px); chế độ tập trung → sát mép trên */}
-      {listeningLive ? <ListeningBar listening={listening} nowLabel={listeningNowLabel} following={following} onJump={jumpToListening} online={online} className={focus ? 'top-0' : 'top-[101px]'} /> : null}
+      {listeningLive ? (
+        <ListeningBar
+          listening={listening}
+          nowLabel={listeningNowLabel}
+          following={following}
+          onJump={jumpToListening}
+          online={online}
+          className={focus ? 'top-0' : 'top-[101px]'}
+        />
+      ) : null}
       {/* Phần tử <audio> của chuỗi phát (không có điều khiển – không tua/tạm dừng) */}
       <div ref={mountAudio} hidden data-testid="exam-audio-pool" />
       {listeningGate && !closed ? <ListeningGate listening={listening} partLabel={listeningPartLabel} /> : null}
@@ -668,11 +892,27 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
       </p>
 
       {bannerMode ? (
-        <div className={cn('border-b', bannerMode === 'offline' ? 'border-accent/50 bg-accent/15' : 'border-primary/30 bg-primary/10')} role="status" data-testid="offline-banner" data-mode={bannerMode}>
+        <div
+          className={cn(
+            'border-b',
+            bannerMode === 'offline' ? 'border-accent/50 bg-accent/15' : 'border-primary/30 bg-primary/10',
+          )}
+          role="status"
+          data-testid="offline-banner"
+          data-mode={bannerMode}
+        >
           <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 text-sm sm:px-5">
-            {bannerMode === 'offline' ? <CloudOff className="size-4 shrink-0" aria-hidden /> : <RefreshCw className="size-4 shrink-0 animate-spin" aria-hidden />}
+            {bannerMode === 'offline' ? (
+              <CloudOff className="size-4 shrink-0" aria-hidden />
+            ) : (
+              <RefreshCw className="size-4 shrink-0 animate-spin" aria-hidden />
+            )}
             <span>{bannerMode === 'offline' ? t('offlineQueued') : t('syncingBanner')}</span>
-            {saver.pending > 0 ? <span className="tabular text-xs text-muted-foreground">({t('pendingCount', { count: saver.pending })})</span> : null}
+            {saver.pending > 0 ? (
+              <span className="tabular text-xs text-muted-foreground">
+                ({t('pendingCount', { count: saver.pending })})
+              </span>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -696,7 +936,12 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
         <div className={cn('min-w-0', splitLayout && 'h-full min-h-0')}>{body}</div>
         {!focus ? (
           <aside className={cn('hidden lg:block', splitLayout && 'min-h-0')}>
-            <div className={cn('overflow-y-auto rounded-xl border border-border bg-card p-4', splitLayout ? 'max-h-full' : 'sticky top-28 max-h-[calc(100dvh-8rem)]')}>
+            <div
+              className={cn(
+                'overflow-y-auto rounded-xl border border-border bg-card p-4',
+                splitLayout ? 'max-h-full' : 'sticky top-28 max-h-[calc(100dvh-8rem)]',
+              )}
+            >
               <QuestionGrid items={gridItems} currentIndex={state.currentIndex} onSelect={userGoTo} />
             </div>
           </aside>
@@ -707,14 +952,28 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
       {!focus ? (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 backdrop-blur lg:hidden">
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2">
-            <Button variant="ghost" size="sm" onClick={() => userGoTo(state.currentIndex - 1)} disabled={state.currentIndex === 0} aria-label={t('prev')}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => userGoTo(state.currentIndex - 1)}
+              disabled={state.currentIndex === 0}
+              aria-label={t('prev')}
+            >
               <ChevronLeft aria-hidden />
             </Button>
             <Button variant="outline" size="sm" onClick={() => setGridOpen(true)} aria-label={t('gridOpen')}>
               <LayoutGrid aria-hidden />
-              <span className="tabular">{t('progress', { answered: questions.length - unanswered, total: questions.length })}</span>
+              <span className="tabular">
+                {t('progress', { answered: questions.length - unanswered, total: questions.length })}
+              </span>
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => userGoTo(state.currentIndex + 1)} disabled={isLast} aria-label={t('next')}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => userGoTo(state.currentIndex + 1)}
+              disabled={isLast}
+              aria-label={t('next')}
+            >
               <ChevronRight aria-hidden />
             </Button>
           </div>
@@ -738,6 +997,9 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
         error={submit.error ?? (syncBlocked ? new TypeError('draft not synced') : null)}
         forced={forced}
       />
+      {traits.feedback ? (
+        <LookupLayer enabled={lookupEnabled} source={{ type: 'passage', attemptId: attempt.id }} />
+      ) : null}
     </div>
   );
 }
