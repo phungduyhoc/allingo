@@ -5,7 +5,7 @@ import type { LedgerEntry } from '@allingo/schemas';
 import { CLOCK, type Clock } from '../../shared/clock/clock.module.js';
 import { DbService, type DbOrTx } from '../../shared/db/db.module.js';
 import { decodeCursor, encodeCursor } from '../../shared/http/cursor.js';
-import { InsufficientCredits } from '../../shared/http/errors.js';
+import { Conflict, InsufficientCredits } from '../../shared/http/errors.js';
 import { getLogger } from '../../shared/telemetry/logger.js';
 import { remainingFor, type LedgerLike } from './credit-lots.js';
 
@@ -58,6 +58,27 @@ export class CreditService {
   /** Cộng credit (mua gói, cấp tháng, referral, admin) */
   grant(tx: DbOrTx, userId: string, amount: number, reason: Exclude<CreditReason, 'consume' | 'refund' | 'expire'>, ref: { refType?: string; refId?: string; note?: string; expiresAt?: Date }) {
     return this.apply(tx, userId, amount, reason, ref);
+  }
+
+  /** Khoá hàng số dư (FOR UPDATE) trong transaction của nghiệp vụ – cho kiểm tra idempotent trước khi cấp (S8) */
+  lock(tx: DbOrTx, userId: string): Promise<number> {
+    return this.lockBalance(tx, userId);
+  }
+
+  /**
+   * Điều chỉnh thủ công của admin (S8, reason `admin_adjust`): delta > 0 cộng (có thể có hạn), delta < 0 trừ nhưng KHÔNG làm số
+   * dư âm (409 `insufficient_balance`). `refType = admin`, `refId` = admin thực hiện, `note` = lý do bắt buộc.
+   */
+  async adjust(tx: DbOrTx, userId: string, delta: number, ref: { actorId: string; note: string; expiresAt?: Date }): Promise<{ balanceAfter: number; ledgerId: number }> {
+    const current = await this.lockBalance(tx, userId);
+    if (current + delta < 0) throw new Conflict('Adjustment would make the balance negative', { reason: 'insufficient_balance', balance: current, delta });
+    return this.apply(tx, userId, delta, 'admin_adjust', { refType: 'admin', refId: ref.actorId, note: ref.note, expiresAt: delta > 0 ? ref.expiresAt : undefined });
+  }
+
+  /** Tổng delta theo lý do (vd credit nhận từ referral) */
+  async sumByReason(userId: string, reason: CreditReason): Promise<number> {
+    const [r] = await this.dbs.db.select({ n: sql<number>`coalesce(sum(${billingCreditLedger.delta}), 0)::int` }).from(billingCreditLedger).where(and(eq(billingCreditLedger.userId, userId), eq(billingCreditLedger.reason, reason)));
+    return r?.n ?? 0;
   }
 
   /** Hoàn credit khi tác vụ AI thất bại */

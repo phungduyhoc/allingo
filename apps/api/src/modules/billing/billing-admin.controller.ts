@@ -1,13 +1,47 @@
-import { Controller, Get, HttpCode, Post, Put, Req, Res } from '@nestjs/common';
+import { Controller, Get, HttpCode, Patch, Post, Put, Req, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { adminOrdersQuerySchema, BILLING_JOBS, isoDateSchema, paymentProviderCodeSchema, reconciliationRunInputSchema, reconciliationRunSchema, refundInputSchema, type BillingJob, type RefundInput, type ReconciliationRunInput } from '@allingo/schemas';
+import {
+  adminCreditAdjustInputSchema,
+  adminCreditAdjustResultSchema,
+  adminDeadLettersQuerySchema,
+  adminInvoiceSchema,
+  adminInvoicesQuerySchema,
+  adminOrdersQuerySchema,
+  adminPaymentSchema,
+  adminPaymentsQuerySchema,
+  adminPromotionsQuerySchema,
+  adminSubscriptionsQuerySchema,
+  BILLING_JOBS,
+  cursorQuerySchema,
+  deadLetterSchema,
+  invoiceReconciliationSchema,
+  isoDateSchema,
+  ledgerEntrySchema,
+  pageSchema,
+  paymentProviderCodeSchema,
+  promotionAdminSchema,
+  promotionCreateInputSchema,
+  promotionPatchInputSchema,
+  reconciliationRunInputSchema,
+  reconciliationRunSchema,
+  refundInputSchema,
+  subscriptionSchema,
+  type AdminCreditAdjustInput,
+  type BillingJob,
+  type PromotionCreateInput,
+  type PromotionPatchInput,
+  type RefundInput,
+  type ReconciliationRunInput,
+} from '@allingo/schemas';
 import { CurrentUser, Roles, type AuthUser } from '../../shared/auth/auth.guard.js';
 import { JobsService } from '../../shared/queue/jobs.service.js';
 import { ApiZod, ZodBody, ZodParams, ZodQuery } from '../../shared/http/zod.js';
 import { BillingAdminService } from './billing-admin.service.js';
 import { FeatureFlagService } from './feature-flags.service.js';
+import { InvoicesService } from './invoices/invoices.service.js';
+import { PromotionsService } from './promotions.service.js';
 import { ReconciliationService } from './reconciliation.service.js';
 
 const orderParam = z.object({ orderId: z.uuid() });
@@ -16,7 +50,12 @@ const runQuery = z.object({ format: z.enum(['json', 'csv']).default('json') });
 const runsQuery = z.object({ provider: paymentProviderCodeSchema.optional(), limit: z.coerce.number().int().min(1).max(100).default(30) });
 const jobParam = z.object({ job: z.enum(BILLING_JOBS) });
 const flagParam = z.object({ key: z.string().regex(/^ff\.[a-z0-9_]+(\.[a-z0-9_]+)+$/) });
-const flagBody = z.object({ enabled: z.boolean().optional(), rules: z.object({ percent: z.number().min(0).max(100).optional(), user_ids: z.array(z.uuid()).max(500).optional(), plan_kinds: z.array(z.string()).max(10).optional(), programs: z.array(z.string()).max(10).optional() }).optional() });
+// S8: `rules.config` – cấu hình tính năng (vd ff.growth.referral: rewards, monthly_cap…)
+const flagBody = z.object({ enabled: z.boolean().optional(), rules: z.object({ percent: z.number().min(0).max(100).optional(), user_ids: z.array(z.uuid()).max(500).optional(), plan_kinds: z.array(z.string()).max(10).optional(), programs: z.array(z.string()).max(10).optional(), config: z.record(z.string(), z.unknown()).optional() }).optional() });
+const userParam = z.object({ userId: z.uuid() });
+const deadLetterParam = z.object({ deadLetterId: z.uuid() });
+const promotionParam = z.object({ promotionId: z.uuid() });
+const monthQuery = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'YYYY-MM') });
 const summaryQuery = z.object({ from: isoDateSchema.optional(), to: isoDateSchema.optional() });
 
 const meta = (req: FastifyRequest) => ({ ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null });
@@ -31,6 +70,8 @@ export class BillingAdminController {
     private readonly reconciliation: ReconciliationService,
     private readonly flags: FeatureFlagService,
     private readonly jobs: JobsService,
+    private readonly invoices: InvoicesService,
+    private readonly promotions: PromotionsService,
   ) {}
 
   /** Hoàn tiền thủ công: paid → refunded, thu hồi entitlement + credit còn lại, ledger `refund`, audit. TODO(S8) API refund cổng */
@@ -102,5 +143,84 @@ export class BillingAdminController {
   @ApiZod({ body: flagBody, responses: { 200: z.record(z.string(), z.unknown()) } })
   setFlag(@CurrentUser() user: AuthUser, @ZodParams(flagParam) p: z.infer<typeof flagParam>, @ZodBody(flagBody) body: z.infer<typeof flagBody>, @Req() req: FastifyRequest) {
     return this.flags.set(p.key, body, user, meta(req));
+  }
+
+  // ------------------------------------------------------------------ S8: credit thủ công, ledger, danh sách, hoá đơn, khuyến mãi
+  /** Cấp/trừ credit thủ công – ledger `admin_adjust` (note = lý do bắt buộc), audit `user.grant_credits` có admin id; trừ quá số dư → 409 */
+  @Post('users/:userId/credits')
+  @HttpCode(200)
+  @ApiZod({ body: adminCreditAdjustInputSchema, responses: { 200: adminCreditAdjustResultSchema } })
+  adjustCredits(@CurrentUser() user: AuthUser, @ZodParams(userParam) p: z.infer<typeof userParam>, @ZodBody(adminCreditAdjustInputSchema) body: AdminCreditAdjustInput, @Req() req: FastifyRequest) {
+    return this.admin.adjustCredits(user, p.userId, body, meta(req));
+  }
+
+  @Get('users/:userId/credits/ledger')
+  @ApiZod({ query: cursorQuerySchema, responses: { 200: pageSchema(ledgerEntrySchema).extend({ user_id: z.uuid(), balance: z.number().int() }) } })
+  userLedger(@ZodParams(userParam) p: z.infer<typeof userParam>, @ZodQuery(cursorQuerySchema) q: z.infer<typeof cursorQuerySchema>) {
+    return this.admin.userLedger(p.userId, q.cursor, q.limit);
+  }
+
+  @Get('billing/payments')
+  @ApiZod({ query: adminPaymentsQuerySchema, responses: { 200: pageSchema(adminPaymentSchema) } })
+  payments(@ZodQuery(adminPaymentsQuerySchema) q: z.infer<typeof adminPaymentsQuerySchema>) {
+    return this.admin.listPayments(q);
+  }
+
+  @Get('billing/subscriptions')
+  @ApiZod({ query: adminSubscriptionsQuerySchema, responses: { 200: pageSchema(subscriptionSchema.extend({ user_id: z.uuid().nullable(), created_at: z.string() })) } })
+  subscriptionsList(@ZodQuery(adminSubscriptionsQuerySchema) q: z.infer<typeof adminSubscriptionsQuerySchema>) {
+    return this.admin.listSubscriptions(q);
+  }
+
+  @Get('billing/invoices')
+  @ApiZod({ query: adminInvoicesQuerySchema, responses: { 200: pageSchema(adminInvoiceSchema) } })
+  invoicesList(@ZodQuery(adminInvoicesQuerySchema) q: z.infer<typeof adminInvoicesQuerySchema>) {
+    return this.invoices.list(q);
+  }
+
+  /** Đối chiếu hoá đơn tháng: hoá đơn hiệu lực = đơn paid − refunded (theo paid_at, giờ VN) */
+  @Get('billing/invoices/reconciliation')
+  @ApiZod({ query: monthQuery, responses: { 200: invoiceReconciliationSchema } })
+  invoiceReconciliation(@ZodQuery(monthQuery) q: z.infer<typeof monthQuery>) {
+    return this.invoices.reconcileMonth(q.month);
+  }
+
+  @Get('billing/dead-letters')
+  @ApiZod({ query: adminDeadLettersQuerySchema, responses: { 200: pageSchema(deadLetterSchema) } })
+  deadLetters(@ZodQuery(adminDeadLettersQuerySchema) q: z.infer<typeof adminDeadLettersQuerySchema>) {
+    return this.invoices.deadLetters(q);
+  }
+
+  /** Thử lại job hoá đơn trong dead-letter (đặt lại số lần thử; inline ≤ 10 s trả kết quả) */
+  @Post('billing/dead-letters/:deadLetterId/retry')
+  @HttpCode(200)
+  @ApiZod({ responses: { 200: z.object({ dead_letter: deadLetterSchema, outcome: z.record(z.string(), z.unknown()).nullable(), mode: z.enum(['inline', 'queued']) }) } })
+  retryDeadLetter(@CurrentUser() user: AuthUser, @ZodParams(deadLetterParam) p: z.infer<typeof deadLetterParam>, @Req() req: FastifyRequest) {
+    return this.invoices.retryDeadLetter(p.deadLetterId, user, meta(req));
+  }
+
+  @Get('promotions')
+  @ApiZod({ query: adminPromotionsQuerySchema, responses: { 200: pageSchema(promotionAdminSchema) } })
+  promotionsList(@ZodQuery(adminPromotionsQuerySchema) q: z.infer<typeof adminPromotionsQuerySchema>) {
+    return this.promotions.adminList(q);
+  }
+
+  @Post('promotions')
+  @HttpCode(201)
+  @ApiZod({ body: promotionCreateInputSchema, responses: { 201: promotionAdminSchema } })
+  promotionCreate(@CurrentUser() user: AuthUser, @ZodBody(promotionCreateInputSchema) body: PromotionCreateInput, @Req() req: FastifyRequest) {
+    return this.promotions.adminCreate(body, user, meta(req));
+  }
+
+  @Get('promotions/:promotionId')
+  @ApiZod({ responses: { 200: promotionAdminSchema } })
+  promotionGet(@ZodParams(promotionParam) p: z.infer<typeof promotionParam>) {
+    return this.promotions.adminGet(p.promotionId);
+  }
+
+  @Patch('promotions/:promotionId')
+  @ApiZod({ body: promotionPatchInputSchema, responses: { 200: promotionAdminSchema } })
+  promotionPatch(@CurrentUser() user: AuthUser, @ZodParams(promotionParam) p: z.infer<typeof promotionParam>, @ZodBody(promotionPatchInputSchema) body: PromotionPatchInput, @Req() req: FastifyRequest) {
+    return this.promotions.adminPatch(p.promotionId, body, user, meta(req));
   }
 }

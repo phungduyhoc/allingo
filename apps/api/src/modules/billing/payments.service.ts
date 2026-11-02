@@ -43,6 +43,10 @@ interface PaidEvent {
   credits_granted: number;
   source: ConfirmSource;
   late: boolean;
+  /** S8 */
+  plan_name: unknown;
+  promotion_code: string | null;
+  bonus_credits: number;
 }
 
 /**
@@ -176,8 +180,9 @@ export class PaymentsService {
           await tx.update(billingOrders).set({ status: 'paid', paidAt: now }).where(eq(billingOrders.id, order.id));
           const [plan] = await tx.select().from(billingPlans).where(eq(billingPlans.id, order.planId)).limit(1);
           const f = await this.fulfillment.grant(tx, order, plan!, now);
-          if (order.promotionId) await this.promotions.markUsed(tx, order.promotionId);
-          paid = { order_id: order.id, user_id: order.userId, plan_code: plan!.code, plan_kind: plan!.kind, total: expected, currency: 'VND', provider: provider.code, payment_id: payment.id, subscription_id: f.subscription_id, credits_granted: f.credits_granted, source, late };
+          // S8: lượt khuyến mãi reserved → redeemed, credit_bonus cộng credit, outbox promotion.redeemed
+          const promo = await this.promotions.onOrderPaid(tx, order, now);
+          paid = { order_id: order.id, user_id: order.userId, plan_code: plan!.code, plan_kind: plan!.kind, total: expected, currency: 'VND', provider: provider.code, payment_id: payment.id, subscription_id: f.subscription_id, credits_granted: f.credits_granted, source, late, plan_name: plan!.name, promotion_code: promo.code, bonus_credits: promo.bonusCredits };
           await this.outbox.write(tx, { aggregateType: 'order', aggregateId: order.id, eventType: DOMAIN_EVENTS.ORDER_PAID, payload: { ...paid } });
           await this.audit.log({ action: 'order.paid', entityType: 'order', entityId: order.id, before: { status: order.status }, after: { ...paid, entitlements: f.entitlements, period_end: f.period_end } }, tx);
           return { outcome: 'ok' as const, orderId, paid: true };

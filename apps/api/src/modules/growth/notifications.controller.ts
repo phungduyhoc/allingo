@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, HttpCode, Patch, Post, Res } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, Inject, Patch, Post, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
@@ -13,16 +13,25 @@ import {
   pushSubscriptionInputSchema,
   pushSubscriptionSchema,
   vapidPublicKeySchema,
+  notificationManagePatchSchema,
+  notificationManageSchema,
+  notificationReadAllResultSchema,
+  unsubscribeResultSchema,
+  unsubscribeTokenQuerySchema,
   type AdminTestNotificationInput,
   type NotificationPreferencesPatch,
   type PushSubscriptionInput,
 } from '@allingo/schemas';
+import { ENV, type Env } from '../../config/env.js';
 import { CurrentUser, Public, Roles, type AuthUser } from '../../shared/auth/auth.guard.js';
 import { AuditService } from '../../shared/events/audit.service.js';
 import { ApiZod, ZodBody, ZodParams, ZodQuery } from '../../shared/http/zod.js';
 import { NotificationsService } from './notifications.service.js';
+import { NotificationService } from './notify/notification.service.js';
 
 const subParam = z.object({ subscriptionId: z.uuid() });
+const notificationParam = z.object({ notificationId: z.uuid() });
+const inboxQuery = cursorQuerySchema.extend({ unread: z.stringbool().optional() });
 
 /** Tuỳ chọn thông báo + đăng ký Web Push của người dùng (S6) */
 @ApiTags('Growth')
@@ -42,11 +51,29 @@ export class MeNotificationsController {
     return this.notifications.updatePreferences(user.id, body);
   }
 
-  /** Thông báo in-app (S7: billing – nhắc gia hạn 7/3/1 ngày, hết hạn, đã thanh toán); web dịch theo `template_code` */
+  /**
+   * Thông báo in-app (S7 billing; S8 mọi mẫu NotificationService) – mới nhất trước, `unread=true` chỉ chưa đọc, kèm `unread_count`.
+   * Web dịch theo `template_code` + `payload` (dự phòng `title`/`body` đã dựng). Realtime: Socket.IO `notification.new`.
+   */
   @Get('notifications')
-  @ApiZod({ query: cursorQuerySchema, responses: { 200: pageSchema(notificationItemSchema) } })
-  inbox(@CurrentUser() user: AuthUser, @ZodQuery(cursorQuerySchema) q: z.infer<typeof cursorQuerySchema>) {
-    return this.notifications.listInApp(user.id, q.cursor, q.limit);
+  @ApiZod({ query: inboxQuery, responses: { 200: pageSchema(notificationItemSchema).extend({ unread_count: z.number().int() }) } })
+  inbox(@CurrentUser() user: AuthUser, @ZodQuery(inboxQuery) q: z.infer<typeof inboxQuery>) {
+    return this.notifications.listInApp(user.id, q.cursor, q.limit, { unread: q.unread });
+  }
+
+  /** Đánh dấu đã đọc (idempotent); thông báo của người khác → 404 */
+  @Post('notifications/:notificationId/read')
+  @HttpCode(200)
+  @ApiZod({ responses: { 200: notificationItemSchema, 404: 'empty' } })
+  read(@CurrentUser() user: AuthUser, @ZodParams(notificationParam) p: z.infer<typeof notificationParam>) {
+    return this.notifications.markRead(user.id, p.notificationId);
+  }
+
+  @Post('notifications/read-all')
+  @HttpCode(200)
+  @ApiZod({ responses: { 200: notificationReadAllResultSchema } })
+  readAll(@CurrentUser() user: AuthUser) {
+    return this.notifications.markAllRead(user.id);
   }
 
   @Get('push-subscriptions')
@@ -70,6 +97,52 @@ export class MeNotificationsController {
   @ApiZod({ responses: { 204: 'empty', 404: 'empty' } })
   async unsubscribe(@CurrentUser() user: AuthUser, @ZodParams(subParam) p: z.infer<typeof subParam>) {
     await this.notifications.unsubscribe(user.id, p.subscriptionId);
+  }
+}
+
+/**
+ * Huỷ đăng ký / quản lý thông báo bằng link ký HMAC trong email (S8, không cần đăng nhập). GET không đổi trạng thái (email client
+ * hay tải trước link) – chuyển tới trang quản lý của web; POST one-click theo RFC 8058 (`List-Unsubscribe-Post`).
+ */
+@ApiTags('Growth')
+@Controller('notifications')
+export class NotificationLinksController {
+  constructor(
+    private readonly notify: NotificationService,
+    @Inject(ENV) private readonly env: Env,
+  ) {}
+
+  @Public()
+  @Get('unsubscribe')
+  @ApiZod({ query: unsubscribeTokenQuerySchema, responses: { 302: 'empty', 400: 'empty' } })
+  async unsubscribePage(@ZodQuery(unsubscribeTokenQuerySchema) q: z.infer<typeof unsubscribeTokenQuerySchema>, @Res() reply: FastifyReply) {
+    const v = await this.notify.manageGet(q.token);
+    const u = new URL(`${this.env.WEB_PUBLIC_URL.replace(/\/+$/, '')}/notifications/manage`);
+    u.searchParams.set('token', q.token);
+    u.searchParams.set('unsubscribe', v.token_category);
+    return reply.status(302).header('location', u.toString()).send();
+  }
+
+  @Public()
+  @Post('unsubscribe')
+  @HttpCode(200)
+  @ApiZod({ query: unsubscribeTokenQuerySchema, responses: { 200: unsubscribeResultSchema, 400: 'empty' } })
+  unsubscribe(@ZodQuery(unsubscribeTokenQuerySchema) q: z.infer<typeof unsubscribeTokenQuerySchema>) {
+    return this.notify.unsubscribe(q.token);
+  }
+
+  @Public()
+  @Get('manage')
+  @ApiZod({ query: unsubscribeTokenQuerySchema, responses: { 200: notificationManageSchema, 400: 'empty' } })
+  manage(@ZodQuery(unsubscribeTokenQuerySchema) q: z.infer<typeof unsubscribeTokenQuerySchema>) {
+    return this.notify.manageGet(q.token);
+  }
+
+  @Public()
+  @Patch('manage')
+  @ApiZod({ query: unsubscribeTokenQuerySchema, body: notificationManagePatchSchema, responses: { 200: notificationManageSchema, 400: 'empty' } })
+  managePatch(@ZodQuery(unsubscribeTokenQuerySchema) q: z.infer<typeof unsubscribeTokenQuerySchema>, @ZodBody(notificationManagePatchSchema) body: z.infer<typeof notificationManagePatchSchema>) {
+    return this.notify.managePatch(q.token, body);
   }
 }
 

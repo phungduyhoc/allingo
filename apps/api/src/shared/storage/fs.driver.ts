@@ -72,7 +72,7 @@ export function verifyFsRequest(
   const expRaw = str(query.exp);
   const sig = str(query.sig);
   if (!expRaw || !sig || !/^\d{1,12}$/.test(expRaw)) return { ok: false, reason: 'malformed' };
-  if (req.bucket !== 'media' && req.bucket !== 'recordings') return { ok: false, reason: 'malformed' };
+  if (req.bucket !== 'media' && req.bucket !== 'recordings' && req.bucket !== 'invoices') return { ok: false, reason: 'malformed' };
   if (!isSafeKey(req.objectKey)) return { ok: false, reason: 'malformed' };
   const maxRaw = str(query.max);
   if (maxRaw !== undefined && !/^\d{1,12}$/.test(maxRaw)) return { ok: false, reason: 'malformed' };

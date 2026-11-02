@@ -24,7 +24,7 @@ export interface CreateUploadInput {
   sizeBytes: number;
   origin: Exclude<MediaOrigin, 'tts'>;
   /** Ảnh người học → bucket recordings (dữ liệu cá nhân, CLAUDE.md §9); nội dung CMS → media */
-  bucket: Bucket;
+  bucket: Exclude<Bucket, 'invoices'>;
   createdBy?: string | null;
   license?: string;
 }

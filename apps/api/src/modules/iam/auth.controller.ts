@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Body, Controller, HttpCode, Post, Req, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -21,8 +22,11 @@ export class AuthController {
     private readonly oauth: OAuthService,
   ) {}
 
+  /** S8: header `X-Device-Fingerprint` (client tự sinh, ≤ 256 ký tự) → chỉ lưu sha256 (`device.fp`) – chống lạm dụng referral */
   private meta(req: FastifyRequest, device?: Record<string, unknown>): RequestMeta {
-    return { ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null, device };
+    const raw = req.headers['x-device-fingerprint'];
+    const fp = typeof raw === 'string' && raw.length >= 8 && raw.length <= 256 ? createHash('sha256').update(raw).digest('hex').slice(0, 32) : undefined;
+    return { ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null, device: fp ? { ...(device ?? {}), fp } : device };
   }
 
   /** Đặt cookie httpOnly (web); mobile đọc body (access_token + refresh_token khi X-Client: mobile) */

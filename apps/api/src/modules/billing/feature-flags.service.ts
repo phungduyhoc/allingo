@@ -12,6 +12,8 @@ export interface FlagRules {
   user_ids?: string[];
   plan_kinds?: string[];
   programs?: string[];
+  /** S8: cấu hình tính năng gắn với cờ (vd ff.growth.referral → rewards, monthly_cap…) */
+  config?: Record<string, unknown>;
 }
 
 /** Bucket 0–99 ổn định theo (key, user) cho rollout theo % */

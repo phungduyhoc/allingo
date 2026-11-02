@@ -13,8 +13,10 @@ import { FeatureFlagService } from './feature-flags.service.js';
 import { encodeMerchantRef } from './payments/merchant-ref.js';
 import { asciiDescription, PaymentProviderError } from './payments/payment-provider.js';
 import { PaymentProviderRegistry } from './payments/provider-registry.js';
+import { InvoicesService } from './invoices/invoices.service.js';
+import { pgCode } from './pg-code.js';
 import { planSummary, PlansService, type PlanRow } from './plans.service.js';
-import { normalizePromoCode, toVnd } from './pricing.js';
+import { normalizePromoCode, promotionKind, toVnd } from './pricing.js';
 import { PromotionsService } from './promotions.service.js';
 
 const { billingOrders, billingPayments, billingPlans, billingPromotions, billingInvoices } = schema;
@@ -24,15 +26,7 @@ type PaymentRow = typeof billingPayments.$inferSelect;
 export const CHECKOUT_FLAG = 'ff.billing.checkout';
 const PAYABLE: OrderRow['status'][] = ['pending', 'failed', 'cancelled'];
 
-/** Mã lỗi Postgres (drizzle bọc lỗi postgres.js trong `cause`) */
-export function pgCode(err: unknown): string | undefined {
-  let e = err as { code?: string; cause?: unknown } | undefined;
-  for (let i = 0; i < 4 && e; i++) {
-    if (typeof e.code === 'string' && /^[0-9A-Z]{5}$/.test(e.code)) return e.code;
-    e = e.cause as typeof e;
-  }
-  return undefined;
-}
+export { pgCode };
 
 /** Định danh người mua gửi cổng (băm – không gửi user_id/email thật) */
 export function userRef(userId: string): string {
@@ -62,6 +56,7 @@ export class OrdersService {
     private readonly promotions: PromotionsService,
     private readonly providers: PaymentProviderRegistry,
     private readonly flags: FeatureFlagService,
+    private readonly invoices: InvoicesService,
   ) {}
 
   private now(): Date {
@@ -84,22 +79,25 @@ export class OrdersService {
     const now = this.now();
     const { plan, price } = await this.plans.resolve({ priceId: input.price_id, planId: input.plan_id });
     const subtotal = toVnd(price.amount) * input.quantity;
-    let discount = 0;
-    let promotionId: string | null = null;
-    if (input.promotion_code) {
-      const { promo, result } = await this.promotions.evaluate(user.id, input.promotion_code, plan.id, subtotal, now);
-      if (!result.ok) throw new ValidationFailed({ promotion: { code: normalizePromoCode(input.promotion_code), reason: result.reason }, issues: [{ path: 'promotion_code', message: `promotion not applicable: ${result.reason}`, code: 'promotion_invalid' }] });
-      discount = result.computation.discount;
-      promotionId = promo!.id;
-    }
-    const total = subtotal - discount;
     try {
-      const [row] = await this.dbs.db
-        .insert(billingOrders)
-        .values({ userId: user.id, planId: plan.id, priceId: price.id, promotionId, quantity: input.quantity, currency: 'VND', subtotal: String(subtotal), discount: String(discount), total: String(total), status: 'pending', idempotencyKey: key, buyerInfo: input.buyer_info ?? null, createdAt: now, expiresAt: new Date(now.getTime() + this.env.ORDER_EXPIRE_MINUTES * 60_000) })
-        .returning();
-      this.logger.info({ order_id: row!.id, plan: plan.code, total, promotion: !!promotionId }, 'order created');
-      return { order: await this.toDto(row!), created: true };
+      // S8: mã khuyến mãi khoá hàng mã + giữ lượt trong CÙNG transaction tạo đơn (không vượt max_uses khi đua)
+      const { row, promo } = await this.dbs.db.transaction(async (tx) => {
+        let discount = 0;
+        let promo: Awaited<ReturnType<PromotionsService['lockForOrder']>> | null = null;
+        if (input.promotion_code) {
+          promo = await this.promotions.lockForOrder(tx, user.id, input.promotion_code, { id: plan.id, kind: plan.kind, programCodes: plan.programCodes.filter(Boolean) }, subtotal, now);
+          discount = promo.discount;
+        }
+        const total = subtotal - discount;
+        const [row] = await tx
+          .insert(billingOrders)
+          .values({ userId: user.id, planId: plan.id, priceId: price.id, promotionId: promo?.promo.id ?? null, quantity: input.quantity, currency: 'VND', subtotal: String(subtotal), discount: String(discount), total: String(total), status: 'pending', idempotencyKey: key, buyerInfo: input.buyer_info ?? null, createdAt: now, expiresAt: new Date(now.getTime() + this.env.ORDER_EXPIRE_MINUTES * 60_000) })
+          .returning();
+        if (promo) await this.promotions.reserve(tx, promo.promo, user.id, row!.id, discount, promo.bonusCredits);
+        return { row: row!, promo };
+      });
+      this.logger.info({ order_id: row.id, plan: plan.code, total: Number(row.total), promotion: !!promo, superseded: promo?.superseded.length ?? 0 }, 'order created');
+      return { order: await this.toDto(row), created: true };
     } catch (err) {
       // Hai request song song cùng Idempotency-Key → hàng thứ hai vi phạm UNIQUE, trả đơn đã tạo
       if (pgCode(err) === '23505') {
@@ -164,6 +162,7 @@ export class OrdersService {
       .set({ status: 'expired' })
       .where(and(eq(billingOrders.id, o.id), inArray(billingOrders.status, PAYABLE)))
       .returning();
+    if (u?.promotionId) await this.promotions.releaseForOrders([u.id]);
     return u ?? o;
   }
 
@@ -174,7 +173,11 @@ export class OrdersService {
       .set({ status: 'expired' })
       .where(and(inArray(billingOrders.status, PAYABLE), lt(billingOrders.expiresAt, now)))
       .returning({ id: billingOrders.id });
-    if (rows.length) this.logger.info({ expired: rows.length }, 'orders expired');
+    if (rows.length) {
+      // S8: nhả lượt khuyến mãi đã giữ
+      const released = await this.promotions.releaseForOrders(rows.map((r) => r.id), this.dbs.db, now);
+      this.logger.info({ expired: rows.length, promotions_released: released }, 'orders expired');
+    }
     return rows.length;
   }
 
@@ -246,17 +249,18 @@ export class OrdersService {
   }
 
   // ------------------------------------------------------------------ DTO
-  async toDto(o: OrderRow, ctx?: { plan?: PlanRow; payments?: PaymentRow[]; promoCode?: string | null; invoice?: typeof billingInvoices.$inferSelect | null }): Promise<Order> {
+  async toDto(o: OrderRow, ctx?: { plan?: PlanRow; payments?: PaymentRow[]; promo?: PromoSummary | null; invoice?: typeof billingInvoices.$inferSelect | null }): Promise<Order> {
     const plan = ctx?.plan ?? (await this.plans.byId(o.planId))!;
     const payments = ctx?.payments ?? (await this.dbs.db.select().from(billingPayments).where(eq(billingPayments.orderId, o.id)).orderBy(desc(billingPayments.createdAt)));
-    let promoCode = ctx?.promoCode;
-    if (promoCode === undefined) {
-      promoCode = null;
+    let promo = ctx?.promo;
+    if (promo === undefined) {
+      promo = null;
       if (o.promotionId) {
-        const [p] = await this.dbs.db.select({ code: billingPromotions.code }).from(billingPromotions).where(eq(billingPromotions.id, o.promotionId)).limit(1);
-        promoCode = p?.code ?? null;
+        const [p] = await this.dbs.db.select({ id: billingPromotions.id, code: billingPromotions.code, kind: billingPromotions.kind, value: billingPromotions.value }).from(billingPromotions).where(eq(billingPromotions.id, o.promotionId)).limit(1);
+        promo = p ?? null;
       }
     }
+    const promoCode = promo?.code ?? null;
     let invoice = ctx?.invoice;
     if (invoice === undefined) [invoice = null] = await this.dbs.db.select().from(billingInvoices).where(eq(billingInvoices.orderId, o.id)).limit(1);
     const now = this.now();
@@ -272,11 +276,13 @@ export class OrdersService {
       promotion_code: promoCode,
       status: o.status,
       payments: payments.map((p) => ({ id: p.id, provider: p.provider === 'manual' ? 'mock' : p.provider, status: p.status, amount: Number(p.amount), created_at: p.createdAt.toISOString(), confirmed_at: p.confirmedAt?.toISOString() ?? null })),
-      invoice: invoice ? { invoice_no: invoice.invoiceNo ?? null, pdf_url: invoice.pdfUrl ?? null, issued_at: invoice.issuedAt?.toISOString() ?? null } : null,
+      invoice: await this.invoices.toOrderInvoice(invoice),
       created_at: o.createdAt.toISOString(),
       paid_at: o.paidAt?.toISOString() ?? null,
       expires_at: o.expiresAt?.toISOString() ?? null,
       payable: PAYABLE.includes(o.status) && (!o.expiresAt || o.expiresAt > now),
+      promotion: promo ? { id: promo.id, code: promo.code, kind: promotionKind(promo.kind), value: Number(promo.value), bonus_credits: promotionKind(promo.kind) === 'credit_bonus' ? Math.floor(Number(promo.value)) : 0 } : null,
+      buyer_info: buyerView(o.buyerInfo),
     };
   }
 
@@ -287,13 +293,22 @@ export class OrdersService {
     const [plans, payments, promos, invoices] = await Promise.all([
       this.dbs.db.select().from(billingPlans).where(inArray(billingPlans.id, [...new Set(rows.map((r) => r.planId))])),
       this.dbs.db.select().from(billingPayments).where(inArray(billingPayments.orderId, ids)).orderBy(desc(billingPayments.createdAt)),
-      promoIds.length ? this.dbs.db.select({ id: billingPromotions.id, code: billingPromotions.code }).from(billingPromotions).where(inArray(billingPromotions.id, promoIds)) : Promise.resolve([] as Array<{ id: string; code: string }>),
+      promoIds.length ? this.dbs.db.select({ id: billingPromotions.id, code: billingPromotions.code, kind: billingPromotions.kind, value: billingPromotions.value }).from(billingPromotions).where(inArray(billingPromotions.id, promoIds)) : Promise.resolve([] as PromoSummary[]),
       this.dbs.db.select().from(billingInvoices).where(inArray(billingInvoices.orderId, ids)),
     ]);
     const planMap = new Map(plans.map((p) => [p.id, p]));
-    const promoMap = new Map(promos.map((p) => [p.id, p.code]));
-    return Promise.all(rows.map((r) => this.toDto(r, { plan: planMap.get(r.planId), payments: payments.filter((p) => p.orderId === r.id), promoCode: r.promotionId ? (promoMap.get(r.promotionId) ?? null) : null, invoice: invoices.find((i) => i.orderId === r.id) ?? null })));
+    const promoMap = new Map(promos.map((p) => [p.id, p]));
+    return Promise.all(rows.map((r) => this.toDto(r, { plan: planMap.get(r.planId), payments: payments.filter((p) => p.orderId === r.id), promo: r.promotionId ? (promoMap.get(r.promotionId) ?? null) : null, invoice: invoices.find((i) => i.orderId === r.id) ?? null })));
   }
+}
+
+type PromoSummary = { id: string; code: string; kind: string; value: string };
+
+/** Thông tin xuất hoá đơn của đơn (đã chuẩn hoá khi tạo đơn) */
+function buyerView(raw: unknown): Order['buyer_info'] {
+  if (!raw || typeof raw !== 'object') return null;
+  const b = raw as Record<string, string | undefined>;
+  return { type: b.type === 'business' || (!b.type && b.tax_code) ? 'business' : 'personal', name: b.name ?? null, email: b.email ?? null, tax_code: b.tax_code ?? null, company: b.company ?? null, address: b.address ?? null };
 }
 
 /** VNPay yêu cầu vnp_IpAddr IPv4/IPv6 hợp lệ; bỏ tiền tố IPv4-mapped */

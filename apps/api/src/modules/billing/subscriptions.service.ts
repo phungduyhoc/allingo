@@ -130,18 +130,20 @@ export class SubscriptionsService {
 
   /** Job subscription.expire (phần hết hạn) */
   async expireDue(now: Date = this.now()): Promise<{ expired: number; notified: number }> {
-    const due = await this.dbs.db.select({ id: billingSubscriptions.id }).from(billingSubscriptions).where(and(eq(billingSubscriptions.status, 'active'), lte(billingSubscriptions.currentPeriodEnd, now))).limit(500);
+    // S8: gồm cả dùng thử (`trialing`) – hết trial → `expired`, thông báo billing.trial_ended
+    const due = await this.dbs.db.select({ id: billingSubscriptions.id }).from(billingSubscriptions).where(and(inArray(billingSubscriptions.status, ['active', 'trialing']), lte(billingSubscriptions.currentPeriodEnd, now))).limit(500);
     let expired = 0;
     let notified = 0;
     const users = new Set<string>();
     for (const { id } of due) {
       const ev = await this.dbs.db.transaction(async (tx) => {
-        const row = await this.lockWithPlan(tx, id, { skipLocked: true, extra: eq(billingSubscriptions.status, 'active') });
+        const row = await this.lockWithPlan(tx, id, { skipLocked: true, extra: inArray(billingSubscriptions.status, ['active', 'trialing']) });
         if (!row || !row.s.currentPeriodEnd || row.s.currentPeriodEnd > now) return null;
-        const status = row.s.cancelAtPeriodEnd ? 'cancelled' : 'expired';
+        const trial = row.s.status === 'trialing';
+        const status = trial ? 'expired' : row.s.cancelAtPeriodEnd ? 'cancelled' : 'expired';
         await tx.update(billingSubscriptions).set({ status, updatedAt: now }).where(eq(billingSubscriptions.id, id));
         const successor = await this.hasSuccessor(tx, row.s);
-        const payload = this.event(row.s, row.p, { status, has_successor: successor, dedupe_key: `sub:${id}:expired` });
+        const payload = this.event(row.s, row.p, { status, trial, has_successor: successor, dedupe_key: `sub:${id}:expired` });
         await this.outbox.write(tx, { aggregateType: 'subscription', aggregateId: id, eventType: DOMAIN_EVENTS.SUBSCRIPTION_EXPIRED, payload });
         return { userId: row.s.userId, payload, successor };
       });
@@ -164,15 +166,17 @@ export class SubscriptionsService {
       .select({ s: billingSubscriptions, p: billingPlans })
       .from(billingSubscriptions)
       .innerJoin(billingPlans, eq(billingPlans.id, billingSubscriptions.planId))
-      .where(and(eq(billingSubscriptions.status, 'active'), gt(billingSubscriptions.currentPeriodEnd, now), lte(billingSubscriptions.currentPeriodEnd, new Date(now.getTime() + 7 * 86_400_000)), lte(billingSubscriptions.currentPeriodStart, now)))
+      .where(and(inArray(billingSubscriptions.status, ['active', 'trialing']), gt(billingSubscriptions.currentPeriodEnd, now), lte(billingSubscriptions.currentPeriodEnd, new Date(now.getTime() + 7 * 86_400_000)), lte(billingSubscriptions.currentPeriodStart, now)))
       .limit(1000);
     let reminded = 0;
     for (const { s, p } of rows) {
-      const d = reminderThreshold(s.currentPeriodEnd!, now);
+      // S8: dùng thử chỉ nhắc 1 ngày trước khi hết (billing.trial_ending)
+      const trial = s.status === 'trialing';
+      const d = reminderThreshold(s.currentPeriodEnd!, now, trial ? [1] : undefined);
       if (d === null || (await this.hasSuccessor(this.dbs.db, s))) continue;
       const dedupe = `sub:${s.id}:${s.currentPeriodEnd!.getTime()}:d${d}`;
       if (!(await this.claimOnce(dedupe))) continue;
-      const payload = this.event(s, p, { days_before: d, days_left: daysLeft(s.currentPeriodEnd, now), dedupe_key: dedupe });
+      const payload = this.event(s, p, { days_before: d, days_left: daysLeft(s.currentPeriodEnd, now), trial, dedupe_key: dedupe });
       await this.outbox.write(this.dbs.db, { aggregateType: 'subscription', aggregateId: s.id, eventType: DOMAIN_EVENTS.SUBSCRIPTION_EXPIRING, payload });
       this.outbox.emitLocal(DOMAIN_EVENTS.SUBSCRIPTION_EXPIRING, payload);
       reminded++;

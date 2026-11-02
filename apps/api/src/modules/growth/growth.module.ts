@@ -1,11 +1,17 @@
 import { Module } from '@nestjs/common';
 import { ENV, type Env } from '../../config/env.js';
 import { getLogger } from '../../shared/telemetry/logger.js';
+import { BillingModule } from '../billing/index.js';
 import { IamModule } from '../iam/index.js';
-import { AdminNotificationsController, MeNotificationsController, PushPublicController } from './notifications.controller.js';
+import { AdminNotificationsController, MeNotificationsController, NotificationLinksController, PushPublicController } from './notifications.controller.js';
 import { NotificationsService } from './notifications.service.js';
 import { BillingNotificationsListener } from './billing-notifications.listener.js';
+import { GrowthJobsService } from './growth-jobs.service.js';
+import { NotificationService } from './notify/notification.service.js';
 import { MemoryPushSender, PUSH_SENDER, WebPushSender, type PushSender } from './push/push-sender.js';
+import { ReferralController } from './referral/referral.controller.js';
+import { ReferralListener } from './referral/referral.listener.js';
+import { ReferralService } from './referral/referral.service.js';
 
 /**
  * Chọn sender Web Push: PUSH_SENDER=memory → giả (test); webpush/auto + đủ VAPID → web-push; thiếu khoá → null (push tắt,
@@ -19,11 +25,14 @@ export function createPushSender(env: Env): PushSender | null {
   return null;
 }
 
-/** growth: thông báo & Web Push (S6), thông báo billing in-app (S7: hết hạn/nhắc gia hạn/đã thanh toán); referral/khuyến mãi ở S8 – xem README.md */
+/**
+ * growth (tầng 4): thông báo & Web Push (S6), NotificationService đa kênh + mẫu vi/en + tuỳ chọn theo loại + huỷ đăng ký ký HMAC,
+ * thông báo billing/hoá đơn/dùng thử (S7→S8), referral (S8 – ADR-0030). Xem README.md.
+ */
 @Module({
-  imports: [IamModule],
-  controllers: [MeNotificationsController, PushPublicController, AdminNotificationsController],
-  providers: [NotificationsService, BillingNotificationsListener, { provide: PUSH_SENDER, inject: [ENV], useFactory: createPushSender }],
-  exports: [NotificationsService, PUSH_SENDER],
+  imports: [IamModule, BillingModule],
+  controllers: [MeNotificationsController, PushPublicController, AdminNotificationsController, NotificationLinksController, ReferralController],
+  providers: [NotificationsService, NotificationService, BillingNotificationsListener, ReferralService, ReferralListener, GrowthJobsService, { provide: PUSH_SENDER, inject: [ENV], useFactory: createPushSender }],
+  exports: [NotificationsService, NotificationService, ReferralService, PUSH_SENDER],
 })
 export class GrowthModule {}

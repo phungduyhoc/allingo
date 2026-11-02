@@ -8,7 +8,8 @@ import { getLogger } from '../telemetry/logger.js';
 
 /**
  * Socket.IO /ws: xác thực bằng cookie allingo_at hoặc auth.token (bearer); mỗi user vào room user:<id>.
- * Sự kiện đẩy: attempt.graded, ai_task.completed, order.updated, credits.changed, entitlements.changed (từ EventEmitter local.*).
+ * Sự kiện đẩy: attempt.graded, ai_task.completed, order.updated, credits.changed, entitlements.changed (từ EventEmitter local.*);
+ * S8: notification.new (NotificationService gọi emitToUser trực tiếp khi tạo thông báo in-app).
  */
 @WebSocketGateway({ namespace: '/ws', cors: { origin: true, credentials: true } })
 export class RealtimeGateway implements OnGatewayConnection {

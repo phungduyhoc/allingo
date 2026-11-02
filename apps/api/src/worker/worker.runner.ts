@@ -64,7 +64,7 @@ export class WorkerRunner implements OnModuleInit, OnModuleDestroy {
       content: { ...this.jobs.handlersFor('content') },
       // media.process: chuẩn hoá audio/ảnh + waveform/thumbnail (ffmpeg trong image worker, ADR-0025)
       media: mediaJobHandlers(this.media),
-      notify: {},
+      notify: { ...this.jobs.handlersFor('notify') },
       analytics: { ...this.jobs.handlersFor('analytics') },
     };
     if (this.redis.isHealthy || this.redis.client.status === 'connecting') {

@@ -1,8 +1,11 @@
 import type { Readable } from 'node:stream';
 
-/** Bucket logic: `media` (nội dung, có thể qua CDN) · `recordings` (dữ liệu cá nhân, chỉ URL ký 10 phút – CLAUDE.md §9) */
-export type Bucket = 'media' | 'recordings';
-export const BUCKETS: readonly Bucket[] = ['media', 'recordings'];
+/**
+ * Bucket logic: `media` (nội dung, có thể qua CDN) · `recordings` (dữ liệu cá nhân, chỉ URL ký 10 phút – CLAUDE.md §9) ·
+ * `invoices` (S8: PDF hoá đơn điện tử – riêng tư, chỉ URL ký)
+ */
+export type Bucket = 'media' | 'recordings' | 'invoices';
+export const BUCKETS: readonly Bucket[] = ['media', 'recordings', 'invoices'];
 
 export type StorageDriverKind = 's3' | 'fs';
 

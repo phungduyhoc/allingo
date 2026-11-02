@@ -237,7 +237,8 @@ describe('S7 billing (integration)', () => {
       const audit = await dbs.db.select().from(opsAuditLogs).where(and(eq(opsAuditLogs.entityId, o.id), eq(opsAuditLogs.action, 'order.paid')));
       expect(audit).toHaveLength(1);
       await vi.waitFor(async () => {
-        const n = await dbs.db.select().from(opsNotifications).where(and(eq(opsNotifications.userId, id), eq(opsNotifications.templateCode, 'billing.order_paid')));
+        // S8: NotificationService ghi một hàng mỗi kênh – in-app đúng một
+        const n = await dbs.db.select().from(opsNotifications).where(and(eq(opsNotifications.userId, id), eq(opsNotifications.templateCode, 'billing.order_paid'), eq(opsNotifications.channel, 'inapp')));
         expect(n).toHaveLength(1);
       });
       const inbox = await api.call('GET', '/me/notifications');
@@ -473,7 +474,7 @@ describe('S7 billing (integration)', () => {
       await svc.remindDue();
       await svc.remindDue(new Date(now + 2 * 86_400_000));
       await vi.waitFor(async () => {
-        const n = await dbs.db.select().from(opsNotifications).where(and(eq(opsNotifications.userId, id), eq(opsNotifications.templateCode, 'billing.subscription_expiring')));
+        const n = await dbs.db.select().from(opsNotifications).where(and(eq(opsNotifications.userId, id), eq(opsNotifications.templateCode, 'billing.subscription_expiring'), eq(opsNotifications.channel, 'inapp')));
         expect(n.map((x) => (x.payload as { days_before: number }).days_before).sort()).toEqual([1, 3]);
       });
       // Hết kỳ: job hạ Free (status cancelled vì đã huỷ) + thông báo hết hạn
@@ -681,9 +682,10 @@ describe('S7 billing (integration)', () => {
       const base = Date.UTC(2031, 0, 1) + Math.floor(Math.random() * 3000) * 86_400_000;
       const at = new Date(base + 19 * 3600_000); // 02:00 giờ VN
       const ran = await jobs.tick(at);
-      expect(ran.sort()).toEqual(['billing.reconcile', 'credit.expire', 'credit.grant_monthly', 'order.expire', 'payment.reconcile', 'subscription.expire']);
+      // S8: + credit.grant_free_monthly (1 giờ), invoice.retry (1 phút)
+      expect(ran.sort()).toEqual(['billing.reconcile', 'credit.expire', 'credit.grant_free_monthly', 'credit.grant_monthly', 'invoice.retry', 'order.expire', 'payment.reconcile', 'subscription.expire']);
       expect(await jobs.tick(new Date(at.getTime() + 10_000))).toEqual([]);
-      expect(await jobs.tick(new Date(at.getTime() + 61_000))).toEqual(['order.expire']);
+      expect((await jobs.tick(new Date(at.getTime() + 61_000))).sort()).toEqual(['invoice.retry', 'order.expire']);
       // ngày hôm sau 01:00 VN: chưa tới giờ đối soát
       const nextDay = new Date(base + 86_400_000 + 18 * 3600_000);
       expect(await jobs.tick(nextDay)).not.toContain('billing.reconcile');

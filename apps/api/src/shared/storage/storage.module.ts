@@ -44,7 +44,7 @@ export class StorageService {
         rootDir: env.STORAGE_FS_DIR,
         publicBaseUrl: env.API_PUBLIC_URL,
         secret: env.AUTH_SECRET,
-        bucketNames: { media: env.S3_BUCKET_MEDIA, recordings: env.S3_BUCKET_RECORDINGS },
+        bucketNames: { media: env.S3_BUCKET_MEDIA, recordings: env.S3_BUCKET_RECORDINGS, invoices: env.S3_BUCKET_INVOICES },
       });
     } else {
       this.driver = new S3StorageDriver(env);

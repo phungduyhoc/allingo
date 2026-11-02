@@ -7,7 +7,7 @@ import { parseRange } from '../../src/shared/storage/fs-routes.js';
 
 const SECRET = 'unit-test-secret-at-least-32-characters!!';
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'allingo-fs-unit-'));
-const driver = new FsStorageDriver({ rootDir: root, publicBaseUrl: 'http://api.test', secret: SECRET, bucketNames: { media: 'm-bucket', recordings: 'r-bucket' } });
+const driver = new FsStorageDriver({ rootDir: root, publicBaseUrl: 'http://api.test', secret: SECRET, bucketNames: { media: 'm-bucket', recordings: 'r-bucket', invoices: 'i-bucket' } });
 
 /** Tách URL ký thành tham số verify */
 function parts(url: string) {

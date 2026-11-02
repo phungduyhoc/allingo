@@ -21,7 +21,8 @@ describe('tính giá & khuyến mãi (server-side)', () => {
 
   it('mã hợp lệ → tổng sau giảm; lý do từ chối theo thứ tự: not_found, inactive, not_started, expired, plan_not_eligible, max_uses_reached, per_user_limit_reached, below_minimum', () => {
     const ctx = { planId: 'plan-a', subtotal: 199_000, now: NOW, userPaidUses: 0 };
-    expect(evaluatePromotion(promo(), ctx)).toEqual({ ok: true, computation: { subtotal: 199_000, discount: 19_900, total: 179_100 } });
+    // S8: kết quả có thêm appliesTo + bonusCredits/trialDays
+    expect(evaluatePromotion(promo(), ctx)).toMatchObject({ ok: true, appliesTo: 'order', computation: { subtotal: 199_000, discount: 19_900, total: 179_100 } });
     const reason = (p: PromotionRow | null, c = ctx) => {
       const r = evaluatePromotion(p, c);
       return r.ok ? 'ok' : r.reason;

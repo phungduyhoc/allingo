@@ -13,6 +13,7 @@ import { MergeService } from '../merge.service.js';
 import { SessionsService, type IssuedTokens } from '../sessions.service.js';
 import { UsersService } from '../users.service.js';
 import { WelcomeCreditsService } from '../welcome-credits.service.js';
+import { registeredPayload } from '../auth.service.js';
 import { AppleOAuthProvider } from './apple.provider.js';
 import { FacebookOAuthProvider } from './facebook.provider.js';
 import { GoogleOAuthProvider } from './google.provider.js';
@@ -108,7 +109,7 @@ export class OAuthService {
           await this.consents.recordSignupConsents(tx, userId, { ip: meta.ip });
           await this.welcome.grant(tx, userId, 'registered');
           if (guestId) await this.merge.mergeGuestInto(tx, guestId, userId, { ip: meta.ip, userAgent: meta.userAgent });
-          await this.outbox.write(tx, { aggregateType: 'user', aggregateId: userId, eventType: DOMAIN_EVENTS.USER_REGISTERED, payload: { user_id: userId, provider: code, merged_guest: !!guestId } });
+          await this.outbox.write(tx, { aggregateType: 'user', aggregateId: userId, eventType: DOMAIN_EVENTS.USER_REGISTERED, payload: registeredPayload(userId, code, !!guestId, input.referral_code, meta) });
         }
         await this.users.linkIdentity(tx, { userId, provider: code, providerUid: profile.providerUid, email: profile.email, rawProfile: profile.raw });
       }
@@ -119,6 +120,7 @@ export class OAuthService {
       const tokens = await this.sessions.create(tx, { id: userId, isGuest: false }, roles, { device: { ...(meta.device ?? {}), ua: meta.userAgent?.slice(0, 200) ?? null, provider: code }, ip: meta.ip });
       return { user, tokens, created, linked };
     });
+    if (result.created) this.outbox.emitLocal(DOMAIN_EVENTS.USER_REGISTERED, registeredPayload(result.user.id, code, !!input.guest_token, input.referral_code, meta));
     const dto = await this.users.toDto(result.user);
     return { tokens: result.tokens, body: { access_token: result.tokens.accessToken, expires_in: result.tokens.expiresIn, user: dto, created: result.created, linked: result.linked } };
   }

@@ -50,11 +50,13 @@ export class AuthService {
       await this.consents.recordSignupConsents(tx, user.id, { accept: input.accept_terms, marketing: input.marketing_opt_in, ip: meta.ip });
       await this.welcome.grant(tx, user.id, 'registered');
       if (guestId) await this.merge.mergeGuestInto(tx, guestId, user.id, meta);
-      await this.outbox.write(tx, { aggregateType: 'user', aggregateId: user.id, eventType: DOMAIN_EVENTS.USER_REGISTERED, payload: { user_id: user.id, provider: 'email', merged_guest: !!guestId } });
+      await this.outbox.write(tx, { aggregateType: 'user', aggregateId: user.id, eventType: DOMAIN_EVENTS.USER_REGISTERED, payload: registeredPayload(user.id, 'email', !!guestId, input.referral_code, meta) });
       const roles = await this.users.getRoles(user.id, tx);
       const tokens = await this.sessions.create(tx, { id: user.id, isGuest: false }, roles, { device: deviceOf(meta), ip: meta.ip });
       return { user, tokens };
     });
+    // S8: referral – growth nghe local + outbox user.registered (mã giới thiệu, fingerprint băm, IP)
+    this.outbox.emitLocal(DOMAIN_EVENTS.USER_REGISTERED, registeredPayload(result.user.id, 'email', !!guestId, input.referral_code, meta));
     const dto = await this.users.toDto(result.user);
     return { tokens: result.tokens, body: { access_token: result.tokens.accessToken, expires_in: result.tokens.expiresIn, user: dto } };
   }
@@ -111,7 +113,7 @@ export class AuthService {
         created = true;
         await this.consents.recordSignupConsents(tx, user.id, { ip: meta.ip });
         await this.welcome.grant(tx, user.id, 'registered');
-        await this.outbox.write(tx, { aggregateType: 'user', aggregateId: user.id, eventType: DOMAIN_EVENTS.USER_REGISTERED, payload: { user_id: user.id, provider: ident.kind, merged_guest: !!guestId } });
+        await this.outbox.write(tx, { aggregateType: 'user', aggregateId: user.id, eventType: DOMAIN_EVENTS.USER_REGISTERED, payload: registeredPayload(user.id, ident.kind, !!guestId, input.referral_code, meta) });
       }
       if (user.status !== 'active') throw new Unauthorized('Account inactive');
       await this.users.linkIdentity(tx, { userId: user.id, provider: ident.kind, providerUid: ident.id, email: ident.kind === 'email' ? ident.id : null });
@@ -120,6 +122,7 @@ export class AuthService {
       const tokens = await this.sessions.create(tx, { id: user.id, isGuest: false }, roles, { device: { ...deviceOf(meta), provider: ident.kind }, ip: meta.ip });
       return { user, tokens, created };
     });
+    if (result.created) this.outbox.emitLocal(DOMAIN_EVENTS.USER_REGISTERED, registeredPayload(result.user.id, ident.kind, !!guestId, input.referral_code, meta));
     const dto = await this.users.toDto(result.user);
     return { tokens: result.tokens, body: { access_token: result.tokens.accessToken, expires_in: result.tokens.expiresIn, user: dto, created: result.created } };
   }
@@ -156,6 +159,14 @@ export class AuthService {
 
 /** Hash giả dùng để giữ thời gian verify ổn định khi email không tồn tại */
 const DUMMY_HASH = '$argon2id$v=19$m=19456,t=2,p=1$ZHVtbXlzYWx0ZHVtbXlzYWx0$8Cq6U5Kf6nM4mXhA9bZ5xJmE5Q9m0i9o0mN9iBz7yQ0';
+
+/**
+ * Payload outbox `user.registered` (S8): `referral_code` (nếu có), `device_fp` = sha256 fingerprint thiết bị do client gửi
+ * (header X-Device-Fingerprint – không lưu bản gốc), `ip` để growth chống lạm dụng referral.
+ */
+export function registeredPayload(userId: string, provider: string, mergedGuest: boolean, referralCode: string | undefined, meta: RequestMeta): Record<string, unknown> {
+  return { user_id: userId, provider, merged_guest: mergedGuest, referral_code: referralCode?.trim().toUpperCase() || null, device_fp: typeof meta.device?.fp === 'string' ? meta.device.fp : null, ip: meta.ip ?? null };
+}
 
 function deviceOf(meta: RequestMeta): Record<string, unknown> {
   return { ...(meta.device ?? {}), ua: meta.userAgent?.slice(0, 200) ?? null };

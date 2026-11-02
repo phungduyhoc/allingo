@@ -171,6 +171,47 @@ export const envSchema = z.object({
   // API chạy khi `true` hoặc khi JOBS_INLINE=true (dev không có worker – A59); test không bao giờ tự chạy
   BILLING_SCHEDULER_IN_API: bool(false),
 
+  // Sprint 8 – hoá đơn điện tử (ADR-0030, Proposed): mock (dev/test, PDF tự dựng) | misa (MISA meInvoice) | viettel (khung, chưa dùng được)
+  EINVOICE_PROVIDER: z.enum(['mock', 'misa', 'viettel']).default('mock'),
+  // Thuế GTGT trên hoá đơn: KCT (không chịu thuế – mặc định, cần kế toán xác nhận) | 0 | 5 | 8 | 10 (giá bán đã gồm thuế)
+  EINVOICE_VAT_RATE: z.enum(['KCT', '0', '5', '8', '10']).default('KCT'),
+  EINVOICE_SELLER_NAME: z.string().default('CONG TY TNHH ALLINGO (DEV)'),
+  EINVOICE_SELLER_TAX_CODE: z.string().default('0000000000'),
+  EINVOICE_SELLER_ADDRESS: z.string().default('Ha Noi, Viet Nam'),
+  EINVOICE_HTTP_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(20_000),
+  // MISA meInvoice (API tích hợp v2 – test: https://testapi.meinvoice.vn/api/integration). Thiếu credential → provider `unavailable`
+  MISA_MEINVOICE_BASE_URL: z.string().default('https://testapi.meinvoice.vn/api/integration'),
+  MISA_MEINVOICE_APP_ID: z.string().optional(),
+  MISA_MEINVOICE_TAX_CODE: z.string().optional(),
+  MISA_MEINVOICE_USERNAME: z.string().optional(),
+  MISA_MEINVOICE_PASSWORD: z.string().optional(),
+  // Ký hiệu hoá đơn (vd 1C26TAA – hoá đơn GTGT có mã CQT, năm 26) và kiểu ký (2 = HSM của MISA)
+  MISA_MEINVOICE_INV_SERIES: z.string().default('1C26TAA'),
+  MISA_MEINVOICE_SIGN_TYPE: z.coerce.number().int().default(2),
+  // Viettel SInvoice (khung – S8 chưa triển khai gọi thật)
+  VIETTEL_SINVOICE_BASE_URL: z.string().default('https://api-vinvoice.viettel.vn/services/einvoiceapplication/api'),
+  VIETTEL_SINVOICE_USERNAME: z.string().optional(),
+  VIETTEL_SINVOICE_PASSWORD: z.string().optional(),
+  VIETTEL_SINVOICE_TEMPLATE_CODE: z.string().default('1/001'),
+  VIETTEL_SINVOICE_INV_SERIES: z.string().default('C26TAA'),
+  S3_BUCKET_INVOICES: z.string().default('allingo-invoices'),
+
+  // Sprint 8 – email đa kênh: auto (test → memory, còn lại smtp) | smtp (Mailpit dev) | resend | ses (SMTP của Amazon SES) | memory
+  EMAIL_PROVIDER: z.enum(['auto', 'smtp', 'resend', 'ses', 'memory']).default('auto'),
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_API_URL: z.string().default('https://api.resend.com'),
+  SES_REGION: z.string().default('ap-southeast-1'),
+  SES_SMTP_USER: z.string().optional(),
+  SES_SMTP_PASS: z.string().optional(),
+  EMAIL_REPLY_TO: z.string().optional(),
+  // Khoá ký link huỷ đăng ký (HMAC); trống → dẫn xuất từ AUTH_SECRET
+  NOTIFY_UNSUBSCRIBE_SECRET: z.string().optional(),
+  // Email nhận cảnh báo vận hành (hoá đơn vào dead-letter…); trống → chỉ thông báo in-app cho admin
+  OPS_ALERT_EMAIL: z.string().optional(),
+  // Sprint 8 – referral: gốc link chia sẻ (trang OG + chuyển hướng; trống → `${API_PUBLIC_URL}/v1/r`) và ảnh OG
+  REFERRAL_SHARE_BASE_URL: z.string().optional(),
+  REFERRAL_OG_IMAGE_URL: z.string().optional(),
+
   OTEL_ENABLED: bool(false),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().default('http://localhost:4318'),
   OTEL_SERVICE_NAME: z.string().default('allingo-api'),

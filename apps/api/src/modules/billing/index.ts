@@ -17,3 +17,14 @@ export { VnpayProvider, vnpaySign, vnpaySignData } from './payments/vnpay.provid
 export { MomoProvider, momoRaw } from './payments/momo.provider.js';
 export { ZalopayProvider } from './payments/zalopay.provider.js';
 export { encodeMerchantRef, decodeMerchantRef } from './payments/merchant-ref.js';
+// S8
+export { PromotionsService } from './promotions.service.js';
+export { InvoicesService, type InvoiceIssueOutcome } from './invoices/invoices.service.js';
+export { InvoiceProviderRegistry } from './invoices/invoice-provider.registry.js';
+export { MockEInvoiceProvider } from './invoices/mock.provider.js';
+export { MisaMeInvoiceProvider } from './invoices/misa.provider.js';
+export { ViettelSInvoiceProvider } from './invoices/viettel.provider.js';
+export { EInvoiceError, splitVat, vndInWords, stripVietnamese, type EInvoiceProvider, type InvoiceIssueInput, type InvoiceHttpClient } from './invoices/einvoice-provider.js';
+export { buildSimplePdf, isStructurallyValidPdf } from './invoices/minimal-pdf.js';
+export { FreeCreditsService, freeMonthlyRefId } from './free-credits.service.js';
+export { evaluatePromotion, isNewUser, type PromotionRow } from './pricing.js';

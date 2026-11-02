@@ -6,6 +6,7 @@ import { DbService, type DbOrTx } from '../db/db.module.js';
 import { getLogger } from '../telemetry/logger.js';
 import { AuditService } from './audit.service.js';
 import { PersonalDataRegistry } from './personal-data.registry.js';
+import { UserDirectory } from './user-directory.js';
 
 export interface OutboxEvent<T = Record<string, unknown>> {
   id: number;
@@ -68,7 +69,7 @@ export class OutboxService {
 @Global()
 @Module({
   imports: [EventEmitterModule.forRoot({ wildcard: true, delimiter: '.', maxListeners: 50 })],
-  providers: [OutboxService, AuditService, PersonalDataRegistry],
-  exports: [OutboxService, AuditService, PersonalDataRegistry, EventEmitterModule],
+  providers: [OutboxService, AuditService, PersonalDataRegistry, UserDirectory],
+  exports: [OutboxService, AuditService, PersonalDataRegistry, UserDirectory, EventEmitterModule],
 })
 export class EventsModule {}

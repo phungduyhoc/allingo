@@ -26,7 +26,7 @@ export class S3StorageDriver implements StorageDriver {
   }
 
   bucketName(bucket: Bucket): string {
-    return bucket === 'media' ? this.env.S3_BUCKET_MEDIA : this.env.S3_BUCKET_RECORDINGS;
+    return bucket === 'media' ? this.env.S3_BUCKET_MEDIA : bucket === 'invoices' ? this.env.S3_BUCKET_INVOICES : this.env.S3_BUCKET_RECORDINGS;
   }
 
   async putObject(bucket: Bucket, key: string, body: Buffer, opts: PutObjectOptions): Promise<void> {

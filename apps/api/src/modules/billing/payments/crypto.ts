@@ -45,3 +45,17 @@ export function vnDayRange(date: string): { start: Date; end: Date } {
   const start = new Date(`${date}T00:00:00+07:00`);
   return { start, end: new Date(start.getTime() + 86_400_000) };
 }
+
+/** Kỳ tháng lịch VN (YYYY-MM) của một thời điểm */
+export function vnMonth(d: Date): string {
+  return vnDate(d).slice(0, 7);
+}
+
+/** Khoảng [start, end) UTC của một tháng lịch VN (YYYY-MM) */
+export function vnMonthRange(month: string): { start: Date; end: Date } {
+  const [y, m] = month.split('-').map(Number) as [number, number];
+  const start = new Date(`${month}-01T00:00:00+07:00`);
+  const ny = m === 12 ? y + 1 : y;
+  const nm = m === 12 ? 1 : m + 1;
+  return { start, end: new Date(`${ny}-${String(nm).padStart(2, '0')}-01T00:00:00+07:00`) };
+}

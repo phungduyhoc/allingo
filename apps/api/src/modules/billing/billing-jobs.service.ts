@@ -6,6 +6,8 @@ import { RedisService } from '../../shared/cache/redis.module.js';
 import { JobsService } from '../../shared/queue/jobs.service.js';
 import { getLogger } from '../../shared/telemetry/logger.js';
 import { CreditService } from './credit.service.js';
+import { FreeCreditsService } from './free-credits.service.js';
+import { InvoicesService } from './invoices/invoices.service.js';
 import { OrdersService } from './orders.service.js';
 import { PaymentsService } from './payments.service.js';
 import { vnDateTime } from './payments/crypto.js';
@@ -21,6 +23,9 @@ export const BILLING_JOB_INTERVALS: Record<BillingJob, number> = {
   'credit.expire': 3600,
   // hằng ngày: chạy ở lần tick đầu tiên sau 01:30 giờ VN
   'billing.reconcile': 86_400,
+  // S8: Free cấp lại credit tháng (idempotent theo (user, kỳ)); hoá đơn thử lại theo backoff + quét hàng kẹt
+  'credit.grant_free_monthly': 3600,
+  'invoice.retry': 60,
 };
 
 /**
@@ -45,6 +50,8 @@ export class BillingJobsService implements OnModuleInit, OnApplicationBootstrap,
     private readonly subscriptions: SubscriptionsService,
     private readonly credits: CreditService,
     private readonly reconciliation: ReconciliationService,
+    private readonly freeCredits: FreeCreditsService,
+    private readonly invoices: InvoicesService,
   ) {}
 
   onModuleInit(): void {
@@ -73,6 +80,12 @@ export class BillingJobsService implements OnModuleInit, OnApplicationBootstrap,
         return this.credits.expireDue(now);
       case 'billing.reconcile':
         return this.reconciliation.daily(now);
+      case 'credit.grant_free_monthly': {
+        const r = await this.freeCredits.grantDue(now);
+        return { users: r.users, credits: r.credits, skipped: r.skipped };
+      }
+      case 'invoice.retry':
+        return this.invoices.retryDue(now);
     }
   }
 

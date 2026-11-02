@@ -13,8 +13,11 @@ import {
   paymentProvidersSchema,
   planSchema,
   programCodeSchema,
+  promotionRedeemInputSchema,
+  promotionRedeemResultSchema,
   promotionValidateInputSchema,
   promotionValidateResultSchema,
+  type PromotionRedeemInput,
   subscriptionSchema,
 } from '@allingo/schemas';
 import { CLOCK, type Clock } from '../../shared/clock/clock.module.js';
@@ -99,13 +102,26 @@ export class BillingController {
     };
   }
 
-  /** Kiểm tra mã giảm giá cho gói (S7: mã cố định từ seed) – luôn 200, `valid=false` kèm `reason` */
+  /**
+   * Kiểm tra mã (S8 đầy đủ) – luôn 200, `valid=false` kèm `reason`. Có gói (price_id/plan_id) → đánh giá như POST /orders;
+   * không gói → như POST /promotions/redeem (trial_days, credit_bonus standalone; mã cần đơn → `plan_required`).
+   */
   @Post('promotions/validate')
   @HttpCode(200)
   @ApiZod({ body: promotionValidateInputSchema, responses: { 200: promotionValidateResultSchema } })
   async validatePromotion(@CurrentUser() user: AuthUser, @ZodBody(promotionValidateInputSchema) body: z.infer<typeof promotionValidateInputSchema>) {
+    const now = new Date(this.clock.now());
+    if (!body.price_id && !body.plan_id) return this.promotions.validate(user.id, body.code, null, 0, now, body.program);
     const { plan, price } = await this.plansSvc.resolve({ priceId: body.price_id, planId: body.plan_id });
-    return this.promotions.validate(user.id, body.code, plan.id, toVnd(price.amount), new Date(this.clock.now()));
+    return this.promotions.validate(user.id, body.code, { id: plan.id, kind: plan.kind, programCodes: plan.programCodes.filter(Boolean) }, toVnd(price.amount), now, body.program);
+  }
+
+  /** Đổi mã không qua đơn (S8): trial_days → subscription `trialing` (một lần/người), credit_bonus standalone → ledger `promo` */
+  @Post('promotions/redeem')
+  @HttpCode(200)
+  @ApiZod({ body: promotionRedeemInputSchema, responses: { 200: promotionRedeemResultSchema } })
+  redeemPromotion(@CurrentUser() user: AuthUser, @ZodBody(promotionRedeemInputSchema) body: PromotionRedeemInput, @Req() req: FastifyRequest) {
+    return this.promotions.redeem(user, body, meta(req));
   }
 
   @Get('me/subscriptions')

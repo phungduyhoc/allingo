@@ -50,7 +50,8 @@ export class FulfillmentService {
       const [last] = await tx
         .select({ end: billingSubscriptions.currentPeriodEnd })
         .from(billingSubscriptions)
-        .where(and(eq(billingSubscriptions.userId, order.userId), eq(billingSubscriptions.planId, plan.id), inArray(billingSubscriptions.status, ['active', 'trialing']), gt(billingSubscriptions.currentPeriodEnd, now)))
+        // S8: kỳ dùng thử (`trialing`) không nối tiếp – mua trong lúc dùng thử thì kỳ trả phí bắt đầu ngay (credit tháng cấp ngay)
+        .where(and(eq(billingSubscriptions.userId, order.userId), eq(billingSubscriptions.planId, plan.id), inArray(billingSubscriptions.status, ['active']), gt(billingSubscriptions.currentPeriodEnd, now)))
         .orderBy(desc(billingSubscriptions.currentPeriodEnd))
         .limit(1)
         .for('update');
@@ -66,6 +67,23 @@ export class FulfillmentService {
     if (rows.length) await tx.insert(billingEntitlements).values(rows).onConflictDoNothing();
     const credits = await this.grantDueCredits(tx, sub!, plan, now);
     return { kind: plan.kind, subscription_id: sub!.id, period_start: start.toISOString(), period_end: end?.toISOString() ?? null, entitlements: rows.length, credits_granted: credits };
+  }
+
+  /**
+   * Dùng thử Pro (S8 – trial_days): subscription `trialing` [now, now + days), entitlements nguồn `trial` theo tính năng của gói,
+   * KHÔNG cấp credit (credit là chi phí thật). Hết hạn: job subscription.expire → `expired` + thông báo hạ Free.
+   */
+  async startTrial(tx: DbOrTx, userId: string, plan: PlanRow, program: string | null, days: number, now: Date): Promise<SubscriptionRow> {
+    const end = addDays(now, days);
+    const [sub] = await tx
+      .insert(billingSubscriptions)
+      .values({ userId, planId: plan.id, programCode: program, status: 'trialing', currentPeriodStart: now, currentPeriodEnd: end, cancelAtPeriodEnd: false, sourceOrderId: null, updatedAt: now })
+      .returning();
+    const programs = program ? [program] : plan.programCodes.filter(Boolean);
+    const features = enabledFeatures(plan);
+    const rows = (programs.length ? programs : [null]).flatMap((p) => features.map((f) => ({ userId, programCode: p, featureCode: f, source: 'trial', sourceId: sub!.id, validFrom: now, validTo: end })));
+    if (rows.length) await tx.insert(billingEntitlements).values(rows).onConflictDoNothing();
+    return sub!;
   }
 
   /**
