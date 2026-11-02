@@ -1,6 +1,6 @@
-# HANDOFF — Sprint 1 → Sprint 4 (01/11/2026)
+# HANDOFF — Sprint 1 → Sprint 5 (02/11/2026)
 
-Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1, 2, 3, 4 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A39), `docs/SPEC-ISSUES.md` (S1–S29), ADR 0001–0025. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
+Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1–5 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A39), `docs/SPEC-ISSUES.md` (S1–S29), ADR 0001–0025. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
 
 Repo chưa push (theo yêu cầu: làm tiếp trên phiên, push sau). Mọi kiểm tra dưới đây chạy trong phiên cloud: Postgres 16 + pgvector, Valkey/Redis cục bộ, không Docker, không Meilisearch/MinIO/Azure/khoá AI thật (A1, A25).
 
@@ -52,6 +52,22 @@ Repo chưa push (theo yêu cầu: làm tiếp trên phiên, push sau). Mọi ki�
 | 6 | `api:diff`, `db:diff` xanh; Playwright Listening chạy trong CI với audio mock | ĐẠT cục bộ | E2E 28/28 (mock và API thật); CI chờ push |
 
 Audio đề Listening 01 hiện là MP3 im lặng đúng thời lượng (TTS mock): chạy `pnpm --filter @allingo/api seed:media --force` với `SPEECH_PROVIDER=azure` + khoá để có giọng thật (A54). Đo tải đề 200 câu: 188 req/s, `PUT /answers` p97,5 340 ms, 0 lỗi; sửa deadlock khi nhiều người nộp cùng lúc (S35).
+
+### Sprint 5 — AI Gateway production, Explain, Diagnose, Summary, Metering & Quota
+
+Phiên không có khoá AI/Langfuse thật – mọi kiểm chứng chạy với provider giả lập (MockProvider, `MockLanguageModelV4`).
+
+| # | Tiêu chí | Kết quả | Ghi chú |
+| --- | --- | --- | --- |
+| 1 | Tắt key Gemini → fallback theo `model_routes`, `fallback_used=true`; 5 lỗi → breaker mở, tự đóng sau 60 s | ĐẠT (mock) | Breaker theo provider, half-open, log cảnh báo |
+| 2 | Eval `explain_mcq` ≥ 4/5 lưu `GET /admin/eval-runs`; kích hoạt prompt chưa eval → 409 | ĐẠT một phần | 409 `eval_required` ĐẠT; eval 179 câu chạy được nhưng với mock (`mock=true, passed=false`) – cần khoá thật + LLM giám khảo |
+| 3 | Free: explain lần 11 → 429 còn 0; 00:00 giờ VN reset; `usage_counters` chốt đúng | ĐẠT | Đồng hồ giả lập; sửa lỗi chốt đêm mất số ngày hôm trước |
+| 4 | Sinh 10 câu Part 5 "logistics" → 10 draft `source=ai`, có check, câu trùng bị gắn cờ | ĐẠT (mock) | Embedding mock không mang ngữ nghĩa – ngưỡng 0,92 cần đo với embedding thật |
+| 5 | Dashboard chi phí AI khớp Langfuse ±1 % | CHƯA KIỂM CHỨNG | Cùng nguồn `cost_usd`; cần Langfuse thật |
+| 6 | `api:diff`, `db:diff` xanh; không `console.log`; không PII trong trace | ĐẠT | Migration 0003; user_id băm |
+| Web | Review → Explain SSE → 👍; chẩn đoán AI Pro; hạn mức + CTA | ĐẠT | E2E API thật 40/40, mock 42/42; sửa SSE thiếu header CORS (trình duyệt chặn) |
+
+Chi phí ước tính ≈ 1,0 USD / 1.000 explain (Gemini 2.5 Flash, token ước lượng) – có thể 1,7–1,9 USD với đầu ra tiếng Việt dài và token "thinking"; cần đo thật. Sửa lỗi nghiêm trọng: adapter AI SDK 7 từ chối message `system` (adapter thật sẽ hỏng ngay khi có khoá).
 
 ## 2. Đã làm
 
