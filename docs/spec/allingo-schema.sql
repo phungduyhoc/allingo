@@ -579,6 +579,28 @@ CREATE TABLE learn.plan_tasks (
   result_ref    jsonb                                   -- {attempt_id | submission_id}
 );
 CREATE INDEX ix_plan_tasks_week_due ON learn.plan_tasks(plan_week_id, due_date);
+CREATE INDEX ix_plan_tasks_pending_due ON learn.plan_tasks(due_date) WHERE status = 'pending';  -- v1.1 – Sprint 9: job plan.expire_tasks (3 ngày)
+
+-- v1.1 – Sprint 9 (migration 0006): lịch sử đề xuất điều chỉnh lộ trình (plan_adjust) – check-in tuần / câu lệnh tự nhiên
+CREATE TABLE learn.plan_adjustments (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  plan_id       uuid NOT NULL REFERENCES learn.study_plans(id) ON DELETE CASCADE,
+  plan_week_id  uuid REFERENCES learn.plan_weeks(id) ON DELETE CASCADE,   -- tuần đích (check-in: tuần tới)
+  user_id       uuid NOT NULL REFERENCES iam.users(id) ON DELETE CASCADE,
+  source        text NOT NULL,                          -- checkin | instruction
+  status        text NOT NULL DEFAULT 'pending',        -- pending | ready | rejected | needs_clarification | applied | expired | failed | superseded
+  input         jsonb NOT NULL DEFAULT '{}',            -- {feeling, actual_minutes, difficulties (đã che PII), availability_next_week} | {instruction}
+  proposal      jsonb,                                  -- đầu ra plan_adjust đã validate Zod {summary, operations[], needs_clarification, clarifying_question}
+  result        jsonb,                                  -- server tính: {before[], after[], changes[], violations[], minutes_before/after, budget, max_minutes}
+  ai_task_id    uuid,                                   -- loose ref ai.ai_tasks (partition)
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  expires_at    timestamptz NOT NULL,
+  applied_at    timestamptz,
+  CONSTRAINT plan_adjustments_source_check CHECK (source IN ('checkin','instruction')),
+  CONSTRAINT plan_adjustments_status_check CHECK (status IN ('pending','ready','rejected','needs_clarification','applied','expired','failed','superseded'))
+);
+CREATE INDEX ix_plan_adjustments_user ON learn.plan_adjustments(user_id, created_at DESC);
+CREATE INDEX ix_plan_adjustments_plan ON learn.plan_adjustments(plan_id, created_at DESC);
 
 CREATE TABLE learn.skill_mastery (
   user_id      uuid NOT NULL REFERENCES iam.users(id) ON DELETE CASCADE,

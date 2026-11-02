@@ -18,6 +18,7 @@ info:
     - Realtime: WebSocket `wss://api.allingo.vn/v1/ws` (Socket.IO), sự kiện `submission.graded`, `plan.updated`, `credits.changed`, `notification.new`; v1.1 – S7: `order.updated` `{order_id, status, paid_at}`, `credits.changed` `{balance | null}`, `entitlements.changed` `{}`.
     - Thanh toán (v1.1 – S7, ADR-0012 webhook-first): quyền chỉ mở khi webhook/IPN đã xác minh chữ ký (hoặc job đối chiếu `queryStatus`); return URL chỉ hiển thị. Tiền VND nguyên.
     - Streaming AI: `text/event-stream` cho chat và giải thích (`event: delta|done|error`).
+    - v1.1 – S9: lộ trình học (POST/GET /me/plan, /me/plan/today, check-in → đề xuất plan_adjust có kiểm tra ràng buộc → apply), bài chẩn đoán thích ứng (POST /me/diagnostic, GET|POST /me/diagnostic/{attemptId}/next), huy hiệu GET /me/badges; WS `plan.updated` {plan_id | task_id | proposal_id, reason}.
     - v1.1 – S8: hoá đơn điện tử tự phát hành sau `order.paid` (`Order.invoice`, PDF URL ký 10 phút); khuyến mãi đầy đủ (percent | fixed | credit_bonus | trial_days, không cộng dồn) + dùng thử Pro; referral; thông báo đa kênh (Socket.IO `notification.new` = NotificationItem); header tuỳ chọn `X-Device-Fingerprint` ở /auth/register, /auth/otp/verify, /auth/oauth/{provider} (server chỉ lưu sha256 – chống lạm dụng referral).
   contact:
     name: Allingo Engineering
@@ -871,73 +872,151 @@ paths:
     get:
       tags: [Learning]
       summary: "Lộ trình hiện tại (Free: tuần này; Pro: toàn bộ) + tiến độ"
+      description: 'v1.1 – S9: Free chỉ thấy tuần hiện tại + tuần kế (`locked_weeks_from`, tuần khoá trả `locked: true`, `days: []`); `settings`, `progress` (week/plan/exam %, dự báo đúng hướng/chậm theo quy tắc), `full_test_every_weeks` (Pro 2, Free 4). 404 khi chưa có lộ trình.'
       parameters: [ { $ref: '#/components/parameters/ProgramQuery' } ]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/StudyPlan' } } } }
-  /me/plan/today:
-    get:
-      tags: [Learning]
-      summary: Việc hôm nay (2–4 việc, kèm khởi động từ vựng nếu đủ điều kiện)
-      parameters: [ { $ref: '#/components/parameters/ProgramQuery' } ]
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { date: { type: string, format: date }, focus: { type: string }, tasks: { type: array, items: { $ref: '#/components/schemas/PlanTask' } }, warmup: { type: object, nullable: true } } } } } }
-  /me/plan/regenerate:
+        '404': { $ref: '#/components/responses/Error' }
     post:
       tags: [Learning]
-      summary: Sinh lại lộ trình (sau đổi mục tiêu/ngày thi)
-      requestBody:
-        content:
-          application/json:
-            schema: { type: object, required: [program], properties: { program: { type: string } } }
-      responses: { '202': { description: Đang sinh; WS `plan.updated` } }
-  /me/plan/checkin:
-    post:
-      tags: [Learning]
-      summary: Điểm danh tuần → điều chỉnh tuần sau kèm bằng chứng
-      requestBody:
-        content:
-          application/json:
-            schema: { type: object, required: [program], properties: { program: { type: string }, availability_next_week: { type: object } } }
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PlanWeek' } } } }
-  /me/plan/adjust:
-    post:
-      tags: [Learning]
-      summary: Chỉnh lịch bằng ngôn ngữ tự nhiên → đề xuất trước/sau (chưa áp dụng)
+      summary: Tạo lộ trình từ onboarding (v1.1 – S9)
+      description: 'PlanGenerator thuần (ADR-0032): chương trình, mục tiêu, ngày thi, phút/tuần, ngày học, giờ nhắc, múi giờ (cập nhật iam.users.timezone). Dùng mastery của bài chẩn đoán nếu đã làm. Tạo phiên bản mới (phiên bản cũ is_current=false). 503 `feature_disabled` khi tắt `ff.learning.study_plan`.'
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [program, instruction], properties: { program: { type: string }, instruction: { type: string, example: 'Đổi buổi thứ Ba với thứ Năm giúp mình' } } }
+            schema: { $ref: '#/components/schemas/PlanCreateInput' }
+      responses:
+        '201': { description: Đã tạo, content: { application/json: { schema: { $ref: '#/components/schemas/StudyPlan' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /me/plan/today:
+    get:
+      tags: [Learning]
+      summary: Việc hôm nay (2–4 việc, kèm khởi động từ vựng nếu đủ điều kiện)
+      description: 'v1.1 – S9: ngày theo múi giờ người học; `overdue` (pending quá hạn, tự expired sau 3 ngày), `quick` = gợi ý "nếu chỉ có 15 phút", `week` (tiến độ, check-in), `streak`. Chưa có lộ trình → `plan_id: null`, danh sách rỗng.'
+      parameters: [ { $ref: '#/components/parameters/ProgramQuery' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PlanToday' } } } }
+  /me/plan/regenerate:
+    post:
+      tags: [Learning]
+      summary: Sinh lại lộ trình (sau đổi mục tiêu/ngày thi)
+      description: 'v1.1 – S9: job `plan.generate` (jobId theo lộ trình hiện tại); chế độ inline (dev) trả `status: completed` + `plan_id`.'
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [program], properties: { program: { type: string } } }
+      responses:
+        '202': { description: Đang sinh; WS `plan.updated`, content: { application/json: { schema: { $ref: '#/components/schemas/PlanRegenerateResult' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /me/plan/checkin:
+    post:
+      tags: [Learning]
+      summary: Điểm danh tuần → điều chỉnh tuần sau kèm bằng chứng
+      description: 'v1.1 – S9: cảm nhận, giờ học thực tế, khó khăn (văn bản tự do qua guard, che PII, bọc <user_input>), thời gian rảnh tuần tới. Đánh dấu check-in tuần hiện tại (+XP), tạo đề xuất cho TUẦN TỚI qua job `plan.adjust` (AI plan_adjust, không tính credit) – `adjust.status` ready | rejected | needs_clarification | failed | pending.'
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlanCheckinInput' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PlanCheckinResult' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+  /me/plan/adjust:
+    get:
+      tags: [Learning]
+      summary: Lịch sử đề xuất điều chỉnh của lộ trình hiện tại (v1.1 – S9)
+      parameters: [ { name: program, in: query, schema: { type: string, enum: [toeic, ielts, jlpt, hsk], default: toeic } }, { name: limit, in: query, schema: { type: integer, default: 10, maximum: 50 } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PlanAdjustList' } } } }
+    post:
+      tags: [Learning]
+      summary: Chỉnh lịch bằng ngôn ngữ tự nhiên → đề xuất trước/sau (chưa áp dụng)
+      description: 'v1.1 – S9: tính credit theo `plan_adjust` (402 thiếu credit), guard (400 + `details.refusal_code`). Tuần được sửa: hiện tại (từ hôm nay) + tuần tới. 200 khi đã có kết quả; 202 (status pending) khi job đang chạy – xem GET /me/plan/adjust hoặc WS `plan.updated`.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [program, instruction], properties: { program: { type: string }, instruction: { type: string, maxLength: 500, example: 'Đổi buổi thứ Ba với thứ Năm giúp mình' } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PlanAdjustProposal' } } } }
+        '202': { description: 'Đang xử lý (v1.1)', content: { application/json: { schema: { $ref: '#/components/schemas/PlanAdjustProposal' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '402': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
   /me/plan/adjust/{proposalId}/apply:
     post:
       tags: [Learning]
       summary: Áp dụng đề xuất (có thể Hoàn tác trong 24 giờ)
+      description: 'v1.1 – S9: một transaction; ràng buộc kiểm lại trên dữ liệu mới nhất (409 nếu đề xuất rejected/expired/không còn hợp lệ – `details.violations`). Áp dụng lại đề xuất đã applied → 200 (idempotent). Hoàn tác: GĐ sau.'
       parameters: [ { name: proposalId, in: path, required: true, schema: { type: string, format: uuid } } ]
-      responses: { '200': { description: OK } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PlanAdjustApplyResult' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
   /plan-tasks/{taskId}:
     patch:
       tags: [Learning]
       summary: Đánh dấu việc (done/skipped) hoặc gắn kết quả
+      description: 'v1.1 – S9: `due_date` đổi ngày trong CÙNG tuần (≥ hôm nay, trước ngày thi, chỉ task pending); `result_ref.attempt_id` phải là bài đã chấm của chính người dùng. Task tự `done` khi `attempt.graded` (plan_task_id hoặc cùng test set/section) / `lesson.completed`.'
       parameters: [ { name: taskId, in: path, required: true, schema: { type: string, format: uuid } } ]
       requestBody:
         content:
           application/json:
-            schema: { type: object, properties: { status: { type: string, enum: [pending, done, skipped] }, result_ref: { type: object } } }
-      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PlanTask' } } } } }
+            schema: { type: object, properties: { status: { type: string, enum: [pending, done, skipped] }, result_ref: { type: object, properties: { attempt_id: { type: string, format: uuid }, lesson_id: { type: string, format: uuid } } }, due_date: { type: string, format: date, description: v1.1 } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PlanTask' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /me/diagnostic:
+    post:
+      tags: [Learning]
+      summary: Bắt đầu (hoặc tiếp tục) bài chẩn đoán thích ứng (v1.1 – S9)
+      description: 'Tạo attempt `mode = diagnostic` trên test set `kind = diagnostic` của chương trình (gate mini_test – Free 3/ngày) hoặc tiếp tục bài đang làm; trả câu đầu tiên/đang chờ. Luật thích ứng v1 (ADR-0031): đúng 2 liên tiếp → tăng mức, sai 2 → giảm; giữ nhóm passage.'
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { program: { type: string, enum: [toeic, ielts, jlpt, hsk], default: toeic } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/DiagnosticStep' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
   /me/diagnostic/{attemptId}/next:
+    get:
+      tags: [Learning]
+      summary: Câu đang chờ / kết quả bài chẩn đoán, không chấm (v1.1 – S9, tải lại trang)
+      parameters: [ { $ref: '#/components/parameters/AttemptId' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/DiagnosticStep' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
     post:
       tags: [Learning]
       summary: "Diagnostic thích ứng (CAT): gửi câu trả lời, nhận câu kế tiếp hoặc kết luận"
+      description: 'v1.1 – S9: body AttemptAnswerInput của câu ĐANG CHỜ (sai câu → 409 `details.current_question_id`); body `{}` = lấy lại câu đang chờ. Hết blueprint → nộp attempt (chỉ chấm câu đã phục vụ) → `done: true`, `result` (ước tính L/R/tổng ± khoảng, mastery theo subskill, mục tiêu khả thi). `estimate.score/se` giữ tương thích spec.'
       parameters: [ { $ref: '#/components/parameters/AttemptId' } ]
       requestBody:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/AttemptAnswerInput' }
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { done: { type: boolean }, next_question: { $ref: '#/components/schemas/QuestionPublic' }, estimate: { type: object, properties: { score: { type: number }, se: { type: number } } } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/DiagnosticStep' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /me/badges:
+    get:
+      tags: [Learning]
+      summary: Huy hiệu (tất cả + đã đạt + tiến độ) – v1.1 – S9
+      parameters: [ { name: program, in: query, schema: { type: string, enum: [toeic, ielts, jlpt, hsk], default: toeic } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/BadgeList' } } } }
   /me/srs/due:
     get:
       tags: [Learning]
@@ -2400,8 +2479,11 @@ components:
         id: { type: string, format: uuid }
         program: { type: string }
         version_no: { type: integer }
-        target: { type: object }
+        generated_by: { type: string, description: 'v1.1: rule | ai | manual' }
+        generated_at: { type: string, format: date-time }
+        target: { type: object, properties: { score: { type: [number, 'null'] }, exam_date: { type: [string, 'null'], format: date }, suggested: { type: [number, 'null'], description: 'v1.1: mục tiêu khả thi gợi ý' }, feasible: { type: [boolean, 'null'] } } }
         predicted_now: { type: number, nullable: true }
+        baseline: { type: [object, 'null'], description: 'v1.1: điểm đầu vào (chẩn đoán) {score, low, high, source}' }
         weeks_total: { type: integer }
         week_current: { type: integer }
         progress_pct: { type: number }
@@ -2409,21 +2491,62 @@ components:
         mastery_path: { type: object, nullable: true }
         weeks: { type: array, items: { $ref: '#/components/schemas/PlanWeek' } }
         locked_weeks_from: { type: integer, nullable: true, description: Free chỉ thấy tuần hiện tại }
+        settings: { $ref: '#/components/schemas/PlanSettings' }
+        progress: { type: object, description: v1.1, properties: { week_pct: { type: number }, plan_pct: { type: number }, exam_pct: { type: [number, 'null'] }, days_to_exam: { type: [integer, 'null'] }, forecast: { type: string, enum: [not_started, on_track, slightly_behind, behind] }, forecast_ratio: { type: [number, 'null'] } } }
+        is_pro: { type: boolean, description: v1.1 }
+        full_test_every_weeks: { type: integer, description: 'v1.1: Pro 2, Free 4' }
+    PlanSettings:
+      type: object
+      description: v1.1 – S9 (learn.study_plans.strategy.settings)
+      properties:
+        weekly_minutes: { type: integer }
+        study_days: { type: array, items: { type: string, enum: [mon, tue, wed, thu, fri, sat, sun] } }
+        reminder_time: { type: [string, 'null'], pattern: '^([01]\d|2[0-3]):[0-5]\d$' }
+        timezone: { type: string }
+        start_date: { type: string, format: date }
+        exam_date: { type: [string, 'null'], format: date }
+        target_score: { type: [number, 'null'] }
+    PlanCreateInput:
+      type: object
+      description: v1.1 – S9 (onboarding)
+      required: [program, weekly_minutes, study_days]
+      properties:
+        program: { type: string, enum: [toeic, ielts, jlpt, hsk] }
+        target_score: { type: number }
+        exam_date: { type: string, format: date }
+        weekly_minutes: { type: integer, minimum: 60, maximum: 2100 }
+        study_days: { type: array, minItems: 1, maxItems: 7, items: { type: string, enum: [mon, tue, wed, thu, fri, sat, sun] } }
+        reminder_time: { type: [string, 'null'], description: 'HH:MM giờ người học' }
+        timezone: { type: string, description: IANA }
+    PlanRegenerateResult:
+      type: object
+      description: v1.1 – S9
+      properties:
+        job_id: { type: string }
+        status: { type: string, enum: [queued, running, completed, failed] }
+        plan_id: { type: [string, 'null'], format: uuid }
     PlanWeek:
       type: object
       properties:
         id: { type: string, format: uuid }
         week_no: { type: integer }
         start_date: { type: string, format: date }
+        end_date: { type: string, format: date, description: v1.1 }
+        phase: { type: string, enum: [foundation, practice, simulation], description: v1.1 }
         focus: { type: string }
+        focus_skill: { type: [string, 'null'], description: v1.1 }
         load_minutes: { type: integer }
+        budget_minutes: { type: integer, description: 'v1.1: ngân sách phút của tuần' }
         checkin_done: { type: boolean }
         adjustment: { type: object, nullable: true }
+        locked: { type: boolean, description: 'v1.1: Free – tuần khoá' }
+        progress_pct: { type: number, description: v1.1 }
         days: { type: array, items: { type: object, properties: { date: { type: string, format: date }, status: { type: string, enum: [done, partial, pending, rest] }, tasks: { type: array, items: { $ref: '#/components/schemas/PlanTask' } } } } }
     PlanTask:
       type: object
       properties:
         id: { type: string, format: uuid }
+        plan_week_id: { type: string, format: uuid, description: v1.1 }
         due_date: { type: string, format: date }
         task_type: { type: string }
         title: { $ref: '#/components/schemas/I18nText' }
@@ -2431,15 +2554,124 @@ components:
         est_minutes: { type: integer }
         status: { type: string, enum: [pending, done, skipped, expired] }
         evidence: { type: string, nullable: true }
+        evidence_code: { type: [string, 'null'], description: 'v1.1: mã lý do (web dịch)' }
+        evidence_params: { type: object, description: v1.1 }
         result_ref: { type: object, nullable: true }
+        completed_at: { type: [string, 'null'], format: date-time, description: v1.1 }
+        launch: { type: [object, 'null'], description: 'v1.1: {kind: attempt|lesson|vocab_list|checkin, mode, test_set_id, section_id, lesson_id, vocab_list_id} – mở bằng POST /attempts {…, plan_task_id}' }
+        overdue: { type: boolean, description: v1.1 }
+    PlanToday:
+      type: object
+      description: v1.1 – S9
+      properties:
+        date: { type: string, format: date }
+        timezone: { type: string }
+        plan_id: { type: [string, 'null'], format: uuid }
+        focus: { type: [string, 'null'] }
+        tasks: { type: array, items: { $ref: '#/components/schemas/PlanTask' } }
+        overdue: { type: array, items: { $ref: '#/components/schemas/PlanTask' } }
+        warmup: { oneOf: [ { $ref: '#/components/schemas/PlanTask' }, { type: 'null' } ] }
+        quick: { type: object, properties: { minutes: { type: integer }, items: { type: array, items: { type: object, properties: { task_id: { type: string, format: uuid }, est_minutes: { type: integer }, shortened: { type: boolean } } } } } }
+        week: { type: [object, 'null'], properties: { id: { type: string, format: uuid }, week_no: { type: integer }, progress_pct: { type: number }, checkin_due: { type: boolean }, checkin_done: { type: boolean } } }
+        studied_today: { type: boolean }
+        streak: { type: object, properties: { current: { type: integer }, at_risk: { type: boolean }, freeze_available: { type: boolean } } }
+    PlanCheckinInput:
+      type: object
+      required: [program]
+      properties:
+        program: { type: string }
+        feeling: { type: string, enum: [great, good, ok, tired, struggling], description: v1.1 }
+        actual_minutes: { type: integer, minimum: 0, description: v1.1 }
+        difficulties: { type: string, maxLength: 500, description: 'v1.1: văn bản tự do (guard + che PII)' }
+        availability_next_week: { type: object, properties: { minutes: { type: integer }, days: { type: array, items: { type: string } }, note: { type: string, maxLength: 200 } } }
+    PlanCheckinResult:
+      description: v1.1 – S9 (PlanWeek của tuần vừa check-in + đề xuất cho tuần tới)
+      allOf:
+        - { $ref: '#/components/schemas/PlanWeek' }
+        - type: object
+          properties:
+            adjust: { type: [object, 'null'], properties: { proposal_id: { type: string, format: uuid }, status: { type: string } } }
+            xp_earned: { type: integer }
+            difficulties_used: { type: boolean }
     PlanAdjustProposal:
       type: object
       properties:
         proposal_id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, ready, rejected, needs_clarification, applied, expired, failed, superseded], description: v1.1 }
+        source: { type: string, enum: [checkin, instruction], description: v1.1 }
         summary: { type: string }
+        clarifying_question: { type: [string, 'null'], description: v1.1 }
+        operations: { type: array, items: { type: object }, description: 'v1.1: ops plan_adjust đã validate Zod' }
         before: { type: array, items: { $ref: '#/components/schemas/PlanTask' } }
         after: { type: array, items: { $ref: '#/components/schemas/PlanTask' } }
+        changes: { type: array, items: { type: object, properties: { task_id: { type: string }, op: { type: string }, field: { type: string }, from: {}, to: {} } }, description: v1.1 }
+        violations: { type: array, items: { type: object, properties: { code: { type: string }, op_index: { type: integer }, task_id: { type: string }, week_id: { type: string }, detail: { type: string } } }, description: 'v1.1: lý do từ chối' }
+        week: { type: [object, 'null'], description: 'v1.1: tuần đích' }
+        minutes_before: { type: integer }
+        minutes_after: { type: integer }
+        budget_minutes: { type: integer }
+        max_minutes: { type: [integer, 'null'] }
+        created_at: { type: string, format: date-time }
         expires_at: { type: string, format: date-time }
+        applied_at: { type: [string, 'null'], format: date-time }
+    PlanAdjustList:
+      type: object
+      description: v1.1 – S9
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/PlanAdjustProposal' } }
+    PlanAdjustApplyResult:
+      type: object
+      description: v1.1 – S9
+      properties:
+        proposal: { $ref: '#/components/schemas/PlanAdjustProposal' }
+        week: { $ref: '#/components/schemas/PlanWeek' }
+    DiagnosticEstimate:
+      type: object
+      description: 'v1.1 – S9: ƯỚC TÍNH (không phải điểm chính thức)'
+      properties:
+        score: { type: [number, 'null'] }
+        se: { type: [number, 'null'] }
+        low: { type: [number, 'null'] }
+        high: { type: [number, 'null'] }
+        listening: { type: [object, 'null'], properties: { score: { type: number }, low: { type: number }, high: { type: number } } }
+        reading: { type: [object, 'null'], properties: { score: { type: number }, low: { type: number }, high: { type: number } } }
+        answered: { type: integer }
+        estimated: { type: boolean }
+    DiagnosticResult:
+      type: object
+      description: v1.1 – S9
+      properties:
+        attempt_id: { type: string, format: uuid }
+        estimate: { $ref: '#/components/schemas/DiagnosticEstimate' }
+        mastery: { type: array, items: { type: object, properties: { subskill: { type: string }, skill: { type: string }, mastery: { type: number }, confidence: { type: number }, n_obs: { type: integer } } } }
+        target: { type: object, properties: { current: { type: number }, suggested: { type: number }, desired: { type: [number, 'null'] }, feasible: { type: [boolean, 'null'] }, weeks_left: { type: integer }, weekly_minutes: { type: integer }, required_weekly_minutes: { type: [integer, 'null'] }, reason: { type: string, enum: [feasible, stretch, unreachable, no_exam_date, no_target] } } }
+    DiagnosticStep:
+      type: object
+      description: 'v1.1 – S9 (mở rộng phản hồi /me/diagnostic/{attemptId}/next: done, next_question, estimate)'
+      properties:
+        attempt_id: { type: string, format: uuid }
+        done: { type: boolean }
+        next_question: { oneOf: [ { $ref: '#/components/schemas/QuestionPublic' }, { type: 'null' } ] }
+        progress: { type: object, properties: { answered: { type: integer }, served: { type: integer }, planned: { type: integer }, section_code: { type: [string, 'null'] }, level: { type: [integer, 'null'] }, group_remaining: { type: integer } } }
+        estimate: { oneOf: [ { $ref: '#/components/schemas/DiagnosticEstimate' }, { type: 'null' } ] }
+        last_correct: { type: [boolean, 'null'] }
+        result: { oneOf: [ { $ref: '#/components/schemas/DiagnosticResult' }, { type: 'null' } ] }
+    Badge:
+      type: object
+      description: v1.1 – S9
+      properties:
+        code: { type: string }
+        name: { $ref: '#/components/schemas/I18nText' }
+        rule: { type: object }
+        earned: { type: boolean }
+        earned_at: { type: [string, 'null'], format: date-time }
+        progress: { type: [object, 'null'], properties: { current: { type: integer }, target: { type: integer } } }
+    BadgeList:
+      type: object
+      description: v1.1 – S9
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/Badge' } }
+        earned_count: { type: integer }
     ErrorLogPage:
       type: object
       properties:
@@ -2472,9 +2704,11 @@ components:
         by_section: { type: object }
         by_question_type: { type: object }
         weakest: { type: array, items: { type: string } }
-        streak: { type: object, properties: { current: { type: integer }, longest: { type: integer }, freeze_available: { type: boolean } } }
-        xp: { type: object, properties: { total: { type: integer }, this_week: { type: integer } } }
+        streak: { type: object, properties: { current: { type: integer }, longest: { type: integer }, freeze_available: { type: boolean }, at_risk: { type: boolean, description: 'v1.1 – S9: chưa học hôm nay (giờ người học)' }, last_active_date: { type: [string, 'null'], format: date, description: v1.1 }, freezes_used: { type: integer, description: v1.1 } } }
+        xp: { type: object, properties: { total: { type: integer }, this_week: { type: integer }, today: { type: integer, description: v1.1 }, level: { type: integer, description: v1.1 }, next_level_at: { type: integer, description: v1.1 } } }
         minutes_this_week: { type: integer }
+        badges: { type: object, description: 'v1.1 – S9', properties: { earned: { type: integer }, total: { type: integer }, latest: { type: array, items: { type: object, properties: { code: { type: string }, earned_at: { type: string, format: date-time } } } } } }
+        plan: { type: [object, 'null'], description: 'v1.1 – S9: tóm tắt lộ trình', properties: { plan_id: { type: string }, week_pct: { type: number }, forecast: { type: string }, days_to_exam: { type: [integer, 'null'] } } }
     Forecast:
       type: object
       properties:
