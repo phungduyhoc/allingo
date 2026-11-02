@@ -1,0 +1,9 @@
+# gitleaks (CI ci.yml – job Security): luật mặc định + loại trừ dữ liệu test KHÔNG phải secret.
+title = "Allingo gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Vector chữ ký tự tạo với khoá GIẢ cho test 3 cổng thanh toán (Sprint 7, A90) – không phải credential thật"
+paths = ['''apps/api/test/fixtures/payments/vectors\.json''']

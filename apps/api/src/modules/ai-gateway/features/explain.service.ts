@@ -1,9 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import type { AiStreamEvent, ExplainMcqOutput, Explanation, Locale } from '@allingo/schemas';
-import { FEATURE_CODES } from '@allingo/schemas';
 import { InsufficientCredits, NotFound, ValidationFailed } from '../../../shared/http/errors.js';
 import { CatalogQueryService, type LoadedQuestion } from '../../catalog/index.js';
-import { CreditService, EntitlementService, QuotaService } from '../../billing/index.js';
+import { CreditService, FeatureGateService } from '../../billing/index.js';
 import { UsersService } from '../../iam/index.js';
 import { AiGatewayService } from '../core/ai-gateway.service.js';
 import { ExplanationCacheService } from '../core/explanation-cache.service.js';
@@ -32,8 +31,7 @@ export class ExplainService {
     private readonly cache: ExplanationCacheService,
     private readonly guard: GuardrailsService,
     private readonly catalog: CatalogQueryService,
-    private readonly entitlements: EntitlementService,
-    private readonly quotas: QuotaService,
+    private readonly gate: FeatureGateService,
     private readonly credits: CreditService,
     private readonly users: UsersService,
   ) {}
@@ -106,15 +104,15 @@ export class ExplainService {
       return { kind: 'json', explanation: this.toExplanation(hit.content, locale, true, aiTaskId, hit.promptVersionId) };
     }
 
-    const ctx = await this.entitlements.require(req.userId, program, FEATURE_CODES.AI_EXPLAIN);
+    // Gating S7 (FEATURE_GATES.ai_explain): quyền → credit → quota ngày (cache hit ở trên không tính)
+    await this.gate.check(req.userId, program, 'ai_explain');
     const cost = task.route.creditsCost;
     const balance = await this.credits.balance(req.userId);
     if (balance < cost) throw new InsufficientCredits({ required: cost, balance });
-    await this.quotas.consume(req.userId, ctx.planKind, FEATURE_CODES.AI_EXPLAIN);
+    const ticket = await this.gate.consume(req.userId, program, 'ai_explain');
 
     const variables = ExplainService.variablesOf(q, chosen, locale);
     const cache = this.cache;
-    const quotas = this.quotas;
     const toExplanation = this.toExplanation.bind(this);
     const writeShared = task.status === 'active';
     const stream = this.gateway.streamTask<ExplainMcqOutput>(
@@ -125,12 +123,8 @@ export class ExplainService {
     );
 
     async function* mapped(): AsyncGenerator<AiStreamEvent> {
-      let refunded = false;
-      const refund = async () => {
-        if (refunded) return;
-        refunded = true;
-        await quotas.refund(req.userId, ctx.planKind, FEATURE_CODES.AI_EXPLAIN);
-      };
+      // vé gating tự chống hoàn hai lần
+      const refund = () => ticket.release();
       let succeeded = false;
       try {
         for await (const ev of stream) {

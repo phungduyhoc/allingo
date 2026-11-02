@@ -2,13 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { and, eq, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import { TOEIC_PART_SKILL } from '@allingo/scoring';
-import { FEATURE_CODES, grade, isAnswered, correctAnswerOf, type AiStreamEvent, type AnswerInput, type AttemptAiDiagnosis, type DiagnoseRlOutput, type ScoreBreakdown } from '@allingo/schemas';
+import { grade, isAnswered, correctAnswerOf, type AiStreamEvent, type AnswerInput, type AttemptAiDiagnosis, type DiagnoseRlOutput, type ScoreBreakdown } from '@allingo/schemas';
 import { RedisService } from '../../shared/cache/redis.module.js';
 import { DbService } from '../../shared/db/db.module.js';
-import { AppError, Conflict, Forbidden, NotFound } from '../../shared/http/errors.js';
+import { AppError, Conflict, NotFound } from '../../shared/http/errors.js';
 import { getLogger } from '../../shared/telemetry/logger.js';
 import { AiGatewayService, GuardrailsService } from '../ai-gateway/index.js';
-import { EntitlementService, QuotaService } from '../billing/index.js';
+import { FeatureGateService, type GateTicket } from '../billing/index.js';
 import { CatalogQueryService } from '../catalog/index.js';
 import { UsersService } from '../iam/index.js';
 
@@ -50,8 +50,7 @@ export class AttemptDiagnosisService {
     private readonly redis: RedisService,
     private readonly gateway: AiGatewayService,
     private readonly guard: GuardrailsService,
-    private readonly entitlements: EntitlementService,
-    private readonly quotas: QuotaService,
+    private readonly gate: FeatureGateService,
     private readonly catalog: CatalogQueryService,
     private readonly users: UsersService,
   ) {}
@@ -153,14 +152,15 @@ export class AttemptDiagnosisService {
         yield { event: 'done' };
       })();
     }
-    const ent = await this.entitlements.getContext(userId, row.programCode);
-    if (!ent.features.has(FEATURE_CODES.AI_DIAGNOSE)) throw new Forbidden('Feature requires an upgrade', { feature: FEATURE_CODES.AI_DIAGNOSE, program: row.programCode, upgrade: true });
+    // Gating S7 (FEATURE_GATES.ai_diagnose): Free → 403 upgrade trước khi khoá/tiêu quota
+    await this.gate.check(userId, row.programCode, 'ai_diagnose');
     const lockKey = `diag:lock:${attemptId}`;
     const locked = await this.redis.safe((r) => r.set(lockKey, '1', 'EX', 120, 'NX'));
     if (locked === null && this.redis.isHealthy) throw new AppError('conflict', 'Diagnosis is already being generated', 409, { reason: 'in_progress' });
     const unlock = () => this.redis.safe((r) => r.del(lockKey));
+    let ticket: GateTicket;
     try {
-      await this.quotas.consume(userId, ent.planKind, FEATURE_CODES.AI_DIAGNOSE);
+      ticket = await this.gate.consume(userId, row.programCode, 'ai_diagnose');
     } catch (err) {
       await unlock();
       throw err;
@@ -169,12 +169,11 @@ export class AttemptDiagnosisService {
     try {
       variables = await this.buildVariables(row);
     } catch (err) {
-      await this.quotas.refund(userId, ent.planKind, FEATURE_CODES.AI_DIAGNOSE);
+      await ticket.release();
       await unlock();
       throw err;
     }
     const dbs = this.dbs;
-    const quotas = this.quotas;
     const toDto = this.toDto.bind(this);
     let stream: AsyncGenerator<AiStreamEvent>;
     try {
@@ -189,7 +188,7 @@ export class AttemptDiagnosisService {
         },
       );
     } catch (err) {
-      await this.quotas.refund(userId, ent.planKind, FEATURE_CODES.AI_DIAGNOSE);
+      await ticket.release();
       await unlock();
       throw err;
     }
@@ -210,7 +209,7 @@ export class AttemptDiagnosisService {
         yield { event: 'error', code: 'ai_failed', message: (err as Error).message };
         yield { event: 'done' };
       } finally {
-        if (!ok) await quotas.refund(userId, ent.planKind, FEATURE_CODES.AI_DIAGNOSE);
+        if (!ok) await ticket.release();
         await unlock();
       }
     })();

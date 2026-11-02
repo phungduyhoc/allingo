@@ -3,7 +3,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import {
-  FEATURE_CODES,
+  FEATURE_GATES,
   pickLocalized,
   type AiStreamEvent,
   type LocalizedText,
@@ -23,7 +23,7 @@ import { decodeCursor, encodeCursor } from '../../../shared/http/cursor.js';
 import { Forbidden, InsufficientCredits, NotFound, QuotaExceeded, ValidationFailed } from '../../../shared/http/errors.js';
 import { getLogger } from '../../../shared/telemetry/logger.js';
 import { AiGatewayService, createJsonFieldStreamer, GuardrailsService } from '../../ai-gateway/index.js';
-import { CreditService, EntitlementService, QuotaService, type PlanKind } from '../../billing/index.js';
+import { CreditService, FeatureGateService, type GateTicket, type PlanKind } from '../../billing/index.js';
 import { CatalogQueryService, type LoadedQuestion } from '../../catalog/index.js';
 import { EnrollmentsService, UsersService } from '../../iam/index.js';
 import { AttemptInsightsService } from '../../test-engine/index.js';
@@ -67,8 +67,7 @@ export class ThreadsService {
     private readonly gateway: AiGatewayService,
     private readonly guard: GuardrailsService,
     private readonly catalog: CatalogQueryService,
-    private readonly entitlements: EntitlementService,
-    private readonly quotas: QuotaService,
+    private readonly gate: FeatureGateService,
     private readonly credits: CreditService,
     private readonly users: UsersService,
     private readonly enrollments: EnrollmentsService,
@@ -110,8 +109,9 @@ export class ThreadsService {
   }
 
   // ------------------------------------------------------------------ lượt/thread
-  private async turnLimit(planKind: PlanKind): Promise<number | null> {
-    return (await this.quotas.limitFor(planKind, FEATURE_CODES.AI_TUTOR_THREAD_TURNS))?.limit ?? null;
+  /** Hạn mức lượt/thread = quota theo phạm vi của gate ai_tutor (FEATURE_GATES – S7, đọc billing.quotas) */
+  private turnLimit(planKind: PlanKind): Promise<number | null> {
+    return this.gate.scopedLimit(planKind, 'ai_tutor');
   }
 
   /** Lượt đã dùng = số câu trả lời gia sư KHÔNG bị từ chối (lượt bị guard từ chối / AI lỗi không tính) */
@@ -126,7 +126,7 @@ export class ThreadsService {
   }
 
   private async turnsOf(userId: string, t: ThreadRow): Promise<{ used: number; limit: number | null }> {
-    const ctx = await this.entitlements.getContext(userId, t.programCode ?? 'toeic');
+    const ctx = await this.gate.context(userId, t.programCode ?? 'toeic');
     const [used, limit] = await Promise.all([this.turnsUsed([t.id]).then((m) => m.get(t.id) ?? 0), this.turnLimit(ctx.planKind)]);
     return { used, limit };
   }
@@ -169,7 +169,7 @@ export class ThreadsService {
     const page = rows.slice(0, limit);
     const used = await this.turnsUsed(page.map((t) => t.id));
     const limits = new Map<string, number | null>();
-    for (const p of new Set(page.map((t) => t.programCode ?? 'toeic'))) limits.set(p, await this.turnLimit((await this.entitlements.getContext(userId, p)).planKind));
+    for (const p of new Set(page.map((t) => t.programCode ?? 'toeic'))) limits.set(p, await this.turnLimit((await this.gate.context(userId, p)).planKind));
     return {
       data: page.map((t) => this.toThreadDto(t, { used: used.get(t.id) ?? 0, limit: limits.get(t.programCode ?? 'toeic') ?? null })),
       next_cursor: rows.length > limit ? encodeCursor({ u: page.at(-1)!.updatedAt.toISOString(), id: page.at(-1)!.id }) : null,
@@ -271,13 +271,13 @@ export class ThreadsService {
     if (!raw) throw new ValidationFailed({ issues: [{ path: 'text', message: input.recording_id ? 'voice messages are not supported yet (GĐ2)' : 'text is required' }] });
     const program = thread.programCode ?? 'toeic';
     const ctx = this.contextOf(thread);
-    const ent = await this.entitlements.getContext(userId, program);
+    const ent = await this.gate.context(userId, program);
 
     // 1) Giới hạn lượt/thread theo gói (đọc billing.quotas, không hard-code)
     const limit = await this.turnLimit(ent.planKind);
     const used = (await this.turnsUsed([threadId])).get(threadId) ?? 0;
     if (limit !== null && used >= limit) {
-      throw new QuotaExceeded({ feature: FEATURE_CODES.AI_TUTOR_THREAD_TURNS, period: 'lifetime', limit, used, remaining: 0, resets_at: FAR_FUTURE, reset_at: FAR_FUTURE }, { scope: 'thread', thread_id: threadId });
+      throw new QuotaExceeded({ feature: FEATURE_GATES.ai_tutor.scopedQuota, period: 'lifetime', limit, used, remaining: 0, resets_at: FAR_FUTURE, reset_at: FAR_FUTURE }, { scope: 'thread', thread_id: threadId });
     }
 
     // 2) Guard (PII che trước khi tới model; luật cục bộ; guard_classify) – fail-closed
@@ -312,10 +312,11 @@ export class ThreadsService {
     }
 
     // 3) Quyền + credit + quota ngày (kiểm tra ở server – §5.7)
-    await this.entitlements.require(userId, program, FEATURE_CODES.AI_TUTOR);
+    // Gating S7 (FEATURE_GATES.ai_tutor): quyền → credit → quota ngày
+    await this.gate.check(userId, program, 'ai_tutor');
     const cost = await this.gateway.estimateCredits('tutor_chat', program);
     if (cost > 0 && !(await this.credits.hasAtLeast(userId, cost))) throw new InsufficientCredits({ required: cost, balance: await this.credits.balance(userId) });
-    await this.quotas.consume(userId, ent.planKind, FEATURE_CODES.AI_TUTOR);
+    const ticket: GateTicket = await this.gate.consume(userId, program, 'ai_tutor');
 
     // 4) Ngữ cảnh
     let variables: Record<string, unknown>;
@@ -354,7 +355,7 @@ export class ThreadsService {
       userMessageId = um!.id;
       locale = user?.explainLocale ?? 'vi';
     } catch (err) {
-      await this.quotas.refund(userId, ent.planKind, FEATURE_CODES.AI_TUTOR);
+      await ticket.release();
       throw err;
     }
 
@@ -368,8 +369,6 @@ export class ThreadsService {
         await tx.update(learnChatThreads).set({ updatedAt: new Date(), title }).where(eq(learnChatThreads.id, threadId));
       },
     );
-    const quotas = this.quotas;
-    const planKind = ent.planKind;
     async function* mapped(): AsyncGenerator<AiStreamEvent> {
       const field = createJsonFieldStreamer('reply_markdown');
       let succeeded = false;
@@ -403,7 +402,7 @@ export class ThreadsService {
         yield { event: 'done' };
       } finally {
         // AI lỗi / client ngắt trước khi có kết quả → hoàn lượt ngày (không trừ credit vì chưa finalize)
-        if (!succeeded) await quotas.refund(userId, planKind, FEATURE_CODES.AI_TUTOR);
+        if (!succeeded) await ticket.release();
       }
     }
     return mapped();

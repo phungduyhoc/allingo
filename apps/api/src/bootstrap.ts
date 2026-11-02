@@ -34,6 +34,11 @@ export async function createApp(env: Env = loadEnv()): Promise<NestFastifyApplic
       done(Object.assign(err as Error, { statusCode: 400 }), undefined);
     }
   });
+  // application/x-www-form-urlencoded (S7): callback cổng thanh toán dạng form + trang thanh toán giả lập (dev)
+  fastify.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) => {
+    const text = typeof body === 'string' ? body : body.toString('utf8');
+    done(null, Object.fromEntries(new URLSearchParams(text)));
+  });
   await fastify.register(fastifyCookie, { secret: env.AUTH_SECRET });
   await fastify.register(fastifyHelmet, { contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } });
   await fastify.register(fastifyCors, { origin: env.CORS_ORIGINS.split(',').map((s) => s.trim()), credentials: true, methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Client', 'Accept-Language', 'X-Internal-Token'], exposedHeaders: ['x-trace-id'] });

@@ -4,6 +4,7 @@ import { getLogger } from '../../shared/telemetry/logger.js';
 import { IamModule } from '../iam/index.js';
 import { AdminNotificationsController, MeNotificationsController, PushPublicController } from './notifications.controller.js';
 import { NotificationsService } from './notifications.service.js';
+import { BillingNotificationsListener } from './billing-notifications.listener.js';
 import { MemoryPushSender, PUSH_SENDER, WebPushSender, type PushSender } from './push/push-sender.js';
 
 /**
@@ -18,11 +19,11 @@ export function createPushSender(env: Env): PushSender | null {
   return null;
 }
 
-/** growth: thông báo & Web Push (S6); referral/khuyến mãi ở S8 – xem README.md */
+/** growth: thông báo & Web Push (S6), thông báo billing in-app (S7: hết hạn/nhắc gia hạn/đã thanh toán); referral/khuyến mãi ở S8 – xem README.md */
 @Module({
   imports: [IamModule],
   controllers: [MeNotificationsController, PushPublicController, AdminNotificationsController],
-  providers: [NotificationsService, { provide: PUSH_SENDER, inject: [ENV], useFactory: createPushSender }],
+  providers: [NotificationsService, BillingNotificationsListener, { provide: PUSH_SENDER, inject: [ENV], useFactory: createPushSender }],
   exports: [NotificationsService, PUSH_SENDER],
 })
 export class GrowthModule {}

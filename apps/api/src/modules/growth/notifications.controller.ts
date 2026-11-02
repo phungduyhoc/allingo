@@ -3,6 +3,8 @@ import { ApiTags } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
 import {
+  cursorQuerySchema,
+  notificationItemSchema,
   adminTestNotificationInputSchema,
   adminTestNotificationResultSchema,
   notificationPreferencesPatchSchema,
@@ -17,7 +19,7 @@ import {
 } from '@allingo/schemas';
 import { CurrentUser, Public, Roles, type AuthUser } from '../../shared/auth/auth.guard.js';
 import { AuditService } from '../../shared/events/audit.service.js';
-import { ApiZod, ZodBody, ZodParams } from '../../shared/http/zod.js';
+import { ApiZod, ZodBody, ZodParams, ZodQuery } from '../../shared/http/zod.js';
 import { NotificationsService } from './notifications.service.js';
 
 const subParam = z.object({ subscriptionId: z.uuid() });
@@ -38,6 +40,13 @@ export class MeNotificationsController {
   @ApiZod({ body: notificationPreferencesPatchSchema, responses: { 200: notificationPreferencesSchema, 400: 'empty' } })
   patch(@CurrentUser() user: AuthUser, @ZodBody(notificationPreferencesPatchSchema) body: NotificationPreferencesPatch) {
     return this.notifications.updatePreferences(user.id, body);
+  }
+
+  /** Thông báo in-app (S7: billing – nhắc gia hạn 7/3/1 ngày, hết hạn, đã thanh toán); web dịch theo `template_code` */
+  @Get('notifications')
+  @ApiZod({ query: cursorQuerySchema, responses: { 200: pageSchema(notificationItemSchema) } })
+  inbox(@CurrentUser() user: AuthUser, @ZodQuery(cursorQuerySchema) q: z.infer<typeof cursorQuerySchema>) {
+    return this.notifications.listInApp(user.id, q.cursor, q.limit);
   }
 
   @Get('push-subscriptions')

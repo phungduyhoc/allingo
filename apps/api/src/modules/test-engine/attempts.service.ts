@@ -6,8 +6,8 @@ import {
   ATTEMPT_GRACE_SECONDS,
   AUDIO_PLAY_EVENT_TYPES,
   DOMAIN_EVENTS,
-  FEATURE_CODES,
   XP_RULES,
+  gateForTestSetKind,
   attemptDraftStateSchema,
   grade,
   isAnswered,
@@ -24,7 +24,7 @@ import {
   type AttemptResult,
   type AttemptReview,
   type AttemptSummary,
-  type FeatureCode,
+  type GateKey,
   type LocalizedText,
   type ProgramCode,
   type ScoreBreakdown,
@@ -40,7 +40,7 @@ import { Conflict, Forbidden, NotFound, ValidationFailed } from '../../shared/ht
 import { encodeCursor, decodeCursor } from '../../shared/http/cursor.js';
 import { getLogger } from '../../shared/telemetry/logger.js';
 import { CatalogQueryService, SearchService, type LoadedQuestion, type PracticeHistory } from '../catalog/index.js';
-import { EntitlementService, QuotaService } from '../billing/index.js';
+import { FeatureGateService } from '../billing/index.js';
 import { AiGatewayService, ExplanationCacheService } from '../ai-gateway/index.js';
 import { EnrollmentsService, UsersService } from '../iam/index.js';
 import { EXAM_LOCK_KEY } from '../../shared/exam/exam-mode.js';
@@ -73,8 +73,7 @@ export class AttemptsService {
     private readonly idem: IdempotencyService,
     private readonly catalog: CatalogQueryService,
     private readonly search: SearchService,
-    private readonly entitlements: EntitlementService,
-    private readonly quotas: QuotaService,
+    private readonly gate: FeatureGateService,
     private readonly explanationCache: ExplanationCacheService,
     private readonly enrollments: EnrollmentsService,
     private readonly users: UsersService,
@@ -88,32 +87,35 @@ export class AttemptsService {
     if (existing) return this.get(userId, existing.attempt_id);
 
     let questions: LoadedQuestion[];
-    let feature: FeatureCode;
+    let gateKey: GateKey;
+    let contentIsFree = false;
     let timeLimitSec: number | null = null;
     let testSet: TestSetInfo = null;
     if (input.test_set_id) {
       const ts = await this.catalog.requireTestSetPublished(input.test_set_id);
       if (ts.ts.programCode !== input.program) throw new ValidationFailed({ issues: [{ path: 'program', message: 'test set belongs to another program' }] });
       questions = await this.catalog.loadTestSetQuestions(input.test_set_id);
-      feature = ts.ts.kind === 'full' ? FEATURE_CODES.FULL_TEST : ts.ts.kind === 'part_drill' ? FEATURE_CODES.PART_DRILL : FEATURE_CODES.MINI_TEST;
+      // Gating S7: bảng FEATURE_GATES (packages/config/entitlements.ts) – đề miễn phí bỏ qua quyền nhưng vẫn tiêu quota
+      gateKey = gateForTestSetKind(ts.ts.kind);
+      contentIsFree = ts.ts.isFree;
       // exam: đồng hồ của đề; timed_drill: giới hạn theo Part (Sprint 4); practice/drill/diagnostic: không giới hạn
       timeLimitSec = input.mode === 'exam' ? (ts.ts.durationSec ?? null) : input.mode === 'timed_drill' ? await this.timedDrillBudget(questions) : null;
       testSet = { title: ts.ts.title, kind: ts.ts.kind };
-      const ctx = await this.entitlements.getContext(userId, input.program);
-      if (!ts.ts.isFree && !ctx.features.has(feature)) throw new Forbidden('Test set requires an upgrade', { feature, upgrade: true });
+      // Kiểm tra quyền trước khi tải/đếm (403 sớm, không tiêu quota)
+      await this.gate.check(userId, input.program, gateKey, { contentIsFree });
     } else if (input.section_id) {
       const section = await this.catalog.sectionById(input.section_id);
       if (!section || section.programCode !== input.program) throw new NotFound('section', input.section_id);
       questions = await this.catalog.randomQuestions(input.program, { section_code: section.code, count: SECTION_DRILL_COUNT, history: await this.practiceHistory(userId, input.program) });
-      feature = FEATURE_CODES.PART_DRILL;
+      gateKey = 'part_drill';
       timeLimitSec = input.mode === 'timed_drill' ? await this.timedDrillBudget(questions) : null;
     } else {
       throw new ValidationFailed({ issues: [{ path: 'test_set_id', message: 'test_set_id or section_id is required' }] });
     }
     if (questions.length === 0) throw new ValidationFailed({ issues: [{ path: 'test_set_id', message: 'no published questions' }] });
 
-    const ctx = await this.entitlements.getContext(userId, input.program);
-    const quota = await this.quotas.consume(userId, ctx.planKind, feature);
+    const ticket = await this.gate.consume(userId, input.program, gateKey, { contentIsFree });
+    const quota = ticket.quota;
     try {
       const now = new Date();
       const expiresAt = timeLimitSec ? new Date(now.getTime() + timeLimitSec * 1000) : null;
@@ -145,7 +147,7 @@ export class AttemptsService {
       this.logger.info({ attempt_id: attemptId, mode: input.mode, questions: questions.length, quota: quota?.used }, 'attempt created');
       return this.assemble(userId, attemptId, questions, { testSet });
     } catch (err) {
-      await this.quotas.refund(userId, ctx.planKind, feature);
+      await ticket.release();
       throw err;
     }
   }
@@ -668,8 +670,7 @@ export class AttemptsService {
     const history = await this.practiceHistory(userId, q.program);
     const questions = await this.catalog.randomQuestions(q.program, { section_code: q.section, question_type: q.question_type, topic: q.topic, subskill: q.subskill, count: q.count, onlyQuestionIds, history });
     if (questions.length === 0) throw new NotFound('questions');
-    const ctx = await this.entitlements.getContext(userId, q.program);
-    await this.quotas.consume(userId, ctx.planKind, FEATURE_CODES.PART_DRILL);
+    await this.gate.consume(userId, q.program, 'part_drill');
     const timeLimitSec = q.timed ? await this.timedDrillBudget(questions, q.per_question_sec) : null;
     const draft: AttemptDraftState = {
       question_order: questions.map((x) => ({ question_id: x.question_id, question_version_id: x.question_version_id, section_code: x.section_code, group_key: x.group_key, order_no: x.order_no })),

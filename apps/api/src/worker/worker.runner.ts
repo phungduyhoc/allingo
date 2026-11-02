@@ -8,7 +8,7 @@ import { RedisService } from '../shared/cache/redis.module.js';
 import { OutboxService } from '../shared/events/outbox.service.js';
 import { JobsService } from '../shared/queue/jobs.service.js';
 import { getLogger } from '../shared/telemetry/logger.js';
-import { QuotaService } from '../modules/billing/index.js';
+import { BillingJobsService, QuotaService } from '../modules/billing/index.js';
 import { AttemptsService } from '../modules/test-engine/index.js';
 import { DeletionService } from '../modules/iam/index.js';
 import { MediaProcessorService, mediaJobHandlers } from '../modules/speech/index.js';
@@ -17,7 +17,9 @@ type Handler = (job: Job) => Promise<unknown>;
 
 /**
  * Vòng chạy worker: (1) outbox relay mỗi 2 giây; (2) attempt.expire mỗi phút; (3) quota.flush 00:05 giờ VN;
- * (4) partition.ensure hằng ngày; (5) processors BullMQ theo hàng đợi (grading/content/media/notify/analytics/maintenance).
+ * (4) partition.ensure hằng ngày; (5) processors BullMQ theo hàng đợi (grading/content/media/notify/analytics/maintenance);
+ * (6) lịch job billing S7 (BillingJobsService: order.expire 1′, payment.reconcile 5′, subscription.expire 10′, credit.* 1 giờ,
+ *     billing.reconcile 01:30 giờ VN).
  * Job thất bại sau retry → ops.jobs_deadletter.
  */
 @Injectable()
@@ -37,6 +39,7 @@ export class WorkerRunner implements OnModuleInit, OnModuleDestroy {
     private readonly deletion: DeletionService,
     private readonly media: MediaProcessorService,
     private readonly jobs: JobsService,
+    private readonly billingJobs: BillingJobsService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -44,6 +47,8 @@ export class WorkerRunner implements OnModuleInit, OnModuleDestroy {
     this.timers.push(setInterval(() => void this.expire(), 60_000));
     this.timers.push(setInterval(() => void this.nightly(), 60_000));
     this.timers.push(setInterval(() => void this.purge(), this.env.PURGE_SCAN_INTERVAL_SECONDS * 1000));
+    // S7: lịch job billing (chu kỳ + khoá Redis chống chạy trùng giữa các replica)
+    this.billingJobs.startScheduler('worker');
     await ensureMonthPartitions(this.dbs.db, 2).catch((err: Error) => this.logger.warn({ err: err.message }, 'partition ensure failed'));
     const handlers: Record<QueueName, Record<string, Handler>> = {
       maintenance: {
@@ -51,6 +56,8 @@ export class WorkerRunner implements OnModuleInit, OnModuleDestroy {
         'partition.ensure': async () => ({ created: await ensureMonthPartitions(this.dbs.db, 2) }),
         'attempt.expire': async () => ({ expired: await this.attempts.expireOverdue() }),
         'iam.purge': async () => ({ purged: await this.deletion.purgeDue() }),
+        // S7: order.expire, payment.reconcile, subscription.expire, credit.grant_monthly, credit.expire, billing.reconcile
+        ...this.jobs.handlersFor('maintenance'),
       },
       // Sprint 5: summary.attempt (learning), content.generate / eval.run (catalog, ai-gateway) – đăng ký qua JobsService
       grading: { ...this.jobs.handlersFor('grading') },

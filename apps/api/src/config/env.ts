@@ -141,7 +141,35 @@ export const envSchema = z.object({
   AZURE_SPEECH_KEY: z.string().optional(),
   AZURE_SPEECH_REGION: z.string().optional(),
 
+  // Sprint 7 – thanh toán (ADR-0012 webhook-first). Danh sách cổng bật; cổng thiếu credential → `unavailable` (không liệt kê cho client).
+  // mock chỉ hoạt động khi APP_ENV ≠ production.
   PAYMENT_PROVIDERS: z.string().default('mock'),
+  // Gốc URL công khai cổng gọi IPN/return (mặc định API_PUBLIC_URL; sandbox cần tunnel https, vd ngrok)
+  PAYMENT_CALLBACK_BASE_URL: z.string().optional(),
+  ORDER_EXPIRE_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
+  PAYMENT_RECONCILE_AFTER_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
+  PAYMENT_HTTP_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(15_000),
+  // Khoá ký webhook giả lập (dev/test); production từ chối mock
+  PAYMENT_MOCK_SECRET: z.string().default('mock-dev-secret'),
+  // VNPay 2.1.0 (sandbox: https://sandbox.vnpayment.vn) – vnp_TmnCode + vnp_HashSecret (HMAC-SHA512)
+  VNPAY_TMN_CODE: z.string().optional(),
+  VNPAY_HASH_SECRET: z.string().optional(),
+  VNPAY_PAY_URL: z.string().default('https://sandbox.vnpayment.vn/paymentv2/vpcpay.html'),
+  VNPAY_API_URL: z.string().default('https://sandbox.vnpayment.vn/merchant_webapi/api/transaction'),
+  // MoMo AIO v2 (sandbox: https://test-payment.momo.vn) – partnerCode/accessKey/secretKey (HMAC-SHA256)
+  MOMO_PARTNER_CODE: z.string().optional(),
+  MOMO_ACCESS_KEY: z.string().optional(),
+  MOMO_SECRET_KEY: z.string().optional(),
+  MOMO_ENDPOINT: z.string().default('https://test-payment.momo.vn'),
+  MOMO_REQUEST_TYPE: z.enum(['captureWallet', 'payWithMethod', 'payWithATM', 'payWithCC']).default('captureWallet'),
+  // ZaloPay API v2 (sandbox: https://sb-openapi.zalopay.vn) – app_id + key1 (tạo/query) + key2 (callback)
+  ZALOPAY_APP_ID: z.string().optional(),
+  ZALOPAY_KEY1: z.string().optional(),
+  ZALOPAY_KEY2: z.string().optional(),
+  ZALOPAY_ENDPOINT: z.string().default('https://sb-openapi.zalopay.vn'),
+  // Lịch job billing (order.expire, payment.reconcile, subscription.expire, credit.*, billing.reconcile): worker luôn chạy;
+  // API chạy khi `true` hoặc khi JOBS_INLINE=true (dev không có worker – A59); test không bao giờ tự chạy
+  BILLING_SCHEDULER_IN_API: bool(false),
 
   OTEL_ENABLED: bool(false),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().default('http://localhost:4318'),

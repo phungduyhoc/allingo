@@ -5,6 +5,7 @@ import type { AdminTestNotificationInput, AdminTestNotificationResult, Notificat
 import { ENV, type Env } from '../../config/env.js';
 import { DbService } from '../../shared/db/db.module.js';
 import { PersonalDataRegistry } from '../../shared/events/personal-data.registry.js';
+import { decodeCursor, encodeCursor } from '../../shared/http/cursor.js';
 import { FeatureDisabled, NotFound } from '../../shared/http/errors.js';
 import { getLogger } from '../../shared/telemetry/logger.js';
 import { UsersService } from '../iam/index.js';
@@ -60,6 +61,47 @@ export class NotificationsService implements OnModuleInit {
 
   vapidPublicKey(): { public_key: string | null; enabled: boolean } {
     return { public_key: this.env.VAPID_PUBLIC_KEY ?? null, enabled: this.pushEnabled };
+  }
+
+  // ------------------------------------------------------------------ in-app (S7)
+  /**
+   * Thông báo trong ứng dụng (`ops.notifications` channel `inapp`, status `sent` = đã vào hộp thư). Idempotent theo
+   * `dedupe_key` (khoá advisory theo khoá trong transaction – sự kiện local + outbox relay cùng tới không tạo 2 hàng).
+   * Nội dung hiển thị do web dịch theo `template_code` + `payload` (CLAUDE.md §5.11). Email/push đa kênh ở S8.
+   */
+  async notifyInApp(userId: string, input: { template_code: string; payload: Record<string, unknown>; dedupe_key: string }): Promise<{ id: string; created: boolean }> {
+    return this.dbs.db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`notif:${input.dedupe_key}`}))`);
+      const [hit] = await tx
+        .select({ id: opsNotifications.id })
+        .from(opsNotifications)
+        .where(and(eq(opsNotifications.userId, userId), eq(opsNotifications.templateCode, input.template_code), sql`${opsNotifications.payload}->>'dedupe_key' = ${input.dedupe_key}`))
+        .limit(1);
+      if (hit) return { id: hit.id, created: false };
+      const now = new Date();
+      const [row] = await tx
+        .insert(opsNotifications)
+        .values({ userId, channel: 'inapp', templateCode: input.template_code, payload: { ...input.payload, dedupe_key: input.dedupe_key }, status: 'sent', scheduledAt: now, sentAt: now })
+        .returning({ id: opsNotifications.id });
+      return { id: row!.id, created: true };
+    });
+  }
+
+  /** GET /me/notifications – thông báo in-app mới nhất trước (cursor) */
+  async listInApp(userId: string, cursor: string | undefined, limit: number) {
+    const c = decodeCursor<{ t: string; id: string }>(cursor);
+    const rows = await this.dbs.db
+      .select()
+      .from(opsNotifications)
+      .where(and(eq(opsNotifications.userId, userId), eq(opsNotifications.channel, 'inapp'), c ? sql`(${opsNotifications.scheduledAt}, ${opsNotifications.id}) < (${c.t}::timestamptz, ${c.id}::uuid)` : undefined))
+      .orderBy(desc(opsNotifications.scheduledAt), desc(opsNotifications.id))
+      .limit(limit + 1);
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+    return {
+      data: page.map((r) => ({ id: r.id, channel: r.channel, template_code: r.templateCode, payload: (r.payload ?? {}) as Record<string, unknown>, status: r.status, scheduled_at: r.scheduledAt.toISOString(), sent_at: r.sentAt?.toISOString() ?? null, read_at: r.readAt?.toISOString() ?? null })),
+      next_cursor: rows.length > limit && last ? encodeCursor({ t: last.scheduledAt.toISOString(), id: last.id }) : null,
+    };
   }
 
   // ------------------------------------------------------------------ tuỳ chọn

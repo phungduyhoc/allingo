@@ -20,7 +20,8 @@ export interface EntitlementContext {
 
 /**
  * Entitlement vật chất hoá (ADR-0010): đọc billing.v_active_entitlements; Free lấy features từ plan 'free'.
- * Cache Redis 60 giây; invalidate khi billing thay đổi.
+ * Cache Redis 60 giây; invalidate khi billing thay đổi (thanh toán, hoàn tiền, huỷ, hết hạn – S7).
+ * `planKind` = gói của subscription đang hiệu lực ưu tiên combo > lifetime > yearly > monthly (quyết định quota áp dụng).
  */
 @Injectable()
 export class EntitlementService {
@@ -51,7 +52,16 @@ export class EntitlementService {
         .select({ kind: billingPlans.kind })
         .from(billingSubscriptions)
         .innerJoin(billingPlans, eq(billingPlans.id, billingSubscriptions.planId))
-        .where(and(eq(billingSubscriptions.userId, userId), inArray(billingSubscriptions.status, ['active', 'trialing', 'lifetime']), or(isNull(billingSubscriptions.programCode), eq(billingSubscriptions.programCode, program))))
+        .where(
+          and(
+            eq(billingSubscriptions.userId, userId),
+            inArray(billingSubscriptions.status, ['active', 'trialing', 'lifetime']),
+            or(isNull(billingSubscriptions.programCode), eq(billingSubscriptions.programCode, program)),
+            // Kỳ đang hiệu lực (S7: gia hạn nối tiếp tạo subscription bắt đầu trong tương lai – chưa tính)
+            sql`${billingSubscriptions.currentPeriodStart} <= now()`,
+            or(isNull(billingSubscriptions.currentPeriodEnd), sql`${billingSubscriptions.currentPeriodEnd} > now()`),
+          ),
+        )
         .orderBy(sql`case ${billingPlans.kind} when 'combo' then 0 when 'lifetime' then 1 when 'yearly' then 2 else 3 end`)
         .limit(1);
       planKind = (sub?.kind) ?? 'monthly';

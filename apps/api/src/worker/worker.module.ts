@@ -18,11 +18,12 @@ import { AiGatewayModule } from '../modules/ai-gateway/index.js';
 import { TestEngineModule } from '../modules/test-engine/index.js';
 import { LearningModule } from '../modules/learning/index.js';
 import { SpeechModule } from '../modules/speech/index.js';
+import { GrowthModule } from '../modules/growth/index.js';
 import { WorkerRunner } from './worker.runner.js';
 
-/** Worker: cùng codebase, không mở HTTP; chạy processors BullMQ + job định kỳ */
+/** Worker: cùng codebase, không mở HTTP; chạy processors BullMQ + job định kỳ. GrowthModule (S7): nhận outbox subscription.* → ops.notifications */
 @Module({
-  imports: [ConfigModule, DbModule, RedisModule, QueueModule, JobsModule, ClockModule, StorageModule, EventsModule, NotifyModule, SharedAuthModule, ExamModeModule, RealtimeModule, IamModule, CatalogModule, BillingModule, AiGatewayModule, TestEngineModule, LearningModule, SpeechModule],
+  imports: [ConfigModule, DbModule, RedisModule, QueueModule, JobsModule, ClockModule, StorageModule, EventsModule, NotifyModule, SharedAuthModule, ExamModeModule, RealtimeModule, IamModule, CatalogModule, BillingModule, AiGatewayModule, TestEngineModule, LearningModule, SpeechModule, GrowthModule],
   providers: [WorkerRunner],
 })
 export class WorkerModule {}

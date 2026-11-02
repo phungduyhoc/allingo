@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import { FEATURE_CODES, type SrsCard, type SrsCardCreate } from '@allingo/schemas';
+import { type SrsCard, type SrsCardCreate } from '@allingo/schemas';
 import { DbService } from '../../shared/db/db.module.js';
 import { NotFound, ValidationFailed } from '../../shared/http/errors.js';
-import { EntitlementService, QuotaService } from '../billing/index.js';
+import { FeatureGateService } from '../billing/index.js';
 import { DictionaryService } from '../catalog/index.js';
 import { UsersService } from '../iam/index.js';
 
@@ -21,8 +21,7 @@ export class SrsService {
   constructor(
     private readonly dbs: DbService,
     private readonly dictionary: DictionaryService,
-    private readonly entitlements: EntitlementService,
-    private readonly quotas: QuotaService,
+    private readonly gate: FeatureGateService,
     private readonly users: UsersService,
   ) {}
 
@@ -54,8 +53,8 @@ export class SrsService {
     const [existing] = await this.dbs.db.select().from(learnSrsCards).where(and(eq(learnSrsCards.userId, userId), eq(learnSrsCards.cardType, 'vocab'), eq(learnSrsCards.refId, item.id))).limit(1);
     if (existing) return this.toDto(existing, payload, false);
 
-    const ent = await this.entitlements.getContext(userId, input.program);
-    await this.quotas.consume(userId, ent.planKind, FEATURE_CODES.SRS_NEW_CARDS);
+    // Gating S7 (FEATURE_GATES.srs_new_cards)
+    const ticket = await this.gate.consume(userId, input.program, 'srs_new_cards');
     try {
       const [row] = await this.dbs.db
         .insert(learnSrsCards)
@@ -64,11 +63,11 @@ export class SrsService {
         .returning();
       if (row) return this.toDto(row, payload, true);
       // Đua: request song song vừa tạo → trả thẻ đó, hoàn quota
-      await this.quotas.refund(userId, ent.planKind, FEATURE_CODES.SRS_NEW_CARDS);
+      await ticket.release();
       const [again] = await this.dbs.db.select().from(learnSrsCards).where(and(eq(learnSrsCards.userId, userId), eq(learnSrsCards.cardType, 'vocab'), eq(learnSrsCards.refId, item.id))).limit(1);
       return this.toDto(again!, payload, false);
     } catch (err) {
-      await this.quotas.refund(userId, ent.planKind, FEATURE_CODES.SRS_NEW_CARDS);
+      await ticket.release();
       throw err;
     }
   }

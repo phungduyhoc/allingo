@@ -8,7 +8,7 @@ import { getLogger } from '../telemetry/logger.js';
 
 /**
  * Socket.IO /ws: xác thực bằng cookie allingo_at hoặc auth.token (bearer); mỗi user vào room user:<id>.
- * Sự kiện đẩy: attempt.graded, ai_task.completed (từ EventEmitter local.*).
+ * Sự kiện đẩy: attempt.graded, ai_task.completed, order.updated, credits.changed, entitlements.changed (từ EventEmitter local.*).
  */
 @WebSocketGateway({ namespace: '/ws', cors: { origin: true, credentials: true } })
 export class RealtimeGateway implements OnGatewayConnection {
@@ -39,6 +39,24 @@ export class RealtimeGateway implements OnGatewayConnection {
   @OnEvent('local.ai_task.completed')
   onAiTaskCompleted(payload: { user_id: string | null; ai_task_id: string; task_code: string; status: string }): void {
     if (payload.user_id) this.emitToUser(payload.user_id, 'ai_task.completed', payload);
+  }
+
+  /** S7: trạng thái đơn đổi (paid/failed/cancelled/refunded) – web dừng polling GET /orders/{id} */
+  @OnEvent('local.order.updated')
+  onOrderUpdated(payload: { user_id: string; order_id: string; status: string; paid_at?: string | null }): void {
+    this.emitToUser(payload.user_id, 'order.updated', { order_id: payload.order_id, status: payload.status, paid_at: payload.paid_at ?? null });
+  }
+
+  /** S7: số dư credit đổi (balance null → client gọi lại GET /me/credits) */
+  @OnEvent('local.credits.changed')
+  onCreditsChanged(payload: { user_id: string; balance?: number | null }): void {
+    this.emitToUser(payload.user_id, 'credits.changed', { balance: payload.balance ?? null });
+  }
+
+  /** S7: quyền đổi (mua/hoàn tiền/hết hạn) – client gọi lại GET /me/entitlements */
+  @OnEvent('local.entitlements.changed')
+  onEntitlementsChanged(payload: { user_id: string }): void {
+    this.emitToUser(payload.user_id, 'entitlements.changed', {});
   }
 }
 

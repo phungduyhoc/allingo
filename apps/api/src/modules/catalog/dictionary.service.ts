@@ -2,13 +2,13 @@ import { createHash } from 'node:crypto';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import { FEATURE_CODES, lookupWordCount, normalizeLookupTerm, pickLocalized, type DictionaryEntry, type LocalizedText, type SegmentTranslateOutput } from '@allingo/schemas';
+import { lookupWordCount, normalizeLookupTerm, pickLocalized, type DictionaryEntry, type LocalizedText, type SegmentTranslateOutput } from '@allingo/schemas';
 import { DbService } from '../../shared/db/db.module.js';
 import { AppError, ValidationFailed } from '../../shared/http/errors.js';
 import { getLogger } from '../../shared/telemetry/logger.js';
 // Đường dẫn core (không qua index) – tránh vòng import ai-gateway/index → ai-features → catalog (như content-generation)
 import { AiGatewayService } from '../ai-gateway/core/ai-gateway.service.js';
-import { EntitlementService, QuotaService } from '../billing/index.js';
+import { FeatureGateService } from '../billing/index.js';
 import { UsersService } from '../iam/index.js';
 import { TtsService } from '../speech/index.js';
 
@@ -57,8 +57,7 @@ export class DictionaryService {
   constructor(
     private readonly dbs: DbService,
     private readonly gateway: AiGatewayService,
-    private readonly entitlements: EntitlementService,
-    private readonly quotas: QuotaService,
+    private readonly gate: FeatureGateService,
     private readonly users: UsersService,
     private readonly tts: TtsService,
   ) {}
@@ -184,8 +183,8 @@ export class DictionaryService {
     const [hit] = await this.dbs.db.select({ text: aiTranslationCache.text }).from(aiTranslationCache).where(and(eq(aiTranslationCache.sourceHash, key), eq(aiTranslationCache.sourceLang, sourceLang), eq(aiTranslationCache.targetLang, locale))).limit(1);
     if (hit) return { text: hit.text, needsReview: false, cached: true, aiTaskId: null };
 
-    const ent = await this.entitlements.require(userId, program, FEATURE_CODES.DICTIONARY_AI);
-    await this.quotas.consume(userId, ent.planKind, FEATURE_CODES.DICTIONARY_AI);
+    // Gating S7 (FEATURE_GATES.dictionary_ai): quyền + quota ngày; cache hit ở trên không tính lượt
+    const ticket = await this.gate.consume(userId, program, 'dictionary_ai');
     try {
       const r = await this.gateway.runTask<SegmentTranslateOutput>({
         taskCode: 'segment_translate',
@@ -206,7 +205,7 @@ export class DictionaryService {
       }
       return { text: tr.text, needsReview: tr.needs_review, cached: false, aiTaskId: r.aiTaskId };
     } catch (err) {
-      await this.quotas.refund(userId, ent.planKind, FEATURE_CODES.DICTIONARY_AI);
+      await ticket.release();
       this.logger.warn({ err: (err as Error).message.slice(0, 200) }, 'segment_translate failed');
       throw new TranslationUnavailable((err as { reason?: string }).reason ?? 'ai_failed');
     }

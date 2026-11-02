@@ -3,13 +3,13 @@ import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import { FEATURE_CODES, pageSchema, programCodeSchema, programSchema, sectionSchema, testSetListQuerySchema, testSetSchema, testSetSummarySchema, type TestSetSummary } from '@allingo/schemas';
+import { gateForTestSetKind, pageSchema, programCodeSchema, programSchema, sectionSchema, testSetListQuerySchema, testSetSchema, testSetSummarySchema, type TestSetSummary } from '@allingo/schemas';
 import { CurrentUser, Public, type AuthUser } from '../../shared/auth/auth.guard.js';
 import { DbService } from '../../shared/db/db.module.js';
 import { NotFound } from '../../shared/http/errors.js';
 import { encodeCursor, decodeCursor } from '../../shared/http/cursor.js';
 import { ApiZod, ZodParams, ZodQuery } from '../../shared/http/zod.js';
-import { EntitlementService } from '../billing/index.js';
+import { FeatureGateService } from '../billing/index.js';
 import { CatalogQueryService } from './catalog-query.service.js';
 
 const programParam = z.object({ program: programCodeSchema });
@@ -24,7 +24,7 @@ const programQuery = z.object({ program: programCodeSchema.default('toeic') });
 export class CatalogController {
   constructor(
     private readonly catalog: CatalogQueryService,
-    private readonly entitlements: EntitlementService,
+    private readonly gate: FeatureGateService,
     private readonly dbs: DbService,
   ) {}
 
@@ -70,7 +70,7 @@ export class CatalogController {
 
   /** Tóm tắt đề kèm khoá/điểm của người dùng (đọc learn.attempts để tổng hợp – cho phép vì chỉ đọc theo user) */
   private async summaries(user: AuthUser, program: string, rows: Array<{ ts: typeof schema.catalogTestSets.$inferSelect; count: number }>): Promise<TestSetSummary[]> {
-    const ctx = await this.entitlements.getContext(user.id, program);
+    const ctx = await this.gate.context(user.id, program);
     const ids = rows.map((r) => r.ts.id);
     const stats = ids.length
       ? await this.dbs.db
@@ -87,7 +87,8 @@ export class CatalogController {
     const statMap = new Map(stats.map((s) => [s.testSetId, s]));
     return rows.map((r) => {
       const s = statMap.get(r.ts.id);
-      const locked = !r.ts.isFree && !ctx.features.has(r.ts.kind === 'full' ? FEATURE_CODES.FULL_TEST : FEATURE_CODES.MINI_TEST);
+      // Cùng quy tắc với POST /attempts (FEATURE_GATES – S7): đề miễn phí không khoá; part_drill dùng gate part_drill
+      const locked = this.gate.locked(ctx, gateForTestSetKind(r.ts.kind), { contentIsFree: r.ts.isFree });
       return {
         id: r.ts.id,
         code: r.ts.code,

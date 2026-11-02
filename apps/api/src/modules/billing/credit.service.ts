@@ -1,8 +1,13 @@
-import { Injectable } from '@nestjs/common';
-import { and, desc, eq, gt, isNotNull, sql } from 'drizzle-orm';
+import { Inject, Injectable } from '@nestjs/common';
+import { and, asc, desc, eq, gt, isNotNull, lt, lte, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
+import type { LedgerEntry } from '@allingo/schemas';
+import { CLOCK, type Clock } from '../../shared/clock/clock.module.js';
 import { DbService, type DbOrTx } from '../../shared/db/db.module.js';
+import { decodeCursor, encodeCursor } from '../../shared/http/cursor.js';
 import { InsufficientCredits } from '../../shared/http/errors.js';
+import { getLogger } from '../../shared/telemetry/logger.js';
+import { remainingFor, type LedgerLike } from './credit-lots.js';
 
 const { billingCreditBalances, billingCreditLedger } = schema;
 
@@ -14,7 +19,11 @@ export type CreditReason = 'purchase' | 'subscription_grant' | 'referral' | 'pro
  */
 @Injectable()
 export class CreditService {
-  constructor(private readonly dbs: DbService) {}
+  private readonly logger = getLogger({ component: 'billing.credits' });
+  constructor(
+    private readonly dbs: DbService,
+    @Inject(CLOCK) private readonly clock: Clock,
+  ) {}
 
   async balance(userId: string, db: DbOrTx = this.dbs.db): Promise<number> {
     const [row] = await db.select({ balance: billingCreditBalances.balance }).from(billingCreditBalances).where(and(eq(billingCreditBalances.ownerType, 'user'), eq(billingCreditBalances.ownerId, userId))).limit(1);
@@ -55,6 +64,92 @@ export class CreditService {
   refund(tx: DbOrTx, userId: string, amount: number, ref: { refType?: string; refId?: string; aiTaskId?: string; note?: string }) {
     if (amount <= 0) return Promise.resolve({ balanceAfter: 0, ledgerId: 0 });
     return this.apply(tx, userId, amount, 'refund', ref);
+  }
+
+  /**
+   * Thu hồi credit (số âm) KHÔNG làm số dư âm (A92): trừ min(amount, số dư hiện tại); phần thiếu (đã tiêu) chỉ ghi vào `note`.
+   * Dùng cho hoàn tiền đơn (`refund`) và hết hạn lô (`expire`). Trả số thực trừ và phần thiếu.
+   */
+  async revoke(tx: DbOrTx, userId: string, amount: number, reason: 'refund' | 'expire', ref: { refType: string; refId: string; note?: string }): Promise<{ revoked: number; shortfall: number; balanceAfter: number }> {
+    if (amount <= 0) return { revoked: 0, shortfall: 0, balanceAfter: await this.balance(userId, tx) };
+    const current = await this.lockBalance(tx, userId);
+    const revoked = Math.min(amount, current);
+    const shortfall = amount - revoked;
+    if (revoked === 0) return { revoked: 0, shortfall, balanceAfter: current };
+    const note = [ref.note, shortfall > 0 ? `shortfall=${shortfall}` : null].filter(Boolean).join(' ') || null;
+    const r = await this.apply(tx, userId, -revoked, reason, { refType: ref.refType, refId: ref.refId, note: note ?? undefined });
+    return { revoked, shortfall, balanceAfter: r.balanceAfter };
+  }
+
+  /** Dòng ledger của người dùng (thứ tự id) để phân bổ lô – gọi trong tx đã khoá số dư */
+  async ledgerRows(userId: string, db: DbOrTx = this.dbs.db): Promise<LedgerLike[]> {
+    const rows = await db
+      .select({ id: billingCreditLedger.id, delta: billingCreditLedger.delta, reason: billingCreditLedger.reason, refType: billingCreditLedger.refType, refId: billingCreditLedger.refId, expiresAt: billingCreditLedger.expiresAt, createdAt: billingCreditLedger.createdAt })
+      .from(billingCreditLedger)
+      .where(eq(billingCreditLedger.userId, userId))
+      .orderBy(asc(billingCreditLedger.id));
+    return rows.map((r) => ({ ...r, id: Number(r.id) }));
+  }
+
+  /** Phần credit còn lại của các lô do một tham chiếu cấp (vd `order:<id>`, `subscription:<id>`) */
+  async remainingOf(tx: DbOrTx, userId: string, ref: { refType: string; refId: string }): Promise<number> {
+    return remainingFor(await this.ledgerRows(userId, tx), ref);
+  }
+
+  /**
+   * Job credit.expire: lô có `expires_at ≤ now` (gói credit 12 tháng) chưa có dòng `expire` cùng tham chiếu → ghi `expire`
+   * đúng phần còn lại (FIFO theo hạn, credit-lots.ts). Idempotent: dòng `expire` theo (ref_type, ref_id); chỉ quét lô hết hạn
+   * trong 60 ngày gần nhất (lô đã tiêu hết không ghi dòng 0).
+   */
+  async expireDue(now: Date = new Date(this.clock.now())): Promise<{ lots: number; expired: number }> {
+    const lots = await this.dbs.db
+      .select({ id: billingCreditLedger.id, userId: billingCreditLedger.userId, refType: billingCreditLedger.refType, refId: billingCreditLedger.refId })
+      .from(billingCreditLedger)
+      .where(
+        and(
+          gt(billingCreditLedger.delta, 0),
+          isNotNull(billingCreditLedger.expiresAt),
+          lte(billingCreditLedger.expiresAt, now),
+          gt(billingCreditLedger.expiresAt, new Date(now.getTime() - 60 * 86_400_000)),
+          isNotNull(billingCreditLedger.refId),
+          sql`not exists (select 1 from billing.credit_ledger e where e.reason = 'expire' and e.ref_type = ${billingCreditLedger.refType} and e.ref_id = ${billingCreditLedger.refId} and e.user_id = ${billingCreditLedger.userId})`,
+        ),
+      )
+      .orderBy(asc(billingCreditLedger.id))
+      .limit(500);
+    let expired = 0;
+    for (const lot of lots) {
+      if (!lot.userId || !lot.refType || !lot.refId) continue;
+      const userId = lot.userId;
+      const ref = { refType: lot.refType, refId: lot.refId };
+      expired += await this.dbs.db.transaction(async (tx) => {
+        await this.lockBalance(tx, userId);
+        const [done] = await tx.select({ id: billingCreditLedger.id }).from(billingCreditLedger).where(and(eq(billingCreditLedger.userId, userId), eq(billingCreditLedger.reason, 'expire'), eq(billingCreditLedger.refType, ref.refType), eq(billingCreditLedger.refId, ref.refId))).limit(1);
+        if (done) return 0;
+        const remaining = await this.remainingOf(tx, userId, ref);
+        if (remaining <= 0) return 0;
+        const r = await this.revoke(tx, userId, remaining, 'expire', { ...ref, note: `lot=${Number(lot.id)}` });
+        return r.revoked;
+      });
+    }
+    if (expired) this.logger.info({ lots: lots.length, expired }, 'credit lots expired');
+    return { lots: lots.length, expired };
+  }
+
+  /** GET /me/credits/ledger – cursor theo id giảm dần */
+  async ledgerPage(userId: string, cursor: string | undefined, limit: number): Promise<{ data: LedgerEntry[]; next_cursor: string | null }> {
+    const c = decodeCursor<{ id: number }>(cursor);
+    const rows = await this.dbs.db
+      .select()
+      .from(billingCreditLedger)
+      .where(and(eq(billingCreditLedger.userId, userId), c?.id ? lt(billingCreditLedger.id, BigInt(c.id)) : undefined))
+      .orderBy(desc(billingCreditLedger.id))
+      .limit(limit + 1);
+    const page = rows.slice(0, limit);
+    return {
+      data: page.map((r) => ({ id: Number(r.id), delta: r.delta, balance_after: r.balanceAfter, reason: r.reason, ref: r.refType ? { type: r.refType, id: r.refId ?? null } : null, expires_at: r.expiresAt?.toISOString() ?? null, note: r.note ?? null, created_at: r.createdAt.toISOString() })),
+      next_cursor: rows.length > limit ? encodeCursor({ id: Number(page[page.length - 1]!.id) }) : null,
+    };
   }
 
   /** Kiểm tra đủ credit trước khi gọi model (không khoá) */
