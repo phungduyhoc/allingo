@@ -184,8 +184,11 @@ describe('AI features S5 (integration)', () => {
     const after = await dbs.db.select({ n: sql<number>`count(*)::int` }).from(schema.aiExplanationCache).where(eq(schema.aiExplanationCache.promptVersionId, v1Id));
     expect(after[0]!.n).toBe(0);
     expect(await cache.get(mcqVersions[12]!, 'A', 'vi', v1Id)).toBeNull();
-    const r = await learner.call('POST', '/ai/explain', { question_version_id: mcqVersions[12]!, chosen_option: 'A' });
+    const r = await learner.call('POST', '/ai/explain', { question_version_id: mcqVersions[12]!, chosen_option: 'A' }, { origin: 'http://localhost:3000' });
     expect(String(r.headers['content-type'])).toContain('text/event-stream');
+    // Hồi quy: SSE phải giữ header CORS do @fastify/cors đặt (trình duyệt chặn nếu thiếu)
+    expect(r.headers['access-control-allow-origin']).toBe('http://localhost:3000');
+    expect(r.headers['access-control-allow-credentials']).toBe('true');
     expect(sseResult(r.raw)!.data.prompt_version_id).toBe(v2);
     // active duy nhất không retire được khi không có canary thay thế
     expect((await admin.call('PATCH', `/admin/prompts/versions/${v2}/status`, { status: 'retired' })).status).toBe(409);
