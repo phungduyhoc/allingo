@@ -1,6 +1,6 @@
-# HANDOFF — Sprint 1 → Sprint 8 (02/11/2026)
+# HANDOFF — Sprint 1 → Sprint 10 (08/11/2026)
 
-Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1–8 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A39), `docs/SPEC-ISSUES.md` (S1–S29), ADR 0001–0025. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
+Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1–10 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A39), `docs/SPEC-ISSUES.md` (S1–S29), ADR 0001–0025. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
 
 Repo chưa push (theo yêu cầu: làm tiếp trên phiên, push sau). Mọi kiểm tra dưới đây chạy trong phiên cloud: Postgres 16 + pgvector, Valkey/Redis cục bộ, không Docker, không Meilisearch/MinIO/Azure/khoá AI thật (A1, A25).
 
@@ -109,6 +109,29 @@ Phiên không có credential sandbox và không ra được mạng cổng: VNPay
 | 6 | `api:diff`, `db:diff` xanh; dead-letter hoá đơn trong admin | ĐẠT | Trang admin billing 10 tab |
 
 Web Sprint 7–8: bảng giá thật, checkout, kết quả thanh toán (polling + Socket.IO), lịch sử đơn/hoá đơn, sổ credit, huỷ gói, banner hết hạn, giới thiệu bạn bè + ảnh OG, chuông thông báo realtime, trang quản lý thông báo theo token, admin billing. Unit 200, E2E mock 86/86, API thật 81/82 (1 ca push chập chờn khi máy tải nặng).
+
+### Sprint 9 — Diagnostic v1, lộ trình học (study plan), gamification
+
+| # | Tiêu chí | Kết quả | Ghi chú |
+| --- | --- | --- | --- |
+| 1 | Onboarding + chẩn đoán → plan 8 tuần, tuần cuối có full test, phút/tuần đúng cài đặt | ĐẠT (API) | Chẩn đoán thích ứng 61 câu dựng từ ngân hàng đề 01 (trùng đề full 01 – A131); PlanGenerator thuần, property test 5 × 500 ca |
+| 2 | Drill từ task → task done, XP, streak; bỏ 3 ngày → expired, streak 0 (Pro đóng băng 1 ngày) | ĐẠT | Đồng hồ giả lập, theo múi giờ người học |
+| 3 | Check-in "tuần này bận, chỉ 2 giờ" → đề xuất giảm tải hợp lệ, áp dụng, lịch sử; đề xuất sai bị từ chối | ĐẠT (AI mock) | Cần eval `plan_adjust_v1` với model thật |
+| 4 | Nhắc học đúng 19:00 giờ người học; đã học → không nhắc | ĐẠT (giả lập) | Nhắc giữ chuỗi 20:00; push thật cần thiết bị |
+| 5 | Huy hiệu "7 ngày liên tiếp" đúng ngày thứ 7 + in-app | ĐẠT | |
+| 6 | `api:diff`, `db:diff` xanh; property test 500 ca | ĐẠT | Migration 0006, ADR-0031/0032 |
+| Web | Onboarding 4 bước, plan kéo thả, Hôm nay, check-in, huy hiệu | (điền khi giao diện xong) | |
+
+### Sprint 10 — FSRS từ vựng, sổ lỗi, thống kê & dashboard, marketing & blog
+
+| # | Tiêu chí | Kết quả | Ghi chú |
+| --- | --- | --- | --- |
+| 1 | Thêm 20 từ → hôm nay 10 thẻ mới (Free); Again quay lại trong phiên; "Good → hôm sau"; mô phỏng 7 ngày khớp ts-fsrs | ĐẠT (có điều chỉnh) | FSRS-5 chuẩn: thẻ mới Good → 3 ngày (Again rồi Good → 1 ngày) – giữ thuật toán, đề xuất sửa tiêu chí (S120); 11 bộ TOEIC 600 từ |
+| 2 | Sai 8 câu → 8 mục sổ lỗi, "làm lại 10 câu sai" đúng câu; đã hiểu → khỏi `review_errors` | ĐẠT (API) | Phân loại theo luật |
+| 3 | Dashboard điểm, độ chính xác theo Part, percentile; `GET /me/stats` p95 < 300 ms (50 attempt) | ĐẠT (API) | Replica READ ONLY + cache 1 giờ |
+| 4 | Blog Payload → web ≤ 5 phút (ISR + webhook), JSON-LD, OG, sitemap | ĐẠT phía CMS | Webhook ký HMAC; phần web (ISR, sitemap) chờ giao diện Sprint 10 |
+| 5 | PostHog chỉ nhận sau đồng ý cookie; phễu 7 sự kiện | ĐẠT phía server (sink giả) | Cần key PostHog thật; consent banner ở web |
+| 6 | Lighthouse mobile landing; `api:diff`, `db:diff` | (điền khi giao diện xong) | Migration 0007, ADR-0033 |
 
 ## 2. Đã làm
 
