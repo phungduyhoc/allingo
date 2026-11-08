@@ -717,6 +717,10 @@ export const learnXpEvents = learn.table(
       table.userId.asc().nullsLast().op('timestamptz_ops'),
       table.createdAt.desc().nullsFirst().op('timestamptz_ops'),
     ),
+    // v1.1 – S11: chống trùng XP theo tham chiếu (migration 0008)
+    index('ix_xp_events_ref')
+      .using('btree', table.refType.asc().nullsLast().op('text_ops'), table.refId.asc().nullsLast().op('uuid_ops'))
+      .where(sql`(ref_id IS NOT NULL)`),
     foreignKey({
       columns: [table.userId],
       foreignColumns: [iamUsers.id],

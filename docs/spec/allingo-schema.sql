@@ -848,6 +848,7 @@ CREATE TABLE learn.xp_events (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_xp_events_user_date ON learn.xp_events(user_id, created_at DESC);
+CREATE INDEX ix_xp_events_ref ON learn.xp_events(ref_type, ref_id) WHERE ref_id IS NOT NULL;  -- v1.1 – Sprint 11: chống trùng XP theo tham chiếu (load test)
 
 CREATE TABLE learn.badges (
   code  text PRIMARY KEY,

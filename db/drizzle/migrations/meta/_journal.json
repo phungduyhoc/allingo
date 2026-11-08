@@ -50,6 +50,13 @@
       "when": 1793966400000,
       "tag": "0007_s10_srs_errors_attribution",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794052800000,
+      "tag": "0008_s11_perf_indexes",
+      "breakpoints": true
     }
   ]
 }

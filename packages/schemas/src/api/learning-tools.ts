@@ -154,21 +154,59 @@ export type SrsCard = z.infer<typeof srsCardSchema>;
 // ----------------------------------------------------------------------------- Ghi chú
 export const NOTE_BODY_MAX = 2000;
 
+/** Giải mã thực thể HTML (số thập phân/hex + một số tên) – chỉ để KIỂM TRA scheme URL, không thay nội dung */
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&#x([0-9a-f]+);?/gi, (_m, h: string) => String.fromCodePoint(Math.min(parseInt(h, 16), 0x10ffff)))
+    .replace(/&#(\d+);?/g, (_m, d: string) => String.fromCodePoint(Math.min(parseInt(d, 10), 0x10ffff)))
+    .replace(/&(colon|tab|newline|lpar|rpar|sol|period);/gi, (_m, n: string) => ({ colon: ':', tab: '\t', newline: '\n', lpar: '(', rpar: ')', sol: '/', period: '.' })[n.toLowerCase()] ?? '');
+}
+
+const DANGEROUS_SCHEME = /^(?:javascript|vbscript|data|file|livescript|mocha):/;
+
 /**
- * Làm sạch Markdown ngắn của ghi chú: bỏ thẻ/comment HTML, vô hiệu liên kết javascript:/data:/vbscript:, bỏ ký tự điều khiển,
- * chuẩn hoá xuống dòng (tối đa 2 dòng trống). Không render HTML – client hiển thị Markdown an toàn.
+ * S11 (pentest 1 – XSS): đích liên kết nguy hiểm sau khi chuẩn hoá như trình duyệt (giải mã thực thể, percent-decode,
+ * bỏ khoảng trắng/ký tự điều khiển – trình duyệt bỏ TAB/LF trong scheme) → true.
+ */
+export function isDangerousLinkTarget(dest: string): boolean {
+  let d = decodeEntities(dest);
+  try {
+    d = decodeURIComponent(d);
+  } catch {
+    /* giữ nguyên khi percent-encoding hỏng */
+  }
+  // eslint-disable-next-line no-control-regex -- loại ký tự điều khiển + khoảng trắng như bộ phân tích URL của trình duyệt
+  d = d.replace(/[\u0000-\u0020\u007f-\u009f\u200b-\u200f\u2028\u2029\ufeff]/g, '').toLowerCase();
+  return DANGEROUS_SCHEME.test(d);
+}
+
+/**
+ * Làm sạch Markdown ngắn của ghi chú: bỏ thẻ/comment HTML (lặp tới khi ổn định – chặn thẻ lồng `<scr<script>ipt>`),
+ * vô hiệu liên kết javascript:/data:/vbscript: kể cả dạng mã hoá thực thể/percent/ký tự điều khiển (liên kết inline, định nghĩa
+ * tham chiếu `[x]: url`), bỏ ký tự điều khiển, chuẩn hoá xuống dòng (tối đa 2 dòng trống). Không render HTML – client hiển thị
+ * Markdown an toàn (defense in depth: web dùng renderer không innerHTML).
  */
 export function sanitizeNoteMarkdown(input: string): string {
-  return input
-    .replace(/\r\n?/g, '\n')
-    .replace(/<!--[\s\S]*?(-->|$)/g, '')
-    .replace(/<\/?[a-zA-Z][^<>]*>/g, '')
-    .replace(/\]\(\s*(?:javascript|data|vbscript):(?:[^()]|\([^()]*\))*\)/gi, ']()')
-    .replace(/(?:javascript|vbscript):/gi, '')
-    // eslint-disable-next-line no-control-regex -- loại ký tự điều khiển (trừ \n, \t)
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  let s = input.replace(/\r\n?/g, '\n');
+  for (let i = 0; i < 10; i++) {
+    const next = s.replace(/<!--[\s\S]*?(-->|$)/g, '').replace(/<\/?[a-zA-Z!?][^<>]*>/g, '');
+    if (next === s) break;
+    s = next;
+  }
+  // Còn sót "<tag" chưa đóng (vd cắt giữa chừng) → bỏ dấu "<" trước chữ cái/"/"/"!" để không thành thẻ khi ghép chuỗi
+  s = s.replace(/<(?=[a-zA-Z/!?])/g, '');
+  // Liên kết inline [text](dest "title") – kiểm đích sau chuẩn hoá
+  s = s.replace(/\]\(\s*((?:[^()\s]|\([^()]*\))*)([^)]*)\)/g, (m: string, dest: string) => (isDangerousLinkTarget(dest) ? ']()' : m));
+  // Định nghĩa tham chiếu [label]: dest
+  s = s.replace(/^(\s{0,3}\[[^\]\n]+\]:)[ \t]*(\S+)(.*)$/gm, (m: string, label: string, dest: string) => (isDangerousLinkTarget(dest) ? `${label} #` : m));
+  return (
+    s
+      .replace(/(?:javascript|vbscript):/gi, '')
+      // eslint-disable-next-line no-control-regex -- loại ký tự điều khiển (trừ \n, \t)
+      .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  );
 }
 
 export const noteCreateSchema = z

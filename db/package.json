@@ -2,7 +2,7 @@
   "name": "@allingo/db",
   "version": "0.1.0",
   "private": true,
-  "description": "L\u1edbp d\u1eef li\u1ec7u Allingo: Drizzle schema 6 schema PostgreSQL, migration, seed, ki\u1ec3m tra l\u1ec7ch v\u1edbi docs/spec/allingo-schema.sql",
+  "description": "Lớp dữ liệu Allingo: Drizzle schema 6 schema PostgreSQL, migration, seed, kiểm tra lệch với docs/spec/allingo-schema.sql",
   "type": "module",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -40,7 +40,8 @@
     "studio": "drizzle-kit studio",
     "partitions:ensure": "tsx scripts/ensure-partitions.ts",
     "organize": "tsx scripts/organize-schema.ts",
-    "schema:refresh": "drizzle-kit pull --config drizzle.pull.config.ts && tsx scripts/organize-schema.ts && prettier --write drizzle/schema"
+    "schema:refresh": "drizzle-kit pull --config drizzle.pull.config.ts && tsx scripts/organize-schema.ts && prettier --write drizzle/schema",
+    "migration:guard": "tsx scripts/migration-guard.ts"
   },
   "dependencies": {
     "@allingo/schemas": "workspace:*",

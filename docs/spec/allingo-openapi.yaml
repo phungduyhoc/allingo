@@ -18,6 +18,7 @@ info:
     - Realtime: WebSocket `wss://api.allingo.vn/v1/ws` (Socket.IO), sự kiện `submission.graded`, `plan.updated`, `credits.changed`, `notification.new`; v1.1 – S7: `order.updated` `{order_id, status, paid_at}`, `credits.changed` `{balance | null}`, `entitlements.changed` `{}`.
     - Thanh toán (v1.1 – S7, ADR-0012 webhook-first): quyền chỉ mở khi webhook/IPN đã xác minh chữ ký (hoặc job đối chiếu `queryStatus`); return URL chỉ hiển thị. Tiền VND nguyên.
     - Streaming AI: `text/event-stream` cho chat và giải thích (`event: delta|done|error`).
+    - v1.1 – S11 (vận hành & bảo mật): (a) CSRF cho cookie-auth – POST/PUT/PATCH/DELETE mang cookie `allingo_at`/`allingo_rt` mà không có `Authorization` và MỌI POST `/auth/*` phải có `Origin` (hoặc `Referer`) thuộc danh sách tin cậy (CORS_ORIGINS + web/api/cms); `Origin: null` / `Sec-Fetch-Site: cross-site` → 403 `forbidden` `details.reason = csrf_origin_mismatch` (trình duyệt tự gửi Origin – web không cần header thêm). (b) Giới hạn tốc độ: toàn cục theo IP (`RATE_LIMIT_MAX`/phút, Redis) + token bucket theo người dùng/IP cho `/ai/explain`, `/ai/threads*`, `/attempts/{id}/submit`, `/orders`, `/orders/{id}/pay`, `/uploads/presign`, `/auth/login|register|otp/*`, webhook; header `X-RateLimit-Limit`, `X-RateLimit-Remaining`, khi vượt 429 `rate_limited` + `Retry-After` + `details.retry_after_sec` (+ `details.bucket`); đăng nhập sai liên tiếp → 429 `rate_limited` `details.reason = login_locked`. (c) Kill-switch: cờ tắt → 503 `feature_disabled` `details = {flag, message_key: errors.feature_disabled, retry_after_sec}` + `Retry-After`; GET /flags trả cờ công khai đã đánh giá; GET/PUT /admin/flags(/{key}). (d) Trace: client có thể gửi W3C `traceparent`; phản hồi luôn có `X-Trace-Id` (= `error.trace_id`). (e) Phản hồi JSON có `Content-Security-Policy: default-src 'none'`, HSTS, `Cache-Control: no-store` khi có phiên.
     - v1.1 – S10: ôn tập FSRS-5 (GET /me/srs/due trả `SrsDueList` – thẻ đến hạn + thẻ mới trong hạn mức ngày; POST /me/srs/review idempotent theo (card_id, reviewed_at); GET /me/srs/cards), bộ từ hệ thống TOEIC 600 theo chủ đề + POST /vocab/lists/{listId}/enroll, sổ lỗi đầy đủ (lọc kind/part/thời gian, PATCH ghi chú/đã hiểu/tạo thẻ, POST /me/errors/drill), Stats đầy đủ (cache 1 giờ, đọc replica), dự báo v0 hồi quy tuyến tính ("ước tính sơ bộ"), `attribution` (UTM/referrer) khi đăng ký, POST /analytics/events (sự kiện phễu có đồng ý cookie).
     - v1.1 – S9: lộ trình học (POST/GET /me/plan, /me/plan/today, check-in → đề xuất plan_adjust có kiểm tra ràng buộc → apply), bài chẩn đoán thích ứng (POST /me/diagnostic, GET|POST /me/diagnostic/{attemptId}/next), huy hiệu GET /me/badges; WS `plan.updated` {plan_id | task_id | proposal_id, reason}.
     - v1.1 – S8: hoá đơn điện tử tự phát hành sau `order.paid` (`Order.invoice`, PDF URL ký 10 phút); khuyến mãi đầy đủ (percent | fixed | credit_bonus | trial_days, không cộng dồn) + dùng thử Pro; referral; thông báo đa kênh (Socket.IO `notification.new` = NotificationItem); header tuỳ chọn `X-Device-Fingerprint` ở /auth/register, /auth/otp/verify, /auth/oauth/{provider} (server chỉ lưu sha256 – chống lạm dụng referral).
@@ -302,6 +303,15 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Enrollment' } } } }
 
+  # ---------------------------------------------------------------- Feature flags (v1.1 – S11)
+  /flags:
+    get:
+      tags: [Catalog]
+      summary: Cờ tính năng công khai đã đánh giá cho người gọi (v1.1 – S11)
+      description: 'Ẩn danh hoặc đăng nhập (rollout theo user/percent). Chỉ boolean của các cờ công khai (`ff.ai.explain`, `ff.ai.tutor`, `ff.ai.diagnose`, `ff.billing.checkout`, `ff.growth.referral`, `ff.learning.study_plan`, `ff.catalog.program.*`) – không trả rules/user_ids/config. `Cache-Control: private, max-age=30`; client làm mới ≤ `ttl_sec` để ẩn UI khi kill-switch tắt. Server vẫn chặn (503 feature_disabled).'
+      security: [{}, bearerAuth: [], cookieAuth: []]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PublicFlags' } } } }
   # ---------------------------------------------------------------- Catalog
   /programs:
     get:
@@ -684,7 +694,8 @@ paths:
             text/event-stream: { schema: { type: string } }
         '402': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
-        '429': { description: 'quota_exceeded – details.quota = QuotaExceededDetails', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '429': { description: 'quota_exceeded – details.quota = QuotaExceededDetails; v1.1 – S11: rate_limited (bucket explain, Retry-After)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '503': { description: 'v1.1 – S11: feature_disabled (kill-switch ff.ai.explain) – details.flag, details.message_key, Retry-After', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /ai/threads:
     get:
       tags: [AI]
@@ -709,6 +720,7 @@ paths:
         '400': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
+        '503': { description: 'v1.1 – S11: feature_disabled (kill-switch ff.ai.tutor)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /ai/threads/{threadId}:
     get:
       tags: [AI]
@@ -750,6 +762,7 @@ paths:
         '200': { description: SSE start/delta/result/done (error), content: { text/event-stream: { schema: { type: string } } } }
         '400': { $ref: '#/components/responses/Error' }
         '402': { $ref: '#/components/responses/Error' }
+        '503': { description: 'v1.1 – S11: feature_disabled (kill-switch ff.ai.tutor)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '429': { description: 'quota_exceeded – ai_tutor (ngày) hoặc ai_tutor_thread_turns (scope thread)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
@@ -1882,11 +1895,26 @@ paths:
       summary: Cập nhật gói/giá/quota/bảng credit (không cần deploy)
       requestBody: { content: { application/json: { schema: { type: object } } } }
       responses: { '200': { description: OK } }
+  /admin/flags:
+    get:
+      tags: [Admin]
+      summary: Danh sách feature flag (v1.1 – S11)
+      description: 'Vai trò admin. Mỗi cờ: `key`, `enabled`, `rules`, `updated_at`, `public` (có trong GET /flags).'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/FeatureFlag' } } } } } } }
+        '403': { $ref: '#/components/responses/Error' }
   /admin/flags/{key}:
+    get:
+      tags: [Admin]
+      summary: Một feature flag (v1.1 – S11)
+      parameters: [ { name: key, in: path, required: true, schema: { type: string, pattern: '^ff\.[a-z0-9_]+(\.[a-z0-9_]+)+$' } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/FeatureFlag' } } } }
+        '404': { $ref: '#/components/responses/Error' }
     put:
       tags: [Admin]
       summary: Bật/tắt feature flag theo quy tắc
-      description: 'v1.1 – S7: `rules = {percent, user_ids[], plan_kinds[], programs[]}`; cờ tắt vẫn bật cho `user_ids` (tester). Audit `flag.update`. S7 dùng `ff.billing.checkout`. v1.1 – S8: `rules.config` – cấu hình tính năng (`ff.growth.referral`: `{rewards: {started: {referrer, referee}, upgraded: {…}}, monthly_cap, abuse_window_hours, require_verified_email}`).'
+      description: 'v1.1 – S11: ghi DB + audit, xoá cache Redis và phát `ff:invalidate` (pub/sub) → kill-switch có hiệu lực < 60 s trên mọi replica (thường < 1 s). v1.1 – S7: `rules = {percent, user_ids[], plan_kinds[], programs[]}`; cờ tắt vẫn bật cho `user_ids` (tester). Audit `flag.update`. S7 dùng `ff.billing.checkout`. v1.1 – S8: `rules.config` – cấu hình tính năng (`ff.growth.referral`: `{rewards: {started: {referrer, referee}, upgraded: {…}}, monthly_cap, abuse_window_hours, require_verified_email}`).'
       parameters: [ { name: key, in: path, required: true, schema: { type: string } } ]
       requestBody: { content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean }, rules: { type: object } } } } } }
       responses: { '200': { description: OK } }
@@ -3064,6 +3092,24 @@ components:
         provider_status: { type: string, nullable: true, description: 'Cổng báo trên URL (chỉ hiển thị)' }
         signature_valid: { type: boolean }
         redirect_url: { type: string }
+    FeatureFlag:
+      type: object
+      description: v1.1 – S11
+      required: [key, enabled, rules, updated_at, public]
+      properties:
+        key: { type: string, example: ff.ai.explain }
+        enabled: { type: boolean }
+        rules: { type: object, description: '{percent, user_ids[], plan_kinds[], programs[], config}' }
+        updated_at: { type: string, format: date-time }
+        public: { type: boolean, description: Có trong GET /flags }
+    PublicFlags:
+      type: object
+      description: v1.1 – S11
+      required: [flags, ttl_sec, evaluated_at]
+      properties:
+        flags: { type: object, additionalProperties: { type: boolean }, example: { ff.ai.explain: true, ff.billing.checkout: true } }
+        ttl_sec: { type: integer, example: 30 }
+        evaluated_at: { type: string, format: date-time }
     PromotionValidation:
       type: object
       properties:
