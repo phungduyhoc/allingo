@@ -8,6 +8,7 @@ import { ZodValidationPipe } from '../../shared/http/zod.js';
 import { ValidationFailed } from '../../shared/http/errors.js';
 import { ContentAiCheckService } from './content-ai-check.service.js';
 import { ContentGenerationService, generateQuestionsInputSchema } from './content-generation.service.js';
+import { ContentPassageService, syncPassageSchema, type SyncPassageInput } from './content-passage.service.js';
 import { ContentPublishService, publishTestSetSchema, type PublishTestSetInput } from './content-publish.service.js';
 import { ContentWorkflowService, syncQuestionSchema, type SyncQuestionInput } from './content-workflow.service.js';
 
@@ -47,7 +48,15 @@ export class InternalContentController {
     private readonly workflow: ContentWorkflowService,
     private readonly aiCheck: ContentAiCheckService,
     private readonly generation: ContentGenerationService,
+    private readonly passages: ContentPassageService,
   ) {}
+
+  /** B5: CMS lưu passage (kể cả văn bản từng phần – bộ đôi/bộ ba Part 7) → catalog.passages + passage_parts; id catalog = id CMS */
+  @Post('passages/sync')
+  @HttpCode(200)
+  syncPassage(@Body(new ZodValidationPipe(syncPassageSchema)) body: SyncPassageInput) {
+    return this.passages.syncFromCms(body);
+  }
 
   /** CMS "Sinh câu hỏi bằng AI" (S5): actor = tài khoản API của biên tập viên (apiUserEmail) – 202 { job_id } */
   @Post('questions/generate')

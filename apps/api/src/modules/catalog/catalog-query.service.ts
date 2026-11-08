@@ -17,7 +17,16 @@ function deepFreeze<T>(o: T): T {
   return o;
 }
 
-const { catalogPrograms, catalogSections, catalogSkills, catalogTestSets, catalogTestSetItems, catalogTestSetSections, catalogQuestions, catalogQuestionVersions, catalogPassages, catalogMediaAssets, catalogQuestionSubskills, catalogSubskills, catalogTopics } = schema;
+const { catalogPrograms, catalogSections, catalogSkills, catalogTestSets, catalogTestSetItems, catalogTestSetSections, catalogQuestions, catalogQuestionVersions, catalogPassages, catalogPassageParts, catalogMediaAssets, catalogQuestionSubskills, catalogSubskills, catalogTopics } = schema;
+
+/** B5/S24: một văn bản của passage nhiều đoạn (catalog.passage_parts) */
+export interface LoadedPassagePart {
+  id: string;
+  sort_order: number;
+  title: string | null;
+  body: string;
+  media_asset_id: string | null;
+}
 
 /** Câu hỏi đầy đủ (có answer_key) – chỉ dùng nội bộ server (test-engine chấm, ai-gateway giải thích) */
 export interface LoadedQuestion {
@@ -31,7 +40,8 @@ export interface LoadedQuestion {
   order_no: number;
   points: number;
   content: QuestionContent;
-  passage: { id: string; kind: string; title: string | null; body: string | null; media_asset_id: string | null } | null;
+  /** `parts` (B5/S24): văn bản của bộ đôi/bộ ba Part 7 theo sort_order; [] = passage một văn bản (`body`) */
+  passage: { id: string; kind: string; title: string | null; body: string | null; media_asset_id: string | null; parts: LoadedPassagePart[] } | null;
   topic_code: string | null;
   subskill_codes: string[];
   /** catalog.questions.difficulty_target (A2/B1/B2…) – S9: mức khó bài chẩn đoán thích ứng */
@@ -226,7 +236,37 @@ export class CatalogQueryService {
       .where(eq(catalogTestSetItems.testSetId, testSetId))
       .orderBy(catalogSections.sortOrder, catalogTestSetItems.sortOrder);
     const subskills = await this.subskillsFor(rows.map((r) => r.q.id), db);
-    return rows.map((r, i) => this.toLoaded(r.q, r.v, { id: r.s.id, code: r.s.code, skill: r.skill }, r.p, r.topic, subskills.get(r.q.id) ?? [], { group_key: r.item.groupKey ?? null, order_no: i + 1, points: Number(r.item.points) }));
+    return this.withParts(
+      rows.map((r, i) => this.toLoaded(r.q, r.v, { id: r.s.id, code: r.s.code, skill: r.skill }, r.p, r.topic, subskills.get(r.q.id) ?? [], { group_key: r.item.groupKey ?? null, order_no: i + 1, points: Number(r.item.points) })),
+      db,
+    );
+  }
+
+  /**
+   * B5/S24: gắn văn bản từng phần (catalog.passage_parts) cho passage của các câu – một truy vấn cho mọi passage.
+   * Passage không có part → `parts = []` (giao diện hiện `body` như trước).
+   */
+  private async withParts(list: LoadedQuestion[], db: DbOrTx = this.dbs.db): Promise<LoadedQuestion[]> {
+    const ids = [...new Set(list.map((q) => q.passage?.id).filter((x): x is string => !!x))];
+    if (!ids.length) return list;
+    const rows = await db
+      .select({ id: catalogPassageParts.id, passageId: catalogPassageParts.passageId, sortOrder: catalogPassageParts.sortOrder, title: catalogPassageParts.title, body: catalogPassageParts.body, mediaAssetId: catalogPassageParts.mediaAssetId })
+      .from(catalogPassageParts)
+      .where(inArray(catalogPassageParts.passageId, ids))
+      .orderBy(catalogPassageParts.passageId, catalogPassageParts.sortOrder);
+    if (!rows.length) return list;
+    const byPassage = new Map<string, LoadedPassagePart[]>();
+    for (const r of rows) byPassage.set(r.passageId, [...(byPassage.get(r.passageId) ?? []), { id: r.id, sort_order: r.sortOrder, title: r.title ?? null, body: r.body, media_asset_id: r.mediaAssetId ?? null }]);
+    return list.map((q) => (q.passage && byPassage.has(q.passage.id) ? { ...q, passage: { ...q.passage, parts: byPassage.get(q.passage.id)! } } : q));
+  }
+
+  /** B5/S24: văn bản từng phần theo passage (admin/hàng chờ duyệt) */
+  async passageParts(passageIds: string[]): Promise<Map<string, LoadedPassagePart[]>> {
+    const out = new Map<string, LoadedPassagePart[]>();
+    if (!passageIds.length) return out;
+    const rows = await this.dbs.db.select().from(catalogPassageParts).where(inArray(catalogPassageParts.passageId, [...new Set(passageIds)])).orderBy(catalogPassageParts.passageId, catalogPassageParts.sortOrder);
+    for (const r of rows) out.set(r.passageId, [...(out.get(r.passageId) ?? []), { id: r.id, sort_order: r.sortOrder, title: r.title ?? null, body: r.body, media_asset_id: r.mediaAssetId ?? null }]);
+    return out;
   }
 
   /** Cache trong tiến trình: question_version_id → question_type (phiên bản bất biến nên không cần vô hiệu) */
@@ -299,8 +339,12 @@ export class CatalogQueryService {
       .leftJoin(catalogTopics, eq(catalogTopics.id, catalogQuestions.topicId))
       .where(inArray(catalogQuestionVersions.id, versionIds));
     const subskills = await this.subskillsFor(rows.map((r) => r.q.id), db);
+    const loaded = await this.withParts(
+      rows.map((r) => this.toLoaded(r.q, r.v, { id: r.s.id, code: r.s.code, skill: r.skill }, r.p, r.topic, subskills.get(r.q.id) ?? [], { group_key: null, order_no: 0, points: 1 })),
+      db,
+    );
     const out = new Map<string, LoadedQuestion>();
-    for (const r of rows) out.set(r.v.id, this.toLoaded(r.q, r.v, { id: r.s.id, code: r.s.code, skill: r.skill }, r.p, r.topic, subskills.get(r.q.id) ?? [], { group_key: null, order_no: 0, points: 1 }));
+    for (const q of loaded) out.set(q.question_version_id, q);
     return out;
   }
 
@@ -385,7 +429,7 @@ export class CatalogQueryService {
 
     const picked = chosen.flatMap((u) => u.rows.map((r) => ({ r, group: u.grouped ? u.unit : null })));
     const subskills = await this.subskillsFor(picked.map((x) => x.r.q.id));
-    return picked.map(({ r, group }, i) => this.toLoaded(r.q, r.v, { id: r.s.id, code: r.s.code, skill: r.skill }, r.p, r.topic, subskills.get(r.q.id) ?? [], { group_key: group, order_no: i + 1, points: 1 }));
+    return this.withParts(picked.map(({ r, group }, i) => this.toLoaded(r.q, r.v, { id: r.s.id, code: r.s.code, skill: r.skill }, r.p, r.topic, subskills.get(r.q.id) ?? [], { group_key: group, order_no: i + 1, points: 1 })));
   }
 
   /**
@@ -405,7 +449,7 @@ export class CatalogQueryService {
       .where(and(eq(catalogQuestions.programCode, program), eq(catalogQuestions.status, 'published'), inArray(catalogQuestions.id, questionIds)))
       .orderBy(catalogSections.sortOrder, sql`coalesce(${catalogQuestions.passageId}, ${catalogQuestions.id})`, sql`case when (${catalogQuestionVersions.metadata} ->> 'number') ~ '^[0-9]{1,6}$' then (${catalogQuestionVersions.metadata} ->> 'number')::int end nulls last`, catalogQuestions.id);
     const subskills = await this.subskillsFor(rows.map((r) => r.q.id));
-    return rows.map((r, i) => this.toLoaded(r.q, r.v, { id: r.s.id, code: r.s.code, skill: r.skill }, r.p, r.topic, subskills.get(r.q.id) ?? [], { group_key: r.q.passageId ?? null, order_no: i + 1, points: 1 }));
+    return this.withParts(rows.map((r, i) => this.toLoaded(r.q, r.v, { id: r.s.id, code: r.s.code, skill: r.skill }, r.p, r.topic, subskills.get(r.q.id) ?? [], { group_key: r.q.passageId ?? null, order_no: i + 1, points: 1 })));
   }
 
   /**
@@ -433,7 +477,7 @@ export class CatalogQueryService {
   async assetIdsForVersions(versionIds: string[]): Promise<string[]> {
     if (versionIds.length === 0) return [];
     const rows = await this.dbs.db
-      .select({ content: catalogQuestionVersions.content, passageMedia: catalogPassages.mediaAssetId })
+      .select({ content: catalogQuestionVersions.content, passageMedia: catalogPassages.mediaAssetId, passageId: catalogPassages.id })
       .from(catalogQuestionVersions)
       .innerJoin(catalogQuestions, eq(catalogQuestions.id, catalogQuestionVersions.questionId))
       .leftJoin(catalogPassages, eq(catalogPassages.id, catalogQuestions.passageId))
@@ -443,6 +487,12 @@ export class CatalogQueryService {
       const parsed = questionContentSchema.safeParse(r.content);
       if (parsed.success) for (const id of assetIdsOfContent(parsed.data)) ids.add(id);
       if (r.passageMedia) ids.add(r.passageMedia);
+    }
+    // B5/S24: media của từng văn bản (passage_parts.media_asset_id)
+    const passageIds = [...new Set(rows.map((r) => r.passageId).filter((x): x is string => !!x))];
+    if (passageIds.length) {
+      const parts = await this.dbs.db.select({ m: catalogPassageParts.mediaAssetId }).from(catalogPassageParts).where(inArray(catalogPassageParts.passageId, passageIds));
+      for (const p of parts) if (p.m) ids.add(p.m);
     }
     return [...ids];
   }
@@ -515,7 +565,7 @@ export class CatalogQueryService {
       order_no: item.order_no,
       points: item.points,
       content: parsed.data,
-      passage: p ? { id: p.id, kind: p.kind, title: p.title ?? null, body: p.body ?? null, media_asset_id: p.mediaAssetId ?? null } : null,
+      passage: p ? { id: p.id, kind: p.kind, title: p.title ?? null, body: p.body ?? null, media_asset_id: p.mediaAssetId ?? null, parts: [] } : null,
       topic_code: topic,
       subskill_codes: subskills,
       difficulty: q.difficultyTarget ?? null,
@@ -579,6 +629,7 @@ export class CatalogQueryService {
     for (const q of questions) {
       assetIds.push(...assetIdsOfContent(q.content));
       if (q.passage?.media_asset_id) assetIds.push(q.passage.media_asset_id);
+      for (const part of q.passage?.parts ?? []) if (part.media_asset_id) assetIds.push(part.media_asset_id);
     }
     const urls = await this.mediaUrls(assetIds);
     return questions.map((q) => {
@@ -612,6 +663,10 @@ export class CatalogQueryService {
               media_url: passageMedia?.url ?? null,
               media_asset_id: q.passage.media_asset_id,
               media_expires_at: passageMedia?.expires_at ?? null,
+              // B5/S24: tab từng văn bản (bộ đôi/bộ ba Part 7). Script audio không có part chữ khi đang làm bài (như body)
+              ...(q.passage.parts.length && !(q.passage.kind === 'audio_script' && !reveal)
+                ? { parts: q.passage.parts.map((part) => ({ id: part.id, sort_order: part.sort_order, title: part.title, body: part.body, media_url: part.media_asset_id ? (urls.get(part.media_asset_id)?.url ?? null) : null, media_asset_id: part.media_asset_id })) }
+                : {}),
             }
           : null,
       };

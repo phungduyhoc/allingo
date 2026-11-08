@@ -28,6 +28,7 @@ import { OutboxService } from '../../shared/events/outbox.service.js';
 import { AppError, Forbidden, NotFound, ValidationFailed } from '../../shared/http/errors.js';
 import { decodeCursor, encodeCursor } from '../../shared/http/cursor.js';
 import { UsersService } from '../iam/index.js';
+import { ContentDedupService } from './content-dedup.service.js';
 
 const { catalogQuestions, catalogQuestionVersions, catalogSections, catalogTopics, catalogSubskills, catalogQuestionSubskills, catalogContentReviews, catalogPassages } = schema;
 type QuestionRow = typeof catalogQuestions.$inferSelect;
@@ -68,6 +69,8 @@ export const syncQuestionSchema = z.object({
   change_note: z.string().max(500).optional(),
   created_by_email: z.string().max(254).optional(),
   review: reviewSchema.nullish(),
+  /** B5: passage của câu (id catalog = id passage CMS, đồng bộ trước qua /internal/content/passages/sync); null = bỏ liên kết, bỏ trống = giữ nguyên */
+  passage_id: z.uuid().nullish(),
 });
 export type SyncQuestionInput = z.infer<typeof syncQuestionSchema>;
 
@@ -135,6 +138,7 @@ export class ContentWorkflowService {
     private readonly outbox: OutboxService,
     private readonly audit: AuditService,
     private readonly users: UsersService,
+    private readonly dedup: ContentDedupService,
   ) {}
 
   // ------------------------------------------------------------------ đọc
@@ -233,27 +237,35 @@ export class ContentWorkflowService {
     for (const s of subs) await db.insert(catalogQuestionSubskills).values({ questionId, subskillId: s.id, weight: '1' }).onConflictDoNothing();
   }
 
-  /** POST /admin/questions – câu mới ở trạng thái draft, phiên bản 1 */
-  async create(actor: Actor, input: AdminQuestionInput): Promise<AdminQuestionDto> {
+  /**
+   * POST /admin/questions – câu mới ở trạng thái draft, phiên bản 1. B2: sau khi ghi → job `content.dedup` (embedding/pg_trgm, gắn cờ
+   * nghi trùng cho hàng chờ duyệt); luồng tự kiểm trùng theo lô (sinh AI, nhập Excel) truyền `dedup: false`. `tx` – ghi trong transaction
+   * của nơi gọi (nhập Excel/AI soạn đề: câu + passage + test set cùng một transaction).
+   */
+  async create(actor: Actor, input: AdminQuestionInput, opts: { dedup?: boolean; tx?: DbOrTx } = {}): Promise<AdminQuestionDto> {
     this.requireRole(actor);
     if (input.content.type !== input.question_type) throw new ValidationFailed({ issues: [{ path: 'content.type', message: 'content.type must match question_type' }] });
-    return this.dbs.db.transaction(async (tx) => {
-      const { sectionId, topicId } = await this.resolveRefs(tx, input.program, input.section_code, input.topic_code);
-      if (input.passage_id) {
-        const [p] = await tx.select({ id: catalogPassages.id }).from(catalogPassages).where(eq(catalogPassages.id, input.passage_id)).limit(1);
-        if (!p) throw new NotFound('passage', input.passage_id);
-      }
-      const [q] = await tx
-        .insert(catalogQuestions)
-        .values({ programCode: input.program, sectionId, questionTypeCode: input.question_type, passageId: input.passage_id ?? null, topicId, status: 'draft', source: input.source, difficultyTarget: (input.difficulty_target as never) ?? null, createdBy: actor.id })
-        .returning();
-      const meta: VersionMeta = { ...(input.metadata ?? {}), source: 'api', content_updated_at: new Date().toISOString(), published_at: null };
-      const [v] = await tx.insert(catalogQuestionVersions).values({ questionId: q!.id, versionNo: 1, content: input.content, metadata: meta, createdBy: actor.id }).returning();
-      await tx.update(catalogQuestions).set({ currentVersionId: v!.id }).where(eq(catalogQuestions.id, q!.id));
-      await this.setSubskills(tx, q!.id, input.program, input.subskill_codes);
-      await this.audit.log({ action: 'content.created', actorUserId: actor.id, entityType: 'question', entityId: q!.id }, tx);
-      return this.toDto({ ...q!, currentVersionId: v!.id }, v!, tx);
-    });
+    const dto = await (opts.tx ? this.createIn(opts.tx, actor, input) : this.dbs.db.transaction((tx) => this.createIn(tx, actor, input)));
+    if (opts.dedup !== false && !opts.tx) void this.dedup.enqueue([dto.head_version.id]);
+    return dto;
+  }
+
+  private async createIn(tx: DbOrTx, actor: Actor, input: AdminQuestionInput): Promise<AdminQuestionDto> {
+    const { sectionId, topicId } = await this.resolveRefs(tx, input.program, input.section_code, input.topic_code);
+    if (input.passage_id) {
+      const [p] = await tx.select({ id: catalogPassages.id }).from(catalogPassages).where(eq(catalogPassages.id, input.passage_id)).limit(1);
+      if (!p) throw new NotFound('passage', input.passage_id);
+    }
+    const [q] = await tx
+      .insert(catalogQuestions)
+      .values({ programCode: input.program, sectionId, questionTypeCode: input.question_type, passageId: input.passage_id ?? null, topicId, status: 'draft', source: input.source, difficultyTarget: (input.difficulty_target as never) ?? null, createdBy: actor.id })
+      .returning();
+    const meta: VersionMeta = { ...(input.metadata ?? {}), source: 'api', content_updated_at: new Date().toISOString(), published_at: null };
+    const [v] = await tx.insert(catalogQuestionVersions).values({ questionId: q!.id, versionNo: 1, content: input.content, metadata: meta, createdBy: actor.id }).returning();
+    await tx.update(catalogQuestions).set({ currentVersionId: v!.id }).where(eq(catalogQuestions.id, q!.id));
+    await this.setSubskills(tx, q!.id, input.program, input.subskill_codes);
+    await this.audit.log({ action: 'content.created', actorUserId: actor.id, entityType: 'question', entityId: q!.id }, tx);
+    return this.toDto({ ...q!, currentVersionId: v!.id }, v!, tx);
   }
 
   /**
@@ -262,6 +274,12 @@ export class ContentWorkflowService {
    * (người học vẫn thấy bản cũ). Đã có bản chờ duyệt: ghi đè bản chờ và quay về draft.
    */
   async newVersion(actor: Actor, questionId: string, input: NewVersionInput): Promise<AdminQuestionDto> {
+    const dto = await this.newVersionTx(actor, questionId, input);
+    void this.dedup.enqueue([dto.head_version.id]);
+    return dto;
+  }
+
+  private async newVersionTx(actor: Actor, questionId: string, input: NewVersionInput): Promise<AdminQuestionDto> {
     const role = this.requireRole(actor);
     return this.dbs.db.transaction(async (tx) => {
       const q = await this.loadQuestion(questionId, tx);
@@ -400,8 +418,13 @@ export class ContentWorkflowService {
     if (input.content.type !== input.question_type) throw new ValidationFailed({ issues: [{ path: 'content.type', message: 'content.type must match question_type' }] });
     const reviewer = input.review?.reviewer_email ? await this.users.findByEmail(input.review.reviewer_email) : null;
     const creator = input.created_by_email ? await this.users.findByEmail(input.created_by_email) : null;
-    return this.dbs.db.transaction(async (tx) => {
+    const result = await this.dbs.db.transaction(async (tx) => {
       const { sectionId, topicId } = await this.resolveRefs(tx, input.program, input.section_code, input.topic_code);
+      if (input.passage_id) {
+        const [p] = await tx.select({ id: catalogPassages.id }).from(catalogPassages).where(eq(catalogPassages.id, input.passage_id)).limit(1);
+        if (!p) throw new ValidationFailed({ issues: [{ path: 'passage_id', message: `passage ${input.passage_id} not synced (POST /internal/content/passages/sync first)` }] });
+      }
+      const passagePatch = input.passage_id === undefined ? {} : { passageId: input.passage_id ?? null };
       const now = new Date().toISOString();
       const [existing] = await tx
         .select({ questionId: catalogQuestionVersions.questionId })
@@ -415,7 +438,7 @@ export class ContentWorkflowService {
       if (!existing) {
         [q] = (await tx
           .insert(catalogQuestions)
-          .values({ programCode: input.program, sectionId, questionTypeCode: input.question_type, topicId, status: 'draft', source: input.source, difficultyTarget: (input.difficulty as never) ?? null, createdBy: creator?.id ?? null })
+          .values({ programCode: input.program, sectionId, questionTypeCode: input.question_type, topicId, status: 'draft', source: input.source, difficultyTarget: (input.difficulty as never) ?? null, createdBy: creator?.id ?? null, ...passagePatch })
           .returning()) as [QuestionRow];
         const meta: VersionMeta = { external_ref: input.external_ref, source: 'cms', created_by_email: input.created_by_email ?? null, content_updated_at: now, published_at: null };
         [head] = (await tx.insert(catalogQuestionVersions).values({ questionId: q.id, versionNo: 1, content: input.content, metadata: meta, changeNote: input.change_note ?? null, createdBy: creator?.id ?? null }).returning()) as [VersionRow];
@@ -434,7 +457,7 @@ export class ContentWorkflowService {
             [head] = (await tx.update(catalogQuestionVersions).set({ content: input.content, metadata: { ...headMeta, content_updated_at: now }, changeNote: input.change_note ?? head.changeNote }).where(eq(catalogQuestionVersions.id, head.id)).returning()) as [VersionRow];
           }
         }
-        await tx.update(catalogQuestions).set({ sectionId, questionTypeCode: input.question_type, topicId, difficultyTarget: (input.difficulty as never) ?? null }).where(eq(catalogQuestions.id, q.id));
+        await tx.update(catalogQuestions).set({ sectionId, questionTypeCode: input.question_type, topicId, difficultyTarget: (input.difficulty as never) ?? null, ...passagePatch }).where(eq(catalogQuestions.id, q.id));
       }
       await this.setSubskills(tx, q.id, input.program, input.subskill_codes);
 
@@ -454,6 +477,9 @@ export class ContentWorkflowService {
       }
       return { question_id: q.id, question_version_id: head.id, version_no: head.versionNo, status: input.status, changed };
     });
+    // B2: nội dung đổi khi còn chờ duyệt → kiểm trùng (job, không chặn lần lưu của CMS)
+    if (result.changed && result.status !== 'published' && result.status !== 'retired' && result.status !== 'rejected') void this.dedup.enqueue([result.question_version_id]);
+    return result;
   }
 
   // ------------------------------------------------------------------ trùng lặp (nhập hàng loạt)

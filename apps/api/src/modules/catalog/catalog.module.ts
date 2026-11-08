@@ -18,11 +18,34 @@ import { SearchService } from './search/search.service.js';
 import { ContentReportsController, InternalContentReportsController } from './content-reports.controller.js';
 import { ContentReportsService } from './content-reports.service.js';
 import { QuestionStatsService } from './question-stats.service.js';
+import { ContentDedupService } from './content-dedup.service.js';
+import { ContentPassageService } from './content-passage.service.js';
+import { ContentReviewQueueService } from './content-review-queue.service.js';
+import { ContentImportService } from './content-import.service.js';
+import { ContentDraftTestService } from './content-draft-test.service.js';
 
 @Module({
   imports: [BillingModule, AiGatewayModule, IamModule, SpeechModule],
   controllers: [CatalogController, InternalContentController, AdminContentController, AdminTestSetsController, ContentReportsController, InternalContentReportsController],
-  providers: [CatalogQueryService, ContentPublishService, ContentWorkflowService, ContentAiCheckService, ContentGenerationService, SearchService, InternalTokenGuardFactory, MiniTestService, DictionaryService, ContentReportsService, QuestionStatsService],
-  exports: [CatalogQueryService, ContentPublishService, ContentWorkflowService, ContentGenerationService, SearchService, MiniTestService, DictionaryService, ContentReportsService, QuestionStatsService],
+  providers: [
+    CatalogQueryService,
+    ContentPublishService,
+    ContentWorkflowService,
+    ContentAiCheckService,
+    ContentGenerationService,
+    SearchService,
+    InternalTokenGuardFactory,
+    MiniTestService,
+    DictionaryService,
+    ContentReportsService,
+    QuestionStatsService,
+    // B2/B5: lọc trùng, passage nhiều đoạn, hàng chờ duyệt, nhập Excel, AI soạn đề nháp
+    ContentDedupService,
+    ContentPassageService,
+    ContentReviewQueueService,
+    ContentImportService,
+    ContentDraftTestService,
+  ],
+  exports: [CatalogQueryService, ContentPublishService, ContentWorkflowService, ContentGenerationService, SearchService, MiniTestService, DictionaryService, ContentReportsService, QuestionStatsService, ContentDedupService, ContentImportService, ContentDraftTestService, ContentReviewQueueService],
 })
 export class CatalogModule {}

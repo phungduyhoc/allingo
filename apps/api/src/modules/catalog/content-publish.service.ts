@@ -2,10 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { schema } from '@allingo/db';
-import { DOMAIN_EVENTS, localizedTextSchema, programCodeSchema, validateTestSetStructure, type StructureReport } from '@allingo/schemas';
+import { DOMAIN_EVENTS, contentRoleOf, localizedTextSchema, programCodeSchema, validateTestSetStructure, type StructureReport } from '@allingo/schemas';
 import { DbService } from '../../shared/db/db.module.js';
+import { AuditService } from '../../shared/events/audit.service.js';
 import { OutboxService } from '../../shared/events/outbox.service.js';
-import { NotFound, ValidationFailed } from '../../shared/http/errors.js';
+import { AppError, Forbidden, NotFound, ValidationFailed } from '../../shared/http/errors.js';
 
 const { catalogQuestions, catalogQuestionVersions, catalogSections, catalogTopics, catalogSubskills, catalogTestSets, catalogTestSetItems, catalogTestSetSections, catalogSkills } = schema;
 
@@ -32,7 +33,45 @@ export class ContentPublishService {
   constructor(
     private readonly dbs: DbService,
     private readonly outbox: OutboxService,
+    private readonly audit: AuditService,
   ) {}
+
+  /**
+   * B2 – phát hành đề NHÁP trong catalog (vd. đề AI soạn nháp sau khi các câu đã duyệt xong): teacher/admin; mọi câu phải `published`,
+   * cấu trúc đạt `validateTestSetStructure(kind)` → status published + outbox content.published + audit. Đề đã phát hành → 409.
+   */
+  async publishDraft(actor: { id: string; roles: string[] }, testSetId: string, meta: { ip?: string | null; userAgent?: string | null } = {}) {
+    const role = contentRoleOf(actor.roles);
+    if (role !== 'teacher' && role !== 'admin') throw new Forbidden('Only teacher/admin can publish test sets', { required: ['teacher', 'admin'] });
+    const [ts] = await this.dbs.db.select().from(catalogTestSets).where(eq(catalogTestSets.id, testSetId)).limit(1);
+    if (!ts) throw new NotFound('test_set', testSetId);
+    if (ts.status === 'published') throw new AppError('conflict', 'Test set already published', 409, { reason: 'already_published' });
+    const items = await this.dbs.db
+      .select({ questionId: catalogTestSetItems.questionId, sortOrder: catalogTestSetItems.sortOrder, groupKey: catalogTestSetItems.groupKey, status: catalogQuestions.status, sectionCode: catalogSections.code })
+      .from(catalogTestSetItems)
+      .innerJoin(catalogQuestions, eq(catalogQuestions.id, catalogTestSetItems.questionId))
+      .innerJoin(catalogSections, eq(catalogSections.id, catalogTestSetItems.sectionId))
+      .where(eq(catalogTestSetItems.testSetId, testSetId));
+    const unpublished = items.filter((i) => i.status !== 'published');
+    if (unpublished.length) throw new AppError('conflict', `${unpublished.length} question(s) are not published yet`, 409, { reason: 'unpublished_items', count: unpublished.length, question_ids: unpublished.slice(0, 20).map((u) => u.questionId) });
+    const sections = await this.dbs.db
+      .select({ code: catalogSections.code, skill: catalogSkills.code, questionCount: catalogSections.questionCount, sortOrder: catalogSections.sortOrder })
+      .from(catalogSections)
+      .innerJoin(catalogSkills, eq(catalogSkills.id, catalogSections.skillId))
+      .where(eq(catalogSections.programCode, ts.programCode));
+    const structure = validateTestSetStructure(
+      ts.kind,
+      sections.map((x) => ({ code: x.code, skill: x.skill, question_count: x.questionCount ?? null, sort_order: x.sortOrder })),
+      items.map((i) => ({ question_ref: i.questionId, section_code: i.sectionCode, sort_order: i.sortOrder, group_key: i.groupKey ?? null })),
+    );
+    if (!structure.ok) throw new ValidationFailed({ issues: structure.issues.map((i) => ({ path: `items${i.section ? `.${i.section}` : ''}`, message: i.message, code: i.code })), structure });
+    await this.dbs.db.transaction(async (tx) => {
+      await tx.update(catalogTestSets).set({ status: 'published', publishedAt: new Date() }).where(eq(catalogTestSets.id, testSetId));
+      await this.outbox.write(tx, { aggregateType: 'test_set', aggregateId: testSetId, eventType: DOMAIN_EVENTS.CONTENT_PUBLISHED, payload: { entity: 'test_set', test_set_id: testSetId, program: ts.programCode, code: ts.code } });
+      await this.audit.log({ action: 'test_set.published', actorUserId: actor.id, actorRole: role, entityType: 'test_set', entityId: testSetId, after: { code: ts.code, items: items.length }, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null }, tx);
+    });
+    return { test_set_id: testSetId, code: ts.code, status: 'published' as const, structure };
+  }
 
   /** Kiểm tra cấu trúc (TOEIC L&R: Part 1–7 đúng số câu với đề full) – dùng cho test set builder và trước khi phát hành */
   async validateTestSet(input: Pick<PublishTestSetInput, 'program' | 'kind' | 'items'>): Promise<StructureReport> {

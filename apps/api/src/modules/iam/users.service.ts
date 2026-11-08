@@ -88,6 +88,20 @@ export class UsersService implements OnModuleInit {
     return rows.map((r) => r.id);
   }
 
+  /**
+   * B2 – hồ sơ tối thiểu cho màn nội bộ (hàng chờ duyệt: người tạo, reviewer được phân công): tên hiển thị + email + vai trò.
+   * Chỉ dùng cho endpoint nhân sự nội dung (editor/teacher/admin); email được che ở tầng gọi (maskEmail).
+   */
+  async staffProfiles(ids: string[], db: DbOrTx = this.dbs.db): Promise<Map<string, { id: string; display_name: string; email: string | null; roles: string[] }>> {
+    const out = new Map<string, { id: string; display_name: string; email: string | null; roles: string[] }>();
+    const uniq = [...new Set(ids.filter(Boolean))];
+    if (!uniq.length) return out;
+    const users = await db.select({ id: iamUsers.id, displayName: iamUsers.displayName, email: iamUsers.email }).from(iamUsers).where(inArray(iamUsers.id, uniq));
+    const roles = await db.select({ userId: iamUserRoles.userId, role: iamUserRoles.roleCode }).from(iamUserRoles).where(inArray(iamUserRoles.userId, uniq));
+    for (const u of users) out.set(u.id, { id: u.id, display_name: u.displayName, email: u.email ?? null, roles: roles.filter((r) => r.userId === u.id).map((r) => r.role) });
+    return out;
+  }
+
   /** Phiên gần đây (24 giờ) của người dùng – fingerprint thiết bị (băm) và IP, cho chống lạm dụng referral */
   async recentDeviceSignals(userId: string, since: Date, db: DbOrTx = this.dbs.db): Promise<{ fingerprints: string[]; ips: string[] }> {
     const rows = await db

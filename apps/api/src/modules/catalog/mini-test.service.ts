@@ -66,8 +66,8 @@ const SEC_PER_QUESTION: Record<string, number> = { listening: 27, reading: 45 };
 /**
  * Sinh đề mini từ ngân hàng câu đã phát hành (Sprint 4). Hàm thuần `generateMiniTest` (packages/schemas, PRNG mulberry32) chọn câu;
  * service kiểm tra cấu trúc bằng `validateTestSetStructure('mini', …)` rồi ghi `catalog.test_sets kind = mini` + sections + items
- * trong một transaction. `catalog.test_sets` không có cột metadata → seed/blueprint/vân tay ngân hàng lưu trong `ops.audit_logs`
- * (action `test_set.generated`) và seed nằm trong mã đề (SPEC-ISSUES S30).
+ * trong một transaction. Seed/blueprint/vân tay ngân hàng lưu ở `catalog.test_sets.metadata` (B5 – SPEC-ISSUES S30 đã xử lý) và vẫn
+ * ghi `ops.audit_logs` (action `test_set.generated`); seed vẫn nằm trong mã đề `toeic-mini-gen-<seed>`.
  */
 @Injectable()
 export class MiniTestService {
@@ -117,11 +117,13 @@ export class MiniTestService {
     const status = input.publish ? ('published' as const) : ('draft' as const);
     const presentSections = blueprint.sections.map((s) => s.section_code).filter((c, i, arr) => arr.indexOf(c) === i && (gen.by_section[c] ?? 0) > 0);
 
+    // S30 (B5): seed/blueprint/vân tay ngân hàng lưu ở catalog.test_sets.metadata (vẫn ghi audit log)
+    const metadata = { source: 'mini_generator', seed, blueprint, bank_fingerprint: gen.bank_fingerprint, by_section: gen.by_section, shortfall: gen.shortfall, generated_at: new Date().toISOString() };
     const testSetId = await this.dbs.db.transaction(async (tx) => {
       const [ts] = await tx
         .insert(catalogTestSets)
-        .values({ programCode: input.program, code, title, kind: 'mini', isFree: input.is_free, durationSec, status, publishedAt: input.publish ? new Date() : null })
-        .onConflictDoUpdate({ target: [catalogTestSets.programCode, catalogTestSets.code], set: { title, kind: 'mini', isFree: input.is_free, durationSec, status, publishedAt: input.publish ? new Date() : null } })
+        .values({ programCode: input.program, code, title, kind: 'mini', isFree: input.is_free, durationSec, status, publishedAt: input.publish ? new Date() : null, metadata })
+        .onConflictDoUpdate({ target: [catalogTestSets.programCode, catalogTestSets.code], set: { title, kind: 'mini', isFree: input.is_free, durationSec, status, publishedAt: input.publish ? new Date() : null, metadata } })
         .returning({ id: catalogTestSets.id });
       const id = ts!.id;
       await tx.delete(catalogTestSetSections).where(eq(catalogTestSetSections.testSetId, id));

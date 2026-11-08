@@ -3,7 +3,7 @@ import type { ModelProviderAdapter, ProviderCallOptions, ProviderResult, Provide
 import { foldText, localGuard, redactPii } from '../core/guard-rules.js';
 
 /**
- * MockProvider: sinh đầu ra HỢP LỆ theo Zod cho 14 task_code mà không gọi model (AI_PROVIDER=mock hoặc thiếu khoá).
+ * MockProvider: sinh đầu ra HỢP LỆ theo Zod cho 15 task_code mà không gọi model (AI_PROVIDER=mock hoặc thiếu khoá).
  * Đọc biến từ user prompt (chuỗi "key: value" trong <data>/<user_input>) để đầu ra bám nội dung thật (explain đúng correct_option…).
  * Dùng trong dev/test/CI; KHÔNG dùng ở production.
  */
@@ -241,6 +241,8 @@ export function buildMock(taskCode: AiTaskCode, user: string): unknown {
         }),
       };
     }
+    case 'generate_item_set':
+      return mockItemSet(v);
     case 'check_question': {
       const item = parseJson<{ answer_key?: { correct?: string } }>(v.item, {});
       return {
@@ -275,4 +277,83 @@ export function buildMock(taskCode: AiTaskCode, user: string): unknown {
     default:
       return {};
   }
+}
+
+/**
+ * Mock generate_item_set (B2): một nhóm passage + `count` câu TẤT ĐỊNH theo (section, topic, số bộ đã sinh = độ dài
+ * forbidden_recent_titles). Tên người/công ty hư cấu, tên miền .example. Part 6: chỗ trống [1]…[n]; Part 7 nhiều văn bản: ≥ 1 câu kết hợp.
+ */
+function mockItemSet(v: Record<string, string>): unknown {
+  const count = Math.max(1, Math.min(Number(v.count ?? 3) || 3, 10));
+  const textCount = Math.max(1, Math.min(Number(v.text_count ?? 1) || 1, 3));
+  const topic = (v.topic ?? 'general').trim() || 'general';
+  const section = (v.section_code ?? 'part7').trim();
+  const kind = v.passage_kind === 'audio_script' ? 'audio_script' : 'reading_passage';
+  const n = parseJson<string[]>(v.forbidden_recent_titles, []).length + 1;
+  const subskills = parseJson<string[]>(v.allowed_subskills, []);
+  const level = parseJson<{ level?: string }>(v.difficulty_target, {}).level ?? 'B1';
+  const KEYS = ['A', 'B', 'C', 'D'] as const;
+  const people: [string, string] = ([
+    ['Lan Pham', 'Minh Vo'],
+    ['Thu Nguyen', 'Kevin Hale'],
+    ['Hoa Tran', 'Daniel Okafor'],
+    ['Mai Le', 'Arjun Mehta'],
+  ] as const)[n % 4]!.slice() as [string, string];
+  const company = `${['Brightline', 'Northwind', 'Silverleaf', 'Harborview'][n % 4]} ${topic.charAt(0).toUpperCase()}${topic.slice(1)} Co.`;
+  const item = (i: number, stem: string, correctText: string, wrong: [string, string, string], why: string) => {
+    const keyIdx = (n + i) % 4;
+    const texts = [...wrong];
+    texts.splice(keyIdx, 0, correctText);
+    const options = KEYS.map((k, j) => ({ key: k, text: texts[j]! }));
+    const key = KEYS[keyIdx]!;
+    return {
+      content: { type: 'mcq_single', stem, options, answer_key: { correct: key }, explanation: { en: `${why} (mock)`, vi: `${why} (mock)` }, evidence: correctText, tags: [topic, section] },
+      answer: key,
+      distractor_rationale: Object.fromEntries(options.filter((o) => o.key !== key).map((o) => [o.key, `"${o.text}" không khớp văn bản (mock)`])),
+      explanation_seed: `${why} (mock)`,
+      difficulty_estimate: { level, irt_b: 0 },
+      subskill_codes: subskills.length ? [subskills[i % subskills.length]!] : ['reading:detail'],
+      trap_type: 'paraphrase',
+      keywords: [topic, `set ${n}`],
+    };
+  };
+  if (kind === 'audio_script') {
+    const [w, m] = people;
+    const title = `${section === 'part4' ? 'Talk' : 'Conversation'} #${n}: ${topic} schedule at ${company}`;
+    const body =
+      section === 'part4'
+        ? `Narrator: Good morning, everyone, and welcome to ${company}. Today's ${topic} workshop starts at ten o'clock in Room ${200 + n}. Please collect your badge at the front desk before the session. Lunch will be served at noon, and the afternoon tour of the new facility begins at two. If you need help, ask ${w}, our coordinator.`
+        : `Woman: Hi ${m.split(' ')[0]}, the ${topic} supplier just called. The delivery for order ${1000 + n} will arrive on Thursday instead of Tuesday.\nMan: Thursday? Then we should move the product demo to Friday.\nWoman: Good idea. Could you e-mail the clients about the new date this afternoon?\nMan: Sure. I'll also book the larger meeting room in case more people come.`;
+    const qs = [
+      item(0, section === 'part4' ? 'Where is the talk most likely taking place?' : 'What are the speakers mainly discussing?', section === 'part4' ? 'At a company workshop' : 'A change to a delivery date', section === 'part4' ? ['At a train station', 'In a restaurant', 'At a sports stadium'] : ['A new hiring policy', 'A broken machine', 'A holiday party'], 'Main idea stated at the start'),
+      item(1, section === 'part4' ? 'What should listeners do before the session?' : 'What does the woman ask the man to do?', section === 'part4' ? 'Collect a badge' : 'Contact some clients', section === 'part4' ? ['Pay a fee', 'Submit a report', 'Move their cars'] : ['Cancel an order', 'Repair a printer', 'Hire an assistant'], 'Request stated in the middle'),
+      item(2, section === 'part4' ? 'What will happen at two o’clock?' : 'What will the man probably do next?', section === 'part4' ? 'A facility tour will begin' : 'Reserve a room', section === 'part4' ? ['Lunch will be served', 'The workshop will end', 'A guest will arrive'] : ['Call the supplier', 'Leave the office', 'Print some tickets'], 'Detail near the end'),
+    ];
+    return { passage: { kind, title, texts: [{ title, body }] }, questions: Array.from({ length: count }, (_, i) => qs[i % qs.length]!) };
+  }
+  const docTypes = ['E-mail', 'Notice', 'Schedule'] as const;
+  const docs = Array.from({ length: textCount }, (_, t) => {
+    const type = docTypes[t]!;
+    if (section === 'part6') {
+      const blanks = Array.from({ length: count }, (_, i) => `[${i + 1}]`);
+      return {
+        title: type,
+        body: `To: All staff\nFrom: ${people[0]}, ${company}\nSubject: ${topic} update #${n}\n\nDear colleagues,\n\nOur ${topic} team will ${blanks[0]} a new process next month. ${blanks[1] ?? ''} please read the attached guide before the training session.\n\nThe session will take place on the third floor. ${blanks[2] ?? ''} Questions can be sent to help@${topic}.example.\n\nThank you for your ${blanks[3] ?? ''} during this change.\n\n${people[0]}`,
+      };
+    }
+    if (type === 'E-mail') return { title: type, body: `From: ${people[0]}\nTo: ${people[1]}\nSubject: ${topic} order ${2000 + n}\n\nHello ${people[1].split(' ')[0]},\n\nThank you for your order. Because of high demand, we can deliver it on Thursday, 14 May, instead of Monday. Please let me know if this date works for you.\n\nBest regards,\n${people[0]}, ${company}` };
+    if (type === 'Notice') return { title: type, body: `${company} – Customer Notice\n\nFrom 1 May, deliveries will be made only on Tuesdays and Thursdays. Orders placed after 3:00 P.M. will be processed the next working day. Visit www.${topic}.example for details.` };
+    return { title: type, body: `Delivery schedule – week of 12 May\nTuesday 13: Zone A\nThursday 15: Zone B (including order ${2000 + n})\nFriday 16: no deliveries (staff training)` };
+  });
+  const title = textCount > 1 ? docs.map((d) => d.title).join(' + ') : `${docs[0]!.title}: ${topic} #${n}`;
+  const p6 = (i: number) =>
+    item(i, `Question ${i + 1}: Choose the word or phrase that best completes blank [${i + 1}].`, ['introduce', 'Therefore,', 'Please arrive ten minutes early.', 'patience'][i % 4]!, [['introducing', 'introduction', 'introduced'], ['However,', 'Instead,', 'Otherwise,'], ['The building closed last year.', 'Lunch is not provided.', 'Parking is free on Sundays.'], ['patient', 'patiently', 'patients']][i % 4]! as [string, string, string], 'Grammar/cohesion of the blank');
+  const p7 = [
+    item(0, 'What is the main purpose of the e-mail?', 'To propose a new delivery date', ['To cancel an order', 'To request a payment', 'To announce a price change'], 'Purpose in the first lines'),
+    item(1, 'What is indicated about the company?', 'It has a website for more information', ['It closes on Tuesdays', 'It is hiring drivers', 'It opened recently'], 'Detail in the notice/e-mail'),
+    item(2, textCount > 1 ? 'Why most likely was the delivery moved to Thursday? (combine the texts)' : 'What should the customer do?', textCount > 1 ? 'Deliveries are made only on certain days' : 'Reply about the new date', textCount > 1 ? ['The driver was sick', 'The customer asked for it', 'The order was incomplete'] : ['Visit the office', 'Pay a deposit', 'Call a manager'], 'Cross-text inference'),
+    item(3, 'The word "high" in the e-mail is closest in meaning to', 'great', ['tall', 'expensive', 'loud'], 'Vocabulary in context'),
+    item(4, 'When will no deliveries be made?', 'On Friday, 16 May', ['On Tuesday, 13 May', 'On Thursday, 15 May', 'On Monday, 12 May'], 'Schedule detail'),
+  ];
+  return { passage: { kind, title, texts: docs }, questions: Array.from({ length: count }, (_, i) => (section === 'part6' ? p6(i) : p7[i % p7.length]!)) };
 }

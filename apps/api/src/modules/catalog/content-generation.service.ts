@@ -204,7 +204,7 @@ export class ContentGenerationService implements OnModuleInit {
         source: 'ai',
         content,
         metadata: { external_ref: externalRef, generation: { job_id: jobId, ai_task_id: genTaskIds[Math.floor(i / BATCH)] ?? null, trap_type: g.trap_type, keywords: g.keywords, distractor_rationale: g.distractor_rationale, explanation_seed: g.explanation_seed, difficulty_estimate: g.difficulty_estimate, topic: input.topic ?? null } },
-      });
+      }, { dedup: false });
       let verdict: GeneratedItemResult['verdict'] = null;
       let issues: GeneratedItemResult['issues'] = [];
       let checkTask: string | null = null;

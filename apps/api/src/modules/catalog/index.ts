@@ -11,3 +11,10 @@ export { DictionaryService, translationCacheKey, type LookupInput, type LookupRe
 // S12
 export { ContentReportsService } from './content-reports.service.js';
 export { QuestionStatsService, type QuestionStatsValue, type QuestionRecommendation } from './question-stats.service.js';
+// B2/B5
+export { ContentDedupService, dedupKeyText, type DuplicateFlag } from './content-dedup.service.js';
+export { ContentPassageService, mergePartsBody } from './content-passage.service.js';
+export { ContentReviewQueueService } from './content-review-queue.service.js';
+export { ContentImportService, XLSX_MIME, type ImportReport } from './content-import.service.js';
+export { ContentDraftTestService, buildDraftPlan, groupSizesOf } from './content-draft-test.service.js';
+export { readXlsx, writeXlsx, zip, unzip } from './import/xlsx.js';

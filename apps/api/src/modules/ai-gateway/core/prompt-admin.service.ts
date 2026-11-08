@@ -123,7 +123,7 @@ export class PromptAdminService {
     };
   }
 
-  /** POST /admin/prompts – tạo template (mã task thuộc 14 task_code có Zod đầu ra) */
+  /** POST /admin/prompts – tạo template (mã task thuộc 15 task_code có Zod đầu ra) */
   async createTemplate(actor: Actor, input: PromptTemplateCreate) {
     const program = input.program ?? null;
     const [dup] = await this.dbs.db

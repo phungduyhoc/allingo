@@ -145,6 +145,9 @@ export const envSchema = z.object({
   GEMINI_EMBEDDING_MODEL: z.string().default('gemini-embedding-001'),
   OPENAI_EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
   AI_DEDUP_COSINE_THRESHOLD: z.coerce.number().min(0.5).max(1).default(0.92),
+  // B2: lọc trùng câu khi tạo/nhập/AI soạn đề – ngưỡng pg_trgm (fallback khi chưa có embedding) + số câu tương tự lưu kèm cờ
+  CONTENT_DEDUP_TRGM_THRESHOLD: z.coerce.number().min(0.5).max(1).default(0.85),
+  CONTENT_DEDUP_SIMILAR_LIMIT: z.coerce.number().int().min(1).max(10).default(3),
   LANGFUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().min(200).default(2000),
   // Job nền (content.generate, summary.attempt, eval.run): true = chạy trong process API (dev không chạy worker); false = BullMQ
   JOBS_INLINE: bool(false),
