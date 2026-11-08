@@ -10,6 +10,7 @@ import { alternatesFor, absoluteUrl } from '@/lib/seo/site';
 export async function JsonLdScript({ data, id }: { data: JsonLd | JsonLd[] | null | undefined; id?: string }) {
   if (!data || (Array.isArray(data) && !data.length)) return null;
   const nonce = (await headers()).get('x-nonce') ?? undefined;
+  // nosemgrep: allingo-dangerously-set-inner-html – JSON-LD đã escape `<`, `>`, `&` (serializeJsonLd), không thực thi
   return <script type="application/ld+json" id={id} nonce={nonce} data-testid="json-ld" dangerouslySetInnerHTML={{ __html: serializeJsonLd(data) }} />;
 }
 

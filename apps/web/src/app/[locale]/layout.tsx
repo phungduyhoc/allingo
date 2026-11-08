@@ -61,6 +61,7 @@ export default async function LocaleLayout({ children, params }: { children: Rea
     <html lang={locale} suppressHydrationWarning>
       <body className="min-h-dvh">
         {/* S10: đã chọn đồng ý cookie → html[data-consent] trước khi vẽ (CSS ẩn thanh đồng ý, không nháy/CLS) */}
+        {/* nosemgrep: allingo-dangerously-set-inner-html – hằng số trong mã (không có dữ liệu người dùng), có nonce CSP */}
         <script nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: CONSENT_BOOT_SCRIPT }} />
         <NextIntlClientProvider messages={messages}>
           <ThemeProvider nonce={nonce}>
