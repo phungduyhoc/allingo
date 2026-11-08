@@ -85,6 +85,23 @@ export const adminBetaInviteSchema = z.object({
   last_error: z.string().nullable(),
   created_at: z.string(),
 });
+/** POST /admin/beta/invites/send (B6/S147): không truyền bộ lọc → gửi mọi lời mời đang xếp hàng (hành vi cũ) */
+export const adminBetaInviteSendInputSchema = z.object({
+  limit: z.number().int().min(1).max(500).optional(),
+  invite_ids: z.array(uuidSchema).min(1).max(500).optional(),
+  batch: z.string().trim().min(1).max(64).optional(),
+});
+export type AdminBetaInviteSendInput = z.infer<typeof adminBetaInviteSendInputSchema>;
+export const betaInviteSendSummarySchema = z.object({
+  sent: z.number().int(),
+  failed: z.number().int(),
+  expired: z.number().int(),
+  remaining_today: z.number().int(),
+  /** Lời mời được chọn (invite_ids) nhưng không còn `queued` */
+  skipped: z.number().int(),
+});
+export type BetaInviteSendSummary = z.infer<typeof betaInviteSendSummarySchema>;
+export const adminBetaInviteSendResultSchema = z.object({ job_id: z.string(), mode: z.enum(['queued', 'inline']), result: betaInviteSendSummarySchema.nullable() });
 
 // ----------------------------------------------------------------------------- Khảo sát onboarding + NPS
 export const BETA_GOALS = ['job', 'graduation', 'study_abroad', 'promotion', 'self_improvement', 'other'] as const;
@@ -113,8 +130,16 @@ export const npsInputSchema = z.object({
   /** Mặc định: khảo sát NPS đang chờ (ngày 7 hoặc 14) */
   survey: z.enum(['nps_d7', 'nps_d14']).optional(),
 });
-/** Mốc NPS (ngày kể từ lúc đổi mã beta – hoặc ngày đăng ký nếu không qua beta) và hạn hiển thị */
+/**
+ * Mốc NPS (ngày kể từ lúc đổi mã beta – tester được cấp vai trò không qua mã: ngày đăng ký) và hạn hiển thị. B6/S146: NPS chỉ
+ * dành cho beta tester (đổi mã hoặc vai trò `beta_tester`), không cho tài khoản nhân sự (`STAFF_ROLES`).
+ */
 export const NPS_SCHEDULE = { nps_d7: { day: 7, until_day: 14 }, nps_d14: { day: 14, until_day: 28 } } as const;
+/** Vai trò nhân sự Allingo (nội bộ) – không nhận khảo sát NPS/onboarding beta (B6/S146). `org_admin` là khách hàng B2B, không thuộc nhóm này */
+export const STAFF_ROLES = ['admin', 'superadmin', 'editor', 'teacher', 'support', 'service'] as const;
+export function isStaffRoles(roles: readonly string[]): boolean {
+  return roles.some((r) => (STAFF_ROLES as readonly string[]).includes(r));
+}
 
 // ----------------------------------------------------------------------------- Góp ý, báo lỗi câu, hỗ trợ
 export const FEEDBACK_CATEGORIES = ['bug', 'idea', 'content_error', 'ux', 'performance', 'other'] as const;

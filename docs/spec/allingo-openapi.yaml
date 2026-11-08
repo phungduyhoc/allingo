@@ -19,7 +19,7 @@ info:
     - Thanh toán (v1.1 – S7, ADR-0012 webhook-first): quyền chỉ mở khi webhook/IPN đã xác minh chữ ký (hoặc job đối chiếu `queryStatus`); return URL chỉ hiển thị. Tiền VND nguyên.
     - Streaming AI: `text/event-stream` cho chat và giải thích (`event: delta|done|error`).
     - v1.1 – S11 (vận hành & bảo mật): (a) CSRF cho cookie-auth – POST/PUT/PATCH/DELETE mang cookie `allingo_at`/`allingo_rt` mà không có `Authorization` và MỌI POST `/auth/*` phải có `Origin` (hoặc `Referer`) thuộc danh sách tin cậy (CORS_ORIGINS + web/api/cms); `Origin: null` / `Sec-Fetch-Site: cross-site` → 403 `forbidden` `details.reason = csrf_origin_mismatch` (trình duyệt tự gửi Origin – web không cần header thêm). (b) Giới hạn tốc độ: toàn cục theo IP (`RATE_LIMIT_MAX`/phút, Redis) + token bucket theo người dùng/IP cho `/ai/explain`, `/ai/threads*`, `/attempts/{id}/submit`, `/orders`, `/orders/{id}/pay`, `/uploads/presign`, `/auth/login|register|otp/*`, webhook; header `X-RateLimit-Limit`, `X-RateLimit-Remaining`, khi vượt 429 `rate_limited` + `Retry-After` + `details.retry_after_sec` (+ `details.bucket`); đăng nhập sai liên tiếp → 429 `rate_limited` `details.reason = login_locked`. (c) Kill-switch: cờ tắt → 503 `feature_disabled` `details = {flag, message_key: errors.feature_disabled, retry_after_sec}` + `Retry-After`; GET /flags trả cờ công khai đã đánh giá; GET/PUT /admin/flags(/{key}). (d) Trace: client có thể gửi W3C `traceparent`; phản hồi luôn có `X-Trace-Id` (= `error.trace_id`). (e) Phản hồi JSON có `Content-Security-Policy: default-src 'none'`, HSTS, `Cache-Control: no-store` khi có phiên.
-    - v1.1 – S12 (beta kín & vận hành): (a) Beta gate `ff.growth.beta_gate` – khi bật, người dùng đăng nhập chưa có quyền beta (vai trò nội bộ, `beta_tester` sau POST /beta/redeem, hoặc `rules.user_ids`) gọi API app → 403 `beta_required` `details = {message_key: errors.beta_required, redeem_path: /beta/redeem}`; không chặn endpoint công khai (`security: []`), /auth/*, GET|PATCH|DELETE /me, /me/sessions*, /me/consents, /me/mfa, /beta/*, /waitlist, /flags, /legal/*, /support/tickets*, /me/support/*. (b) Admin/superadmin gọi endpoint có vai trò cần phiên đã xác minh TOTP khi `ADMIN_MFA_REQUIRED` (mặc định bật ở staging/production) → 403 `mfa_required` `details = {enrolled, enroll_path, verify_path}`; step-up bằng POST /auth/mfa/verify (token mới, refresh giữ trạng thái). (c) Token impersonate (`scope = read_only`) chỉ GET/HEAD, mọi request audit. (d) Mật khẩu đăng ký ≥ 12 ký tự (`PASSWORD_MIN_LENGTH`) và không nằm trong danh sách mật khẩu lộ → 400 `validation_failed` issues[].code `password_too_short` | `password_breached` | `password_weak`. (e) Mã lỗi mới: `beta_required`, `mfa_required`.
+    - v1.1 – S12 (beta kín & vận hành): (a) Beta gate `ff.growth.beta_gate` – khi bật, người dùng đăng nhập chưa có quyền beta (vai trò nội bộ, `beta_tester` sau POST /beta/redeem, hoặc `rules.user_ids`) gọi API app → 403 `beta_required` `details = {message_key: errors.beta_required, redeem_path: /beta/redeem}`; không chặn endpoint công khai (`security: []`), /auth/*, GET|PATCH|DELETE /me, /me/sessions*, /me/consents, /me/mfa, /beta/*, /waitlist, /flags, /legal/*, /support/tickets*, /me/support/*, POST /feedback (B6/S150 – ảnh màn hình qua /uploads/presign vẫn cần quyền beta). (b) Admin/superadmin gọi endpoint có vai trò cần phiên đã xác minh TOTP khi `ADMIN_MFA_REQUIRED` (mặc định bật ở staging/production) → 403 `mfa_required` `details = {enrolled, enroll_path, verify_path}`; step-up bằng POST /auth/mfa/verify (token mới, refresh giữ trạng thái). (c) Token impersonate (`scope = read_only`) chỉ GET/HEAD, mọi request audit. (d) Mật khẩu đăng ký ≥ 12 ký tự (`PASSWORD_MIN_LENGTH`) và không nằm trong danh sách mật khẩu lộ → 400 `validation_failed` issues[].code `password_too_short` | `password_breached` | `password_weak`. (e) Mã lỗi mới: `beta_required`, `mfa_required`.
     - v1.1 – S10: ôn tập FSRS-5 (GET /me/srs/due trả `SrsDueList` – thẻ đến hạn + thẻ mới trong hạn mức ngày; POST /me/srs/review idempotent theo (card_id, reviewed_at); GET /me/srs/cards), bộ từ hệ thống TOEIC 600 theo chủ đề + POST /vocab/lists/{listId}/enroll, sổ lỗi đầy đủ (lọc kind/part/thời gian, PATCH ghi chú/đã hiểu/tạo thẻ, POST /me/errors/drill), Stats đầy đủ (cache 1 giờ, đọc replica), dự báo v0 hồi quy tuyến tính ("ước tính sơ bộ"), `attribution` (UTM/referrer) khi đăng ký, POST /analytics/events (sự kiện phễu có đồng ý cookie).
     - v1.1 – S9: lộ trình học (POST/GET /me/plan, /me/plan/today, check-in → đề xuất plan_adjust có kiểm tra ràng buộc → apply), bài chẩn đoán thích ứng (POST /me/diagnostic, GET|POST /me/diagnostic/{attemptId}/next), huy hiệu GET /me/badges; WS `plan.updated` {plan_id | task_id | proposal_id, reason}.
     - v1.1 – S8: hoá đơn điện tử tự phát hành sau `order.paid` (`Order.invoice`, PDF URL ký 10 phút); khuyến mãi đầy đủ (percent | fixed | credit_bonus | trial_days, không cộng dồn) + dùng thử Pro; referral; thông báo đa kênh (Socket.IO `notification.new` = NotificationItem); header tuỳ chọn `X-Device-Fingerprint` ở /auth/register, /auth/otp/verify, /auth/oauth/{provider} (server chỉ lưu sha256 – chống lạm dụng referral).
@@ -241,7 +241,7 @@ paths:
           description: 'Đã tiếp nhận; mọi phiên bị thu hồi ngay'
           content:
             application/json:
-              schema: { type: object, properties: { status: { type: string, enum: [scheduled] }, due_at: { type: string, format: date-time }, request_id: { type: string, format: uuid } } }
+              schema: { type: object, required: [status, due_at, request_id], properties: { status: { type: string, enum: [scheduled] }, due_at: { type: string, format: date-time }, request_id: { type: string, format: uuid } } }
         '409': { $ref: '#/components/responses/Error' }
   /me/sessions:
     get:
@@ -2017,7 +2017,7 @@ paths:
     get:
       tags: [Me]
       summary: Khảo sát in-app đang chờ (onboarding beta, NPS ngày 7 và 14) (v1.1 – S12)
-      description: 'Mốc tính từ lúc đổi mã beta (hoặc ngày đăng ký): `nps_d7` hiển thị ngày 7–13, `nps_d14` ngày 14–27; `beta_onboarding` khi là beta tester chưa trả lời. Đã trả lời → không còn trong danh sách.'
+      description: 'Chỉ beta tester (đã đổi mã mời hoặc có vai trò `beta_tester`) nhận khảo sát; tài khoản nhân sự (admin, superadmin, editor, teacher, support, service) và người dùng không phải tester luôn nhận `data: []` (v1.1 – B6/S146). Mốc tính từ lúc đổi mã beta (tester được cấp vai trò không qua mã: ngày đăng ký): `nps_d7` hiển thị ngày 7–13, `nps_d14` ngày 14–27; `beta_onboarding` khi tester chưa trả lời. Đã trả lời → không còn trong danh sách.'
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PendingSurveys' } } } }
   /me/surveys/nps:
@@ -2037,6 +2037,7 @@ paths:
         Ảnh: `POST /uploads/presign {kind: image}` → PUT → gửi `screenshot_upload_id` (phải là ảnh của chính người gọi, bucket riêng tư
         recordings; admin xem bằng URL ký 10 phút). `trace_id` thiếu → server gắn trace của chính request (luôn trả về `trace_id`).
         Ngữ cảnh lưu: trang, user agent rút gọn, app_version, locale – không lưu email/IP. Bucket `feedback` (10/10′/người).
+        Không bị chặn bởi beta gate (B6/S150): người chưa có quyền beta gửi được góp ý dạng chữ; `/uploads/presign` vẫn theo gate.
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FeedbackInput' } } } }
       responses:
         '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/FeedbackCreated' } } } }
@@ -2069,7 +2070,7 @@ paths:
       summary: Ticket hỗ trợ của tôi (cursor, mới nhất trước) (v1.1 – S12)
       parameters: [ { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/SupportTicket' } }, next_cursor: { type: [string, 'null'] } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data, next_cursor], properties: { data: { type: array, items: { $ref: '#/components/schemas/SupportTicket' } }, next_cursor: { type: [string, 'null'] } } } } } }
   /me/support/tickets/{ticketId}:
     get:
       tags: [Me]
@@ -2150,29 +2151,35 @@ paths:
       summary: Danh sách chờ (lọc chương trình/trạng thái; email che) (v1.1 – S12)
       parameters: [ { name: program, in: query, schema: { type: string, enum: [toeic, ielts, jlpt, hsk] } }, { name: status, in: query, schema: { type: string, enum: [waiting, invited, joined, removed] } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/AdminWaitlistEntry' } }, next_cursor: { type: [string, 'null'] }, counts: { type: object, additionalProperties: { type: integer } } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data, next_cursor, counts], properties: { data: { type: array, items: { $ref: '#/components/schemas/AdminWaitlistEntry' } }, next_cursor: { type: [string, 'null'] }, counts: { type: object, additionalProperties: { type: integer } } } } } } }
   /admin/beta/invites:
     get:
       tags: [Admin]
       summary: Lời mời beta (lọc trạng thái/đợt) + hạn mức gửi hôm nay (v1.1 – S12)
       parameters: [ { name: status, in: query, schema: { type: string, enum: [queued, sent, redeemed, revoked, expired, failed] } }, { name: batch, in: query, schema: { type: string } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/AdminBetaInvite' } }, next_cursor: { type: [string, 'null'] }, today: { type: object, properties: { sent: { type: integer }, limit: { type: integer }, remaining: { type: integer } } }, counts: { type: object, additionalProperties: { type: integer } } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data, next_cursor, today, counts], properties: { data: { type: array, items: { $ref: '#/components/schemas/AdminBetaInvite' } }, next_cursor: { type: [string, 'null'] }, today: { type: object, required: [sent, limit, remaining], properties: { sent: { type: integer }, limit: { type: integer }, remaining: { type: integer } } }, counts: { type: object, additionalProperties: { type: integer } } } } } } }
     post:
       tags: [Admin]
       summary: Chọn người từ danh sách chờ (hoặc email) → xếp hàng mời (gửi theo đợt bởi job beta.invites_send) (v1.1 – S12)
       description: 'Email đã có lời mời còn hiệu lực (queued/sent/redeemed) → bỏ qua (`skipped`). Audit `beta.invites_created`.'
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminBetaInviteCreate' } } } }
       responses:
-        '201': { description: Created, content: { application/json: { schema: { type: object, properties: { queued: { type: integer }, skipped: { type: integer }, batch: { type: string } } } } } }
+        '201': { description: Created, content: { application/json: { schema: { type: object, required: [queued, skipped, batch], properties: { queued: { type: integer }, skipped: { type: integer }, batch: { type: string } } } } } }
         '400': { $ref: '#/components/responses/Error' }
   /admin/beta/invites/send:
     post:
       tags: [Admin]
-      summary: Chạy ngay job gửi mời theo đợt (tôn trọng hạn mức/ngày) (v1.1 – S12)
-      requestBody: { content: { application/json: { schema: { type: object, properties: { limit: { type: integer, minimum: 1, maximum: 500 } } } } } }
+      summary: Chạy ngay job gửi mời theo đợt (tôn trọng hạn mức/ngày) – tuỳ chọn chỉ gửi lô đã chọn (v1.1 – S12, B6/S147)
+      description: |
+        Không truyền bộ lọc → hành vi cũ: gửi lời mời `queued` theo thứ tự xếp hàng (cũ trước) tới khi đủ hạn mức hôm nay (giờ VN).
+        `invite_ids` → chỉ các lời mời này (theo thứ tự truyền vào); `batch` → chỉ lời mời của đợt này (cũ trước); truyền cả hai → giao
+        của hai điều kiện. `limit` giới hạn thêm số email gửi trong lần chạy. Lời mời được chọn nhưng không còn `queued` (đã gửi/thu hồi/
+        không tồn tại) không gửi và được đếm ở `result.skipped`. Hạn mức ngày luôn được tôn trọng – phần vượt hạn mức giữ `queued`.
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/AdminBetaInviteSendInput' } } } }
       responses:
-        '202': { description: Accepted, content: { application/json: { schema: { type: object, properties: { job_id: { type: string }, mode: { type: string, enum: [queued, inline] }, result: { type: [object, 'null'] } } } } } }
+        '202': { description: Accepted, content: { application/json: { schema: { $ref: '#/components/schemas/AdminBetaInviteSendResult' } } } }
+        '400': { $ref: '#/components/responses/Error' }
   /admin/beta/invites/{inviteId}/revoke:
     post:
       tags: [Admin]
@@ -2188,7 +2195,7 @@ paths:
       summary: Góp ý in-app (lọc trạng thái/loại) – ảnh màn hình URL ký 10 phút (v1.1 – S12)
       parameters: [ { name: status, in: query, schema: { type: string, enum: [new, triaged, done, wontfix] } }, { name: category, in: query, schema: { type: string } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/AdminFeedbackItem' } }, next_cursor: { type: [string, 'null'] } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data, next_cursor], properties: { data: { type: array, items: { $ref: '#/components/schemas/AdminFeedbackItem' } }, next_cursor: { type: [string, 'null'] } } } } } }
   /admin/feedback/{feedbackId}:
     patch:
       tags: [Admin]
@@ -2204,7 +2211,7 @@ paths:
       summary: Hàng đợi báo lỗi câu (SLA 48 giờ, `overdue`) – cùng dữ liệu CMS đồng bộ (v1.1 – S12)
       parameters: [ { name: status, in: query, schema: { type: string, enum: [open, confirmed, rejected, fixed] } }, { name: overdue, in: query, schema: { type: boolean } }, { name: question_id, in: query, schema: { type: string, format: uuid } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/ContentReportItem' } }, next_cursor: { type: [string, 'null'] } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data, next_cursor], properties: { data: { type: array, items: { $ref: '#/components/schemas/ContentReportItem' } }, next_cursor: { type: [string, 'null'] } } } } } }
   /admin/content/reports/{reportId}:
     patch:
       tags: [Admin]
@@ -2220,7 +2227,7 @@ paths:
       summary: Ticket hỗ trợ (lọc trạng thái/ưu tiên/loại/quá hạn SLA/người dùng/từ khoá tiêu đề) (v1.1 – S12)
       parameters: [ { name: status, in: query, schema: { type: string, enum: [open, waiting_user, resolved, closed] } }, { name: priority, in: query, schema: { type: string, enum: [low, normal, high, urgent] } }, { name: category, in: query, schema: { type: string } }, { name: overdue, in: query, schema: { type: boolean } }, { name: user_id, in: query, schema: { type: string, format: uuid } }, { name: q, in: query, schema: { type: string, maxLength: 100 } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/AdminSupportTicket' } }, next_cursor: { type: [string, 'null'] }, counts: { type: object, additionalProperties: { type: integer } } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data, next_cursor, counts], properties: { data: { type: array, items: { $ref: '#/components/schemas/AdminSupportTicket' } }, next_cursor: { type: [string, 'null'] }, counts: { type: object, additionalProperties: { type: integer } } } } } } }
   /admin/support/tickets/{ticketId}:
     get:
       tags: [Admin]
@@ -2245,7 +2252,7 @@ paths:
       parameters: [ { $ref: '#/components/parameters/TicketId' } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminSupportReply' } } } }
       responses:
-        '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/AdminSupportTicket' }, { type: object, properties: { delivery: { type: array, items: { type: object } }, credit: { type: [object, 'null'] } } } ] } } } }
+        '201': { description: Created, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/AdminSupportTicket' }, { type: object, required: [delivery, credit], properties: { delivery: { type: array, items: { type: object, required: [channel, status], properties: { channel: { type: string, enum: [email, push, zalo, sms, inapp] }, status: { type: string, enum: [sent, scheduled, skipped, failed, duplicate] }, reason: { type: string }, notification_id: { type: string } } } }, credit: { type: [object, 'null'], required: [delta, balance, ledger_id], properties: { delta: { type: integer }, balance: { type: integer }, ledger_id: { type: integer } } } } } ] } } } }
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
 
@@ -2257,7 +2264,7 @@ paths:
       description: 'Kết quả che PII (`email_masked`, không phone). Ghi audit `admin.user_search` (không ghi chuỗi tìm kiếm).'
       parameters: [ { name: q, in: query, schema: { type: string, minLength: 2, maxLength: 120 } }, { name: status, in: query, schema: { type: string, enum: [active, suspended, pending_deletion, deleted] } }, { name: role, in: query, schema: { type: string } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/AdminUserSummary' } }, next_cursor: { type: [string, 'null'] } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data, next_cursor], properties: { data: { type: array, items: { $ref: '#/components/schemas/AdminUserSummary' } }, next_cursor: { type: [string, 'null'] } } } } } }
   /admin/users/{userId}:
     get:
       tags: [Admin]
@@ -2274,7 +2281,7 @@ paths:
       parameters: [ { name: userId, in: path, required: true, schema: { type: string, format: uuid } } ]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [reason], properties: { reason: { type: string, minLength: 3, maxLength: 500 } } } } } }
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { user_id: { type: string, format: uuid }, status: { type: string }, sessions_revoked: { type: integer } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [user_id, status, sessions_revoked], properties: { user_id: { type: string, format: uuid }, status: { type: string, enum: [suspended] }, sessions_revoked: { type: integer } } } } } }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
@@ -2285,7 +2292,7 @@ paths:
       parameters: [ { name: userId, in: path, required: true, schema: { type: string, format: uuid } } ]
       requestBody: { content: { application/json: { schema: { type: object, properties: { reason: { type: string, maxLength: 500 } } } } } }
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { user_id: { type: string, format: uuid }, status: { type: string } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [user_id, status], properties: { user_id: { type: string, format: uuid }, status: { type: string, enum: [active] } } } } } }
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
   /admin/users/{userId}/deletion:
@@ -2295,7 +2302,7 @@ paths:
       parameters: [ { name: userId, in: path, required: true, schema: { type: string, format: uuid } } ]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [reason], properties: { reason: { type: string, minLength: 3, maxLength: 500 } } } } } }
       responses:
-        '202': { description: Accepted, content: { application/json: { schema: { type: object, properties: { status: { type: string, enum: [scheduled] }, due_at: { type: string, format: date-time }, request_id: { type: string, format: uuid } } } } } }
+        '202': { description: Accepted, content: { application/json: { schema: { type: object, required: [status, due_at, request_id], properties: { status: { type: string, enum: [scheduled] }, due_at: { type: string, format: date-time }, request_id: { type: string, format: uuid } } } } } }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
@@ -2321,31 +2328,31 @@ paths:
       description: 'Đọc `catalog.questions.stats` (job `content.stats_nightly`). `recommendation`: retire (phân biệt âm/rất thấp hoặc ≥ 5 báo lỗi xác nhận), review (quá khó < 0,2 / quá dễ > 0,95 / phân biệt < 0,2 / ≥ 3 báo lỗi mở), ok, insufficient_data (n < min_n).'
       parameters: [ { name: program, in: query, schema: { type: string, enum: [toeic, ielts, jlpt, hsk] } }, { name: section, in: query, schema: { type: string } }, { name: recommendation, in: query, schema: { type: string, enum: [retire, review, ok, insufficient_data] } }, { name: sort, in: query, schema: { type: string, enum: [p_value, discrimination, reports, n, avg_time] } }, { name: min_n, in: query, schema: { type: integer, minimum: 0 } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/QuestionStats' } }, next_cursor: { type: [string, 'null'] }, computed_at: { type: [string, 'null'] } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data, next_cursor, computed_at], properties: { data: { type: array, items: { $ref: '#/components/schemas/QuestionStats' } }, next_cursor: { type: [string, 'null'] }, computed_at: { type: [string, 'null'] } } } } } }
   /admin/content/questions/stats/recompute:
     post:
       tags: [Admin]
       summary: Chạy ngay content.stats_nightly (v1.1 – S12)
       responses:
-        '202': { description: Accepted, content: { application/json: { schema: { type: object, properties: { job_id: { type: string }, mode: { type: string }, result: { type: [object, 'null'] } } } } } }
+        '202': { description: Accepted, content: { application/json: { schema: { type: object, required: [job_id, mode, result], properties: { job_id: { type: string }, mode: { type: string, enum: [queued, inline] }, result: { type: [object, 'null'] } } } } } }
   /admin/ai/quality:
     get:
       tags: [Admin]
       summary: Chất lượng AI theo phiên bản prompt – số tác vụ, 👍/👎 (helpful vs not_helpful|wrong), tỉ lệ, refused, chi phí (v1.1 – S12)
       parameters: [ { name: from, in: query, schema: { type: string, format: date } }, { name: to, in: query, schema: { type: string, format: date } }, { name: task_code, in: query, schema: { type: string } } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { from: { type: string }, to: { type: string }, data: { type: array, items: { $ref: '#/components/schemas/AiQualityRow' } } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [from, to, data], properties: { from: { type: string }, to: { type: string }, data: { type: array, items: { $ref: '#/components/schemas/AiQualityRow' } } } } } } }
   /admin/ai/refusals:
     get:
       tags: [Admin]
       summary: Mẫu tác vụ bị guardrail từ chối (lý do, task, input_ref – không nội dung người học) (v1.1 – S12)
       parameters: [ { name: from, in: query, schema: { type: string, format: date } }, { name: to, in: query, schema: { type: string, format: date } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { type: object } }, next_cursor: { type: [string, 'null'] }, by_reason: { type: object, additionalProperties: { type: integer } } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data, next_cursor, by_reason], properties: { data: { type: array, items: { $ref: '#/components/schemas/AiRefusal' } }, next_cursor: { type: [string, 'null'] }, by_reason: { type: object, additionalProperties: { type: integer } } } } } } }
   /admin/system/status:
     get:
       tags: [Admin]
-      summary: Hệ thống – độ sâu hàng đợi BullMQ, dead-letter, độ phủ partition, cờ, SLA hỗ trợ (v1.1 – S12)
+      summary: Hệ thống – độ sâu hàng đợi BullMQ, dead-letter, độ phủ partition, cờ, SLA hỗ trợ, outbox (v1.1 – S12; outbox retrying/dead_lettered – B7/S26)
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AdminSystemStatus' } } } }
   /admin/jobs/dead-letters:
@@ -2354,15 +2361,15 @@ paths:
       summary: Dead-letter mọi hàng đợi (lọc queue/job, đã replay) (v1.1 – S12)
       parameters: [ { name: queue, in: query, schema: { type: string } }, { name: job, in: query, schema: { type: string } }, { name: replayed, in: query, schema: { type: boolean } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/DeadLetterItem' } }, next_cursor: { type: [string, 'null'] } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data, next_cursor], properties: { data: { type: array, items: { $ref: '#/components/schemas/DeadLetterItem' } }, next_cursor: { type: [string, 'null'] } } } } } }
   /admin/jobs/dead-letters/{deadLetterId}/replay:
     post:
       tags: [Admin]
       summary: Replay job dead-letter (xoá job thất bại cũ trong BullMQ rồi thêm lại cùng jobId; Redis/worker không sẵn → chạy inline) (v1.1 – S12)
-      description: 'Job không có handler → 409 `conflict` `details.reason = no_handler`. Audit `job.dead_letter_replayed`; `replay_count + 1`.'
+      description: 'Job không có handler → 409 `conflict` `details.reason = no_handler`. Audit `job.dead_letter_replayed`; `replay_count + 1`. v1.1 – B7/S26: dead-letter `queue = outbox` (job = event_type) → mở lại sự kiện outbox và giao NGAY (inline) đúng các consumer còn lỗi – consumer đã thành công không chạy lại; `result = {status: delivered | retry | dead_letter | already_delivered, delivered[], failed[], attempts}`; sự kiện đã giao → `already_delivered`.'
       parameters: [ { name: deadLetterId, in: path, required: true, schema: { type: string, format: uuid } } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/DeadLetterItem' }, { type: object, properties: { mode: { type: string, enum: [queued, inline] }, result: { type: [object, 'null'] }, error: { type: [string, 'null'] } } } ] } } } }
+        '200': { description: OK, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/DeadLetterItem' }, { type: object, required: [mode, result, error], properties: { mode: { type: string, enum: [queued, inline] }, result: { type: [object, 'null'] }, error: { type: [string, 'null'] } } } ] } } } }
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
   /admin/audit-logs:
@@ -2371,7 +2378,7 @@ paths:
       summary: Tìm nhật ký kiểm toán (actor, action – tiền tố khi kết thúc bằng `.`/`*`, entity, khoảng thời gian; mặc định 30 ngày) (v1.1 – S12)
       parameters: [ { name: actor, in: query, schema: { type: string, format: uuid } }, { name: action, in: query, schema: { type: string, maxLength: 100 } }, { name: entity_type, in: query, schema: { type: string } }, { name: entity_id, in: query, schema: { type: string, format: uuid } }, { name: from, in: query, schema: { type: string, format: date-time } }, { name: to, in: query, schema: { type: string, format: date-time } }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/AuditLogItem' } }, next_cursor: { type: [string, 'null'] } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data, next_cursor], properties: { data: { type: array, items: { $ref: '#/components/schemas/AuditLogItem' } }, next_cursor: { type: [string, 'null'] } } } } } }
         '400': { $ref: '#/components/responses/Error' }
   /admin/reports/beta:
     get:
@@ -2380,7 +2387,7 @@ paths:
       description: 'Cùng nguồn với `pnpm report:beta` (replica). `week` ISO (YYYY-Www, giờ VN), mặc định tuần trước. PostHog chưa cấu hình → `posthog = null` ("chưa có").'
       parameters: [ { name: week, in: query, schema: { type: string, pattern: '^\d{4}-W\d{2}$' } } ]
       responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { week: { type: string }, kpis: { type: object }, posthog: { type: [object, 'null'] }, markdown: { type: string } } } } } }
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [week, kpis, posthog, markdown], properties: { week: { type: string }, kpis: { type: object }, posthog: { type: [object, 'null'] }, markdown: { type: string } } } } } }
 
 components:
   securitySchemes:
@@ -4112,6 +4119,7 @@ components:
         source: { type: string, maxLength: 64 }
     BetaStatus:
       type: object
+      required: [gate_enabled, has_access, reason, redeemed_at, trial_ends_at, survey_completed]
       properties:
         gate_enabled: { type: boolean }
         has_access: { type: [boolean, 'null'] }
@@ -4121,6 +4129,7 @@ components:
         survey_completed: { type: [boolean, 'null'] }
     BetaRedeemResult:
       type: object
+      required: [status, invite_id, program, trial_ends_at, trial_skipped, credits_granted, balance, survey_pending]
       properties:
         status: { type: string, enum: [redeemed, already_redeemed] }
         invite_id: { type: string, format: uuid }
@@ -4142,14 +4151,16 @@ components:
         study_minutes_per_day: { type: integer, minimum: 5, maximum: 600 }
     SurveyResponse:
       type: object
+      required: [kind, submitted_at, score]
       properties:
         kind: { type: string, enum: [beta_onboarding, nps_d7, nps_d14] }
         submitted_at: { type: string, format: date-time }
         score: { type: [integer, 'null'] }
     PendingSurveys:
       type: object
+      required: [data]
       properties:
-        data: { type: array, items: { type: object, properties: { kind: { type: string, enum: [beta_onboarding, nps_d7, nps_d14] }, due_at: { type: string, format: date-time }, expires_at: { type: [string, 'null'], format: date-time } } } }
+        data: { type: array, items: { type: object, required: [kind, due_at, expires_at], properties: { kind: { type: string, enum: [beta_onboarding, nps_d7, nps_d14] }, due_at: { type: string, format: date-time }, expires_at: { type: [string, 'null'], format: date-time } } } }
     FeedbackInput:
       type: object
       required: [category, message]
@@ -4162,6 +4173,7 @@ components:
         app_version: { type: string, maxLength: 40 }
     FeedbackCreated:
       type: object
+      required: [id, status, trace_id, created_at]
       properties:
         id: { type: string, format: uuid }
         status: { type: string, enum: [new] }
@@ -4169,6 +4181,7 @@ components:
         created_at: { type: string, format: date-time }
     AdminFeedbackItem:
       type: object
+      required: [id, user_id, category, message, page_url, trace_id, screenshot, context, status, created_at]
       properties:
         id: { type: string, format: uuid }
         user_id: { type: [string, 'null'], format: uuid }
@@ -4176,7 +4189,7 @@ components:
         message: { type: string }
         page_url: { type: [string, 'null'] }
         trace_id: { type: [string, 'null'] }
-        screenshot: { type: [object, 'null'], properties: { media_asset_id: { type: string, format: uuid }, url: { type: [string, 'null'] }, url_expires_at: { type: [string, 'null'] } } }
+        screenshot: { type: [object, 'null'], required: [media_asset_id, url, url_expires_at], properties: { media_asset_id: { type: string, format: uuid }, url: { type: [string, 'null'] }, url_expires_at: { type: [string, 'null'] } } }
         context: { type: object }
         status: { type: string, enum: [new, triaged, done, wontfix] }
         created_at: { type: string, format: date-time }
@@ -4189,6 +4202,7 @@ components:
         message: { type: string, maxLength: 2000 }
     ContentReportCreated:
       type: object
+      required: [id, status, sla_due_at, duplicate, created_at]
       properties:
         id: { type: string, format: uuid }
         status: { type: string, enum: [open, confirmed, rejected, fixed] }
@@ -4203,6 +4217,7 @@ components:
         resolution_note: { type: string, maxLength: 2000 }
     ContentReportItem:
       type: object
+      required: [id, question_id, question_version_id, version_no, external_ref, section_code, stem_preview, reason, message, status, resolution_note, sla_due_at, overdue, reports_for_question, created_at, updated_at, resolved_at]
       properties:
         id: { type: string, format: uuid }
         question_id: { type: [string, 'null'], format: uuid }
@@ -4233,6 +4248,7 @@ components:
         page_url: { type: string, maxLength: 1000 }
     SupportMessage:
       type: object
+      required: [id, author, body, created_at]
       properties:
         id: { type: string, format: uuid }
         author: { type: string, enum: [user, agent, system] }
@@ -4240,6 +4256,7 @@ components:
         created_at: { type: string, format: date-time }
     SupportTicket:
       type: object
+      required: [id, subject, category, status, priority, first_response_due_at, first_responded_at, last_message_at, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
         subject: { type: string }
@@ -4256,8 +4273,9 @@ components:
       allOf:
         - { $ref: '#/components/schemas/SupportTicket' }
         - type: object
+          required: [user, assigned_to, overdue, context, closed_at]
           properties:
-            user: { type: [object, 'null'], properties: { id: { type: string, format: uuid }, display_name: { type: string }, email_masked: { type: [string, 'null'] }, status: { type: string } } }
+            user: { type: [object, 'null'], required: [id, display_name, email_masked, status], properties: { id: { type: string, format: uuid }, display_name: { type: string }, email_masked: { type: [string, 'null'] }, status: { type: string } } }
             assigned_to: { type: [string, 'null'], format: uuid }
             overdue: { type: boolean }
             context: { type: object }
@@ -4272,6 +4290,7 @@ components:
         credit: { type: object, required: [delta, note], properties: { delta: { type: integer, minimum: 1, maximum: 100000 }, note: { type: string, minLength: 3, maxLength: 500 } } }
     AdminWaitlistEntry:
       type: object
+      required: [id, email_masked, program, locale, consent_marketing, source, status, created_at]
       properties:
         id: { type: string, format: uuid }
         email_masked: { type: string }
@@ -4291,6 +4310,7 @@ components:
         batch: { type: string, maxLength: 64 }
     AdminBetaInvite:
       type: object
+      required: [id, email_masked, program, status, batch, sent_at, expires_at, redeemed_at, redeemed_by, send_attempts, last_error, created_at]
       properties:
         id: { type: string, format: uuid }
         email_masked: { type: string }
@@ -4304,8 +4324,34 @@ components:
         send_attempts: { type: integer }
         last_error: { type: [string, 'null'] }
         created_at: { type: string, format: date-time }
+    AdminBetaInviteSendInput:
+      type: object
+      description: 'v1.1 – B6/S147: chọn lô gửi ngay (không truyền gì = gửi mọi lời mời đang xếp hàng như trước)'
+      properties:
+        limit: { type: integer, minimum: 1, maximum: 500 }
+        invite_ids: { type: array, minItems: 1, maxItems: 500, items: { type: string, format: uuid } }
+        batch: { type: string, minLength: 1, maxLength: 64 }
+    AdminBetaInviteSendResult:
+      type: object
+      required: [job_id, mode, result]
+      properties:
+        job_id: { type: string }
+        mode: { type: string, enum: [queued, inline] }
+        result:
+          description: 'null khi job chạy ở worker (mode = queued) hoặc chưa xong sau 10 s'
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [sent, failed, expired, remaining_today, skipped]
+              properties:
+                sent: { type: integer }
+                failed: { type: integer }
+                expired: { type: integer }
+                remaining_today: { type: integer }
+                skipped: { type: integer, description: 'Lời mời được chọn (invite_ids) nhưng không còn queued' }
     AdminUserSummary:
       type: object
+      required: [id, display_name, email_masked, status, is_guest, roles, created_at]
       properties:
         id: { type: string, format: uuid }
         display_name: { type: string }
@@ -4318,6 +4364,7 @@ components:
       allOf:
         - { $ref: '#/components/schemas/AdminUserSummary' }
         - type: object
+          required: [phone_masked, ui_locale, timezone, providers, active_sessions, last_seen_at, mfa_enrolled, beta, credits, subscriptions, attempts, orders, tickets, deletion]
           properties:
             phone_masked: { type: [string, 'null'] }
             ui_locale: { type: string }
@@ -4326,15 +4373,16 @@ components:
             active_sessions: { type: integer }
             last_seen_at: { type: [string, 'null'], format: date-time }
             mfa_enrolled: { type: boolean }
-            beta: { type: object, properties: { tester: { type: boolean }, redeemed_at: { type: [string, 'null'] }, invite_status: { type: [string, 'null'] } } }
-            credits: { type: object, properties: { balance: { type: integer } } }
-            subscriptions: { type: array, items: { type: object } }
-            attempts: { type: array, items: { type: object } }
-            orders: { type: array, items: { type: object } }
+            beta: { type: object, required: [tester, redeemed_at, invite_status], properties: { tester: { type: boolean }, redeemed_at: { type: [string, 'null'] }, invite_status: { type: [string, 'null'] } } }
+            credits: { type: object, required: [balance], properties: { balance: { type: integer } } }
+            subscriptions: { type: array, items: { $ref: '#/components/schemas/Subscription' } }
+            attempts: { type: array, items: { $ref: '#/components/schemas/AttemptSummary' } }
+            orders: { type: array, items: { $ref: '#/components/schemas/Order' } }
             tickets: { type: array, items: { $ref: '#/components/schemas/SupportTicket' } }
-            deletion: { type: [object, 'null'] }
+            deletion: { type: [object, 'null'], required: [request_id, requested_at, due_at, completed_at], properties: { request_id: { type: string, format: uuid }, requested_at: { type: string, format: date-time }, due_at: { type: string, format: date-time }, completed_at: { type: [string, 'null'], format: date-time } } }
     AdminImpersonation:
       type: object
+      required: [access_token, token_type, expires_in, scope, impersonation_id, user_id]
       properties:
         access_token: { type: string }
         token_type: { type: string, enum: [Bearer] }
@@ -4344,6 +4392,7 @@ components:
         user_id: { type: string, format: uuid }
     QuestionStats:
       type: object
+      required: [question_id, external_ref, program, section_code, status, n, p_value, discrimination, avg_time_ms, reports_open, reports_total, recommendation, reasons, computed_at]
       properties:
         question_id: { type: string, format: uuid }
         external_ref: { type: [string, 'null'] }
@@ -4361,6 +4410,7 @@ components:
         computed_at: { type: [string, 'null'], format: date-time }
     AiQualityRow:
       type: object
+      required: [task_code, prompt_version_id, prompt_version_no, prompt_status, tasks, succeeded, refused, failed, thumbs_up, thumbs_down, thumbs_up_ratio, cost_usd]
       properties:
         task_code: { type: string }
         prompt_version_id: { type: [string, 'null'], format: uuid }
@@ -4374,18 +4424,31 @@ components:
         thumbs_down: { type: integer }
         thumbs_up_ratio: { type: [number, 'null'] }
         cost_usd: { type: number }
+    AiRefusal:
+      type: object
+      description: 'v1.1 – B7/S145: mẫu tác vụ bị guardrail từ chối (input_ref chỉ giữ khoá *_id, không nội dung người học)'
+      required: [id, task_code, reason, error_code, input_ref, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        task_code: { type: [string, 'null'] }
+        reason: { type: string }
+        error_code: { type: [string, 'null'] }
+        input_ref: { type: [object, 'null'], additionalProperties: { type: string } }
+        created_at: { type: string, format: date-time }
     AdminSystemStatus:
       type: object
+      required: [queues, redis_healthy, dead_letters, partitions, flags, sla, outbox]
       properties:
-        queues: { type: array, items: { type: object, properties: { queue: { type: string }, waiting: { type: integer }, active: { type: integer }, delayed: { type: integer }, failed: { type: integer }, prioritized: { type: integer }, oldest_waiting_sec: { type: number } } } }
+        queues: { type: array, items: { type: object, required: [queue, waiting, active, delayed, failed, prioritized, oldest_waiting_sec], properties: { queue: { type: string }, waiting: { type: integer }, active: { type: integer }, delayed: { type: integer }, failed: { type: integer }, prioritized: { type: integer }, oldest_waiting_sec: { type: number } } } }
         redis_healthy: { type: boolean }
-        dead_letters: { type: object, properties: { total: { type: integer }, last_24h: { type: integer }, unreplayed: { type: integer }, by_queue: { type: object, additionalProperties: { type: integer } } } }
-        partitions: { type: array, items: { type: object, properties: { table: { type: string }, months_ahead: { type: integer }, missing: { type: array, items: { type: string } } } } }
+        dead_letters: { type: object, required: [total, last_24h, unreplayed, by_queue], properties: { total: { type: integer }, last_24h: { type: integer }, unreplayed: { type: integer }, by_queue: { type: object, additionalProperties: { type: integer } } } }
+        partitions: { type: array, items: { type: object, required: [table, months_ahead, missing], properties: { table: { type: string }, months_ahead: { type: integer }, missing: { type: array, items: { type: string } } } } }
         flags: { type: array, items: { $ref: '#/components/schemas/FeatureFlag' } }
-        sla: { type: object, properties: { content_reports_overdue: { type: integer }, support_tickets_overdue: { type: integer } } }
-        outbox: { type: object, properties: { unpublished: { type: integer }, oldest_unpublished_sec: { type: [number, 'null'] } } }
+        sla: { type: object, required: [content_reports_overdue, support_tickets_overdue], properties: { content_reports_overdue: { type: integer }, support_tickets_overdue: { type: integer } } }
+        outbox: { type: object, required: [unpublished, retrying, dead_lettered, oldest_unpublished_sec], description: 'B7/S26: chờ giao (không tính dead-letter), đang thử lại, dead-letter', properties: { unpublished: { type: integer }, retrying: { type: integer }, dead_lettered: { type: integer }, oldest_unpublished_sec: { type: [number, 'null'] } } }
     DeadLetterItem:
       type: object
+      required: [id, queue, job, job_id, error, attempts, failed_at, replayed_at, replay_count]
       properties:
         id: { type: string, format: uuid }
         queue: { type: string }
@@ -4398,6 +4461,7 @@ components:
         replay_count: { type: integer }
     AuditLogItem:
       type: object
+      required: [id, actor_user_id, actor_role, action, entity_type, entity_id, before, after, created_at]
       properties:
         id: { type: integer }
         actor_user_id: { type: [string, 'null'], format: uuid }
@@ -4410,6 +4474,7 @@ components:
         created_at: { type: string, format: date-time }
     MfaStatus:
       type: object
+      required: [required, enrolled, pending_enrollment, session_verified, recovery_codes_remaining]
       properties:
         required: { type: boolean }
         enrolled: { type: boolean }
@@ -4418,6 +4483,7 @@ components:
         recovery_codes_remaining: { type: integer }
     MfaEnrollResult:
       type: object
+      required: [secret, otpauth_url, digits, period, algorithm]
       properties:
         secret: { type: string, description: Base32 (RFC 4648) – hiển thị một lần }
         otpauth_url: { type: string, example: 'otpauth://totp/Allingo:admin%40allingo.dev?secret=...&issuer=Allingo&algorithm=SHA1&digits=6&period=30' }
@@ -4426,6 +4492,7 @@ components:
         algorithm: { type: string, enum: [SHA1] }
     MfaTokens:
       type: object
+      required: [access_token, expires_in, mfa]
       description: 'Token phiên đã xác minh MFA (cookie allingo_at/allingo_rt cũng được đặt lại cho web; mobile nhận refresh_token khi X-Client: mobile)'
       properties:
         access_token: { type: string }
@@ -4433,11 +4500,13 @@ components:
         mfa: { type: boolean, enum: [true] }
     Policies:
       type: object
+      required: [data]
       properties:
         data:
           type: array
           items:
             type: object
+            required: [type, version, effective_date, consent_type, requires_consent, status, title, web_path, note]
             properties:
               type: { type: string, enum: [terms, privacy, refund_policy, voice_consent] }
               version: { type: string }
