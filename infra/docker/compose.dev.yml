@@ -67,7 +67,7 @@ services:
       timeout: 3s
       retries: 20
 
-  # Tạo bucket media/recordings một lần
+  # Tạo bucket media/recordings/invoices một lần (invoices: PDF hoá đơn – Sprint 8)
   minio-init:
     image: minio/mc:latest
     depends_on:
@@ -76,7 +76,7 @@ services:
     entrypoint: >
       /bin/sh -c "
       mc alias set local http://minio:9000 minioadmin minioadmin &&
-      mc mb -p local/allingo-media local/allingo-recordings &&
+      mc mb -p local/allingo-media local/allingo-recordings local/allingo-invoices &&
       mc anonymous set download local/allingo-media &&
       echo 'buckets ready'"
 

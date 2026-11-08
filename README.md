@@ -6,15 +6,16 @@ Monorepo Turborepo + pnpm, TypeScript strict. Quy tắc làm việc bắt buộc
 
 ## Chạy trong 5 phút
 
-Yêu cầu: Node 22 LTS, pnpm 10 (`corepack enable`), Docker (Postgres 16 + pgvector, Valkey, Meilisearch, MinIO, Mailpit).
+Yêu cầu: Node 22 LTS (≥ 22.12), pnpm 10 (`corepack enable`), Docker (Postgres 16 + pgvector, Valkey, Meilisearch, MinIO, Mailpit), ffmpeg/ffprobe (sinh audio Listening). Windows: chạy trong WSL2 (Ubuntu), đặt mã nguồn trong thư mục nhà của Ubuntu (không đặt trong `/mnt/c`).
 
 ```bash
 pnpm i
 cp .env.example .env                 # giá trị mặc định chạy được ngay ở dev (AI_PROVIDER=mock, không cần API key)
 pnpm docker:up                       # postgres :5432, redis :6379, meilisearch :7700, minio :9000, mailpit :8025
-pnpm --filter './packages/*' build   # build packages dùng chung (schemas, db, api-client, i18n, ui…)
+pnpm --filter './packages/*' --filter @allingo/db build   # build gói dùng chung + @allingo/db (API/seed đọc bản dist)
 pnpm db:migrate                      # migration 0001 = DDL docs/spec/allingo-schema.sql (97 bảng, 6 schema)
-pnpm db:seed --set core,demo         # core: programs/sections/question_types/roles/plans/quotas/prompts; demo: 16 câu TOEIC + tài khoản mẫu
+pnpm db:seed --set core,demo         # core: programs/sections/question_types/roles/plans/quotas/prompts; demo: 224 câu TOEIC (3 đề full, 5 mini, 7 drill, 1 chẩn đoán) + tài khoản mẫu
+pnpm --filter @allingo/api seed:media   # sinh audio Listening + ảnh Part 1 (TTS mock = im lặng đúng thời lượng; giọng Azure khi có AZURE_SPEECH_KEY)
 pnpm dev                             # web :3000 · api :4000 (Swagger /docs) · cms :3001/admin · worker
 ```
 
