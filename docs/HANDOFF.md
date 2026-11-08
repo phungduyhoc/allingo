@@ -154,13 +154,15 @@ Phiên không có người dùng/SMTP/PostHog/Sentry thật: cơ chế đã xây
 | # | Tiêu chí | Kết quả | Ghi chú |
 | --- | --- | --- | --- |
 | 1 | 300 lời mời theo đợt; không mã → không vào app; tester nhận Pro trial + credit | ĐẠT (cơ chế) | Gate `ff.growth.beta_gate` (403 `beta_required`), mời theo lô 50/ngày, mã dùng một lần → trial 60 ngày + 2.000 credit; chưa gửi email thật |
-| 2 | Góp ý kèm trace_id + ảnh; báo lỗi câu vào CMS; ticket trả lời từ admin, người dùng nhận email/in-app | ĐẠT (API + CMS) | Content reports đồng bộ hai chiều API ↔ CMS; ticket SLA 24 giờ, credit bù; giao diện ở giao diện Sprint 12 |
+| 2 | Góp ý kèm trace_id + ảnh; báo lỗi câu vào CMS; ticket trả lời từ admin, người dùng nhận email/in-app | ĐẠT | Content reports đồng bộ hai chiều API ↔ CMS; ticket SLA 24 giờ, credit bù; web: nút Góp ý (ảnh dán/chọn, trace_id gần nhất), Báo lỗi câu ở Xem lại/Practice, `/support` hội thoại 2 chiều; E2E API thật luồng tester đầy đủ |
 | 3 | Admin khoá tài khoản → thu hồi phiên ≤ 60 s; impersonate chỉ đọc có audit; DLQ replay | ĐẠT | Integration test |
 | 4 | `pnpm report:beta` đủ KPI, khớp PostHog/DB ±2 % | ĐẠT một phần | Chạy ra số từ dữ liệu giả lập (`docs/gates/beta-weekly-2026-W45.md`); đối chiếu PostHog cần key thật |
 | 5 | 2 tuần beta: SLO, crash-free ≥ 99,5 %, không lỗi chặn học > 48 giờ; i18n 0 chuỗi cứng; a11y luồng thi | CHƯA (beta) / ĐẠT (i18n, a11y) | Cần beta thật cho SLO/crash-free; lint i18n `no-jsx-literal-text` xanh, axe luồng thi 0 serious/critical (giao diện S11) |
 | 6 | GATE-2 report số liệu thật, đề xuất GĐ2, checklist; tag `v0.9.0-beta`; CI xanh | CHƯA | Báo cáo bản kỹ thuật đã có; tag sau khi CI GitHub xanh |
 
 Bổ sung bảo mật: MFA TOTP step-up cho admin (RFC 6238), mật khẩu ≥ 12 ký tự + danh sách mật khẩu lộ, `InternalTokenGuard` hằng thời gian, OpenAPI đủ path params, override GHSA.
+
+**Giao diện Sprint 12.** `/beta` (đổi mã `ALG-XXXX-XXXX`, xử lý 403 `beta_required` toàn cục), onboarding beta 5 câu + hướng dẫn 60 s, thẻ NPS ngày 7/14, góp ý, báo lỗi câu, trung tâm hỗ trợ, `/settings/security` (TOTP, mã khôi phục, step-up toàn cục cho `/admin/*`), `/admin` 8 mục (beta, góp ý, nội dung, hỗ trợ, người dùng, AI, hệ thống/DLQ, audit) có hộp xác nhận thao tác phá huỷ, `/legal/*` từ `/legal/policies` (nhãn bản nháp chờ luật sư), chân trang có tuyên bố không liên kết ETS, KPI sau mini một kỹ năng (S142). axe 0 serious/critical trên trang/hộp thoại S12 và 14 màn admin; không tràn ở 360 px. Giả định A216–A222; vấn đề API S144–S153.
 
 ## 2. Đã làm
 
@@ -188,9 +190,24 @@ Bổ sung bảo mật: MFA TOTP step-up cho admin (RFC 6238), mật khẩu ≥ 1
 
 **Sửa lỗi quan trọng phát hiện trong phiên.** `QueueService.enqueue` luôn thất bại âm thầm vì jobId chứa `:` (BullMQ ≥ 5) → `jobIdFor()`; Postgres jsonb đổi thứ tự khoá làm so sánh nội dung sai → so sánh chuẩn hoá; `@allingo/db` dist nhúng kiểu cũ → luôn build lại sau khi sửa schema; SSE thiếu header CORS làm trình duyệt chặn explain/gia sư (S6); CMS production thiếu migration Payload (S6); deadlock pool kết nối dưới tải (S11); `POST /submit` 500 khi truyền Date vào SQL thô (S11); `seed:media` không dựng được context và thoát im lặng, `db:migrate` không đọc `.env`, compose dev thiếu bucket hoá đơn (phát hiện khi chạy thử cài máy mới).
 
-## 3. Số liệu kiểm thử (lần chạy cuối)
+## 3. Số liệu kiểm thử (lần chạy cuối, 08/11/2026)
 
-_(điền sau lượt kiểm thử toàn repo cuối cùng)_
+| Bộ | Kết quả |
+| --- | --- |
+| `pnpm turbo run lint typecheck test` | xanh toàn repo (lint `@allingo/api` chạy lại riêng vì hết RAM khi chạy song song – exit 137, không phải lỗi lint) |
+| api (unit + integration Postgres/Redis thật) | 473 |
+| web unit | 370 |
+| schemas | 275 |
+| db | 92 |
+| cms | 49 |
+| scoring / planner / fsrs / api-client | 32 / 28 / 10 / 8 |
+| **Tổng unit + integration** | **1.337** |
+| E2E API thật (desktop + mobile, 168 ca) | 147 pass, 21 skip có chủ đích (chỉ mock / chỉ desktop), 0 fail – 38,8 phút |
+| E2E mock (lượt cuối giao diện S12) | 149 pass, 19 skip, 0 fail |
+| `db:diff` | 105 bảng, 236 index, 4 policy khớp spec |
+| `api:diff` | 195/219 operation đã triển khai, 0 lệch hợp đồng |
+| `pnpm install --frozen-lockfile` | lockfile khớp |
+| Cài máy mới (bản clone sạch) | install → build → migrate → seed core+demo → seed:media → API đăng nhập + 15 đề (A214) |
 
 ## 4. Cách chạy
 

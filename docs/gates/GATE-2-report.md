@@ -7,7 +7,7 @@
 | Hạng mục | Kết luận |
 | --- | --- |
 | Tính năng GĐ1 | Đủ luồng người học TOEIC L&R: đăng ký/OAuth/OTP → chẩn đoán → lộ trình → đề full 200 câu (Exam Mode, Listening phát một lần) → review → giải thích AI/gia sư → từ vựng FSRS → sổ lỗi → dashboard; thanh toán 3 cổng, hoá đơn điện tử, khuyến mãi, referral, thông báo đa kênh; beta gate, hỗ trợ, admin |
-| Chất lượng kỹ thuật | ≈ 1.250 test tự động (unit + integration + E2E) xanh; hợp đồng API và DDL không lệch; pentest tự kiểm 10 kịch bản đã vá; diễn tập PITR cục bộ RPO 0 |
+| Chất lượng kỹ thuật | 1.337 test unit + integration và 147 E2E API thật (168 ca, 0 fail) xanh; hợp đồng API và DDL không lệch; pentest tự kiểm 10 kịch bản đã vá; diễn tập PITR cục bộ RPO 0; quy trình cài máy mới đã chạy thử trên bản sạch |
 | Chặn GATE-2 | (1) Chưa có beta thật 300 người – không có KPI thật; (2) nội dung mới 224 câu / 1 đề L&R full – cần ≥ 3.000 câu, ≥ 10 đề full; (3) chưa có staging – chưa đo 5.000 CCU, SLO 2 tuần; (4) cổng thanh toán, MISA, AI, Azure Speech, PostHog, Sentry chưa có credential thật; (5) pháp lý chưa duyệt (điều khoản, hoàn tiền/hoá đơn, xử lý giọng nói) |
 | Đề xuất | Không mở beta công khai; thực hiện **kế hoạch 6 tuần trước GATE-2** ở mục 6, sau đó chạy beta kín 2 tuần và điền lại báo cáo này |
 
@@ -15,7 +15,7 @@
 
 | # | Hạng mục | Bằng chứng hiện có | Trạng thái |
 | --- | --- | --- | --- |
-| 1 | Luồng người học TOEIC L&R đầy đủ | Playwright E2E (mock + API thật) cho từng màn: onboarding, chẩn đoán, plan, Exam/Listening, review, explain, tutor, flashcard, sổ lỗi, dashboard; chưa có demo staging | ◐ Đạt trên môi trường dev |
+| 1 | Luồng người học TOEIC L&R đầy đủ | Playwright E2E (mock + API thật, 147/168 pass, 21 skip có chủ đích) cho từng màn: onboarding, chẩn đoán, plan, Exam/Listening, review, explain, tutor, flashcard, sổ lỗi, dashboard, beta/góp ý/hỗ trợ/admin; đã chạy trên máy Windows ARM64 (WSL2) của người dùng; chưa có demo staging | ◐ Đạt trên môi trường dev |
 | 2 | Nội dung: ≥ 10 đề full + 30 mini + 60 drill, ≥ 3.000 câu published, 0 sao chép | 224 câu published tự biên soạn (`source = human`): 1 đề Reading 01, 1 đề Listening 01, 1 đề L&R 200 câu, 5 mini (2 tự sinh), 7 drill, 1 đề chẩn đoán 61 câu; từ điển 1.750 mục; 11 bộ TOEIC 600 | ✗ Thiếu ≈ 93 % số câu |
 | 3 | AI: explain ≥ 4/5, 👍 ≥ 80 %, guard recall ≥ 98 %, chi phí trong dự toán, fallback | Pipeline eval 179 câu chạy được nhưng chỉ với mock (`mock=true, passed=false`); fallback/breaker kiểm bằng test; chi phí ước ≈ 1 USD/1.000 explain | ✗ Cần khoá AI thật + eval |
 | 4 | Billing: 3 cổng sandbox + hoá đơn, đối soát 0 lệch, gating server-side, referral/khuyến mãi | Vector chữ ký tính độc lập + IPN tự ký; E2E với cổng mock; gating ma trận plan × feature; MISA mock | ◐ Mã sẵn sàng, chưa sandbox thật |
@@ -45,7 +45,8 @@ Script `pnpm report:beta` đã chạy được trên seed `beta-demo` (50 tester
 | Cao | Pháp lý hoá đơn khi hoàn tiền | Đang huỷ hoá đơn; NĐ 123/2020, NĐ 70/2025 thường yêu cầu điều chỉnh/thay thế (S90) – kế toán xác nhận |
 | Cao | Chưa có staging/CI chạy thật | Push GitHub, chạy CI, dựng staging theo ADR-0023 |
 | Trung bình | 3 bảng billing có `org_id` chưa bật RLS (S124) | Bật trước khi bán B2B |
-| Trung bình | Lighthouse dashboard mobile 75–77 | Đang tối ưu ở giao diện Sprint 11 (mục tiêu ≥ 85) |
+| Trung bình | Lighthouse dashboard mobile 82–86 (theo tải máy đo) | Đo lại trên staging; tree-shake `@allingo/schemas` (S141) |
+| Trung bình | MinIO ngừng phát hành image (09/2026) | Dev dùng driver `fs`; ADR chọn image S3 thay thế cho dev/staging-like (S143) – production dùng R2/Azure Blob |
 | Trung bình | 5 GHSA bắc cầu (đã override 3 gói) | Theo dõi Renovate, hạn 30/11/2026 |
 | Thấp | Optimizer FSRS tự viết | So với optimizer chính thức khi có ≥ 1.000 lượt ôn/người |
 | Thấp | Bộ lọc guard dạng luật có thể chặn nhầm | Theo dõi mẫu refused trong admin AI |
