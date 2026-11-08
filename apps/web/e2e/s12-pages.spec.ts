@@ -14,6 +14,16 @@ import { mockHook } from './s12-helpers';
 const PART5 = { mock: 'toeic-p5-mini-01', real: 'toeic-mini-part5-01' };
 
 async function expectNoSeriousViolations(page: Page, label: string): Promise<void> {
+  // Hộp thoại mở bằng hiệu ứng fade/zoom: axe quét khi opacity < 1 → color-contrast giả (chập chờn trên runner CI chậm).
+  // Chờ mọi animation hữu hạn kết thúc (bỏ qua animation lặp vô hạn như spinner/pulse để không treo).
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getTiming().iterations !== Infinity)
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
   const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
   const bad = r.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
   expect(

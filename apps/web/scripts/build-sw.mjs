@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Đóng gói service worker src/app/sw.ts → public/sw.js bằng esbuild CLI (có sẵn trong node_modules/.bin qua vitest/vite).
+ * Đóng gói service worker src/app/sw.ts → public/sw.js bằng esbuild CLI (devDependency trực tiếp của apps/web).
  * Lý do không dùng @serwist/next: plugin webpack không chạy với Turbopack (mặc định của Next 16) – xem next.config.ts.
  * Dùng: `pnpm sw:build` (tự chạy ở `prebuild`).
  */
@@ -31,9 +31,11 @@ const pushI18n = Object.fromEntries(
 
 mkdirSync(dirname(out), { recursive: true });
 const bin = resolve(root, 'node_modules/.bin/esbuild');
+// esbuild là devDependency trực tiếp của apps/web → thiếu binary nghĩa là cài đặt hỏng; dừng hẳn thay vì bỏ qua
+// (trước đây bỏ qua im lặng khiến CI/Docker build ra bản không có service worker – PWA offline/push không chạy)
 if (!existsSync(bin)) {
-  console.error('[sw:build] esbuild binary not found at node_modules/.bin/esbuild – skip service worker build.');
-  process.exit(0);
+  console.error('[sw:build] esbuild binary not found at node_modules/.bin/esbuild – run `pnpm install` (esbuild là devDependency của @allingo/web).');
+  process.exit(1);
 }
 
 execFileSync(
