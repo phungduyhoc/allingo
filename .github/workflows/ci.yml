@@ -11,7 +11,6 @@ concurrency:
 
 env:
   NODE_VERSION: 22
-  PNPM_VERSION: 10
   APP_ENV: test
   DATABASE_URL: postgres://allingo:allingo@localhost:5432/allingo
   DATABASE_URL_MIGRATE: postgres://allingo:allingo@localhost:5432/allingo
@@ -31,9 +30,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
+      - uses: pnpm/action-setup@v4 # phiên bản lấy từ package.json "packageManager" (khai báo cả hai → lỗi "Multiple versions")
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -66,9 +63,7 @@ jobs:
           --health-cmd "valkey-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
+      - uses: pnpm/action-setup@v4 # phiên bản lấy từ package.json "packageManager" (khai báo cả hai → lỗi "Multiple versions")
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -103,9 +98,7 @@ jobs:
     needs: [quality]
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
+      - uses: pnpm/action-setup@v4 # phiên bản lấy từ package.json "packageManager" (khai báo cả hai → lỗi "Multiple versions")
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -135,9 +128,7 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
+      - uses: pnpm/action-setup@v4 # phiên bản lấy từ package.json "packageManager" (khai báo cả hai → lỗi "Multiple versions")
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -159,7 +150,7 @@ jobs:
         with:
           sarif_file: semgrep.sarif
           category: semgrep
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -169,7 +160,7 @@ jobs:
       # S11: Trivy quét IMAGE api (base + OS packages + node_modules production) – chặn CRITICAL/HIGH có bản vá
       - name: Build image api
         run: docker build -f apps/api/Dockerfile -t allingo-api:ci .
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           image-ref: allingo-api:ci
