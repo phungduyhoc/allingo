@@ -24,4 +24,23 @@
 | handlebars / nodemailer | 4.7.x / 10.3.x | Sprint 8 dùng lại (đã có từ S0/S1): mẫu thông báo vi/en, email SMTP/SES; Resend gọi HTTP bằng fetch; PDF hoá đơn mock tự dựng – không thêm thư viện |
 | fast-check | 4.10.x | Sprint 9 – devDependency `packages/planner` (property-based test PlanGenerator, 500 ca/thuộc tính) |
 
+## Công cụ vận hành/bảo mật (Sprint 11 – không phải phụ thuộc npm runtime)
+
+| Công cụ | Phiên bản | Dùng ở |
+| --- | --- | --- |
+| k6 | 1.3.0 | `tests/load/exam-day.js` (máy dev/staging) |
+| Prometheus / promtool | 3.5.0 | `infra/observability/compose.yml`, CI `observability` (check/test rules) |
+| Alertmanager / amtool | 0.28.1 | compose, CI `amtool check-config` |
+| Grafana | 12.1.1 | compose, 6 dashboard JSON (`grafana/dashboards.py --check`) |
+| Loki / Promtail | 3.5.3 | compose |
+| Tempo | 2.8.2 | compose |
+| OpenTelemetry Collector contrib | 0.132.0 | compose (xoá `db.statement`, `drizzle.query.params`) |
+| node-exporter / postgres-exporter / redis_exporter / blackbox-exporter | 1.9.1 / 0.17.1 / 1.75.0 / 0.27.0 | compose |
+| Semgrep | 1.183.0 | CI `security` (`pipx install semgrep==1.183.0`) + `.semgrep/allingo.yml` |
+| gitleaks | 8.28.0 (action v2) | CI `security`, `.gitleaks.toml` |
+| Trivy action | 0.28.0 | CI `security` (fs báo cáo, image chặn HIGH/CRITICAL) |
+| OWASP ZAP | 2.16.1 (action-baseline 0.14.0, action-api-scan 0.9.0) | `.github/workflows/zap-nightly.yml`, `.zap/rules.tsv` |
+| Renovate | config `renovate.json` (app GitHub) | gom nhóm minor/patch, major cần ADR |
+| OpenTofu | 1.10.6 | `tofu fmt -check` cho `infra/terraform` (provider azurerm/cloudflare như S0) |
+
 Cập nhật khi nâng cấp; thay đổi major cần ADR.

@@ -41,6 +41,10 @@ kiểm tra điều kiện "share-alike" trước khi trộn với nội dung đ�
 | `web-push` 3.6.x (+ `http_ece`, `asn1.js`, `jws`, `https-proxy-agent`) | MPL-2.0 (`web-push`), MIT (phụ thuộc) | MPL-2.0 copyleft theo tệp: dùng nguyên bản, không sửa mã nguồn thư viện → không phát sinh nghĩa vụ ngoài giữ thông báo |
 | `@types/web-push` (dev) | MIT | |
 
+## Công cụ vận hành (Sprint 11 – chạy như dịch vụ/CLI riêng, không liên kết vào mã)
+
+Grafana, Loki, Tempo, Promtail: **AGPL-3.0** – chỉ chạy image chính thức không sửa đổi, nội bộ (không cung cấp cho người dùng cuối) → không phát sinh nghĩa vụ công bố mã Allingo; nếu sửa mã các dịch vụ này phải công bố phần sửa. Prometheus, Alertmanager, exporters, OpenTelemetry Collector, k6 (AGPL-3.0 – chỉ là CLI chạy test, không phân phối), OpenTofu (MPL-2.0), Trivy (Apache-2.0), gitleaks (MIT), ZAP (Apache-2.0), Semgrep CLI (LGPL-2.1, ruleset registry theo điều khoản Semgrep). Không thêm dependency npm runtime ở S11.
+
 ## Nội dung đề thi
 
 Không sao chép đề ETS/Cambridge/JLPT/HSK thật. Nội dung demo trong `db/seed/demo/content.ts` và `apps/cms/samples/` do đội tự biên soạn, gắn `source = 'human'`; nội dung do AI sinh gắn `source = 'ai'` và phải qua luồng duyệt CMS (draft → ai_checked → review1 → review2 → published).

@@ -151,3 +151,15 @@ Webhook tay: `POST /v1/webhooks/payments/mock` thân `{ref, txn_id, amount, curr
 | 429 | `quota_exceeded` | hết lượt (`details.quota = {feature, period, limit, used, remaining, resets_at}`) |
 | 502 | `payment_failed` | cổng từ chối tạo thanh toán / lỗi mạng (`details.provider_code`) |
 | 503 | `feature_disabled` | `ff.billing.checkout` tắt hoặc cổng không khả dụng (`details.flag = payments.<provider>`) |
+
+<a id="webhook-that-bai"></a>
+## Webhook thất bại > 3/10′ (alert PaymentWebhookFailures – S11)
+
+Metrics `billing_webhooks_total{provider,result}`: `invalid_signature`, `invalid_payload`, `error`, `amount_mismatch` (thất bại);
+`ok`, `duplicate`, `already_confirmed`, `order_not_found` (bình thường). Dashboard "Billing".
+1. `invalid_signature` tăng đột biến từ một cổng: khoá cổng vừa đổi (so Key Vault với cổng merchant), hoặc IPN giả mạo – xem
+   `ops.audit_logs action = payment.webhook_rejected` (IP, các khoá tham số; không lưu payload). IP lạ → WAF chặn/allowlist IP cổng
+   (`infra/terraform/modules/cdn-waf` biến `webhook_ip_allowlist`).
+2. `error`: lỗi xử lý (DB) – cổng sẽ retry; sau khi sửa chạy `POST /v1/admin/billing/jobs/payment.reconcile {"min_age_minutes":0}`.
+3. `amount_mismatch`: không cấp quyền; đối chiếu đơn với sao kê cổng, hoàn tiền thủ công nếu cần (§5).
+4. Cổng sập: tạm ẩn cổng (bỏ khỏi `PAYMENT_PROVIDERS`) hoặc kill-switch `ff.billing.checkout` (503 `feature_disabled` cho POST /orders).
