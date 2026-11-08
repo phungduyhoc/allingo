@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Allingo API
-  version: 1.1.0-s12
+  version: 1.1.0-b2
   summary: API nền tảng luyện thi AI Allingo (TOEIC · IELTS · JLPT · HSK)
   description: |
     Đặc tả REST API v1 cho web/PWA, mobile và Payload CMS.
@@ -2389,6 +2389,126 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: object, required: [week, kpis, posthog, markdown], properties: { week: { type: string }, kpis: { type: object }, posthog: { type: [object, 'null'] }, markdown: { type: string } } } } } }
 
+  # ---------------------------------------------------------------- v1.1 – B2/B5: công cụ sản xuất nội dung
+  /admin/content/review-queue:
+    get:
+      tags: [Admin]
+      summary: Hàng chờ duyệt nội dung – lọc chương trình/Part/nguồn/cờ trùng/người tạo/reviewer/ngày/đề nháp, sắp xếp ngày tạo/cập nhật/độ giống (v1.1 – B2)
+      description: |
+        Câu ở trạng thái chờ (draft/ai_checked/review1/review2, kể cả bản sửa chờ duyệt của câu đã phát hành). Mỗi câu kèm nội dung bản đang
+        soạn, passage (+ parts), kết quả AI check gần nhất, kiểm tra tự động (`auto_checks` – mã i18n), cờ nghi trùng (embedding cosine ≥
+        AI_DEDUP_COSINE_THRESHOLD hoặc pg_trgm ≥ CONTENT_DEDUP_TRGM_THRESHOLD) + câu tương tự. Quyền editor/teacher/admin; email che.
+      parameters:
+        - { name: program, in: query, schema: { type: string, enum: [toeic, ielts, jlpt, hsk] } }
+        - { name: section, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [draft, ai_checked, review1, review2, published, rejected, retired] } }
+        - { name: source, in: query, schema: { type: string, enum: [human, ai, licensed] } }
+        - { name: duplicate, in: query, schema: { type: boolean } }
+        - { name: created_by, in: query, schema: { type: string }, description: 'uuid hoặc `me`' }
+        - { name: assignee, in: query, schema: { type: string }, description: 'uuid, `me` hoặc `none`' }
+        - { name: test_set_id, in: query, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: q, in: query, schema: { type: string, maxLength: 200 } }
+        - { name: sort, in: query, schema: { type: string, enum: [created_at, updated_at, similarity], default: created_at } }
+        - { name: order, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewQueuePage' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+  /admin/content/review-queue/bulk:
+    post:
+      tags: [Admin]
+      summary: Duyệt / từ chối / yêu cầu sửa / gửi duyệt hàng loạt (v1.1 – B2)
+      description: 'Từng câu qua máy trạng thái dùng chung (stage theo trạng thái hiện tại: review1/review2; submit = nháp → vòng 1); `notes` ≥ 3 ký tự bắt buộc khi reject/needs_change; nguyên tắc 4 mắt vòng 2. Kết quả theo từng câu (một câu lỗi không chặn câu khác); audit `content.bulk_review`.'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewBulkInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewBulkResult' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /admin/content/review-queue/assign:
+    post:
+      tags: [Admin]
+      summary: Phân công reviewer (teacher/admin) cho các câu – null = bỏ phân công (v1.1 – B2)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewAssignInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [updated, assignee_id, missing], properties: { updated: { type: integer }, assignee_id: { type: [string, 'null'], format: uuid }, missing: { type: integer } } } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /admin/content/reviewers:
+    get:
+      tags: [Admin]
+      summary: Nhân sự nội dung (editor/teacher/admin) – phân công reviewer, lọc người tạo (email che) (v1.1 – B2)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/ContentReviewer' } } } } } } }
+  /admin/content/questions/{questionId}/duplicate-check:
+    post:
+      tags: [Admin]
+      summary: Kiểm trùng lại bản đang soạn của câu (embedding → pg_trgm) + câu tương tự; ghi cờ vào hàng chờ (v1.1 – B2)
+      parameters: [ { name: questionId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [question_id, question_version_id, duplicate], properties: { question_id: { type: string, format: uuid }, question_version_id: { type: string, format: uuid }, duplicate: { oneOf: [ { $ref: '#/components/schemas/DuplicateInfo' }, { type: 'null' } ] } } } } } }
+        '404': { $ref: '#/components/responses/Error' }
+  /admin/content/imports/template:
+    get:
+      tags: [Admin]
+      summary: Tệp mẫu nhập câu hỏi .xlsx (Arial, tiêu đề nền #0B3BA7 chữ trắng, 2 dòng ví dụ, chú thích từng cột) (v1.1 – B2)
+      responses:
+        '200': { description: Tệp xlsx, content: { application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: { schema: { type: string, format: binary } } } }
+  /admin/content/imports:
+    post:
+      tags: [Admin]
+      summary: Nhập câu hỏi từ Excel – dry-run (kiểm tra từng dòng/cột, trùng trong tệp + nghi trùng ngân hàng) rồi xác nhận ghi (v1.1 – B2)
+      description: |
+        Tệp `.xlsx` base64 (≤ 1 MB, ≤ 1.000 dòng, sheet `Cau_hoi`). `dry_run = true` (mặc định) → job `content.import` chỉ kiểm tra; xác nhận =
+        gửi lại CÙNG tệp với `dry_run = false` + `confirm_fingerprint` (sha256 của dry-run; khác → 409 `fingerprint_mismatch`) → ghi mọi dòng
+        hợp lệ trong một transaction (passage + parts + câu draft), gắn cờ nghi trùng. Dòng có `import_key` đã nhập → bỏ qua (idempotent).
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ContentImportInput' } } } }
+      responses:
+        '202': { description: Accepted, content: { application/json: { schema: { $ref: '#/components/schemas/ContentImportStarted' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /admin/content/imports/{jobId}:
+    get:
+      tags: [Admin]
+      summary: Trạng thái / báo cáo job nhập Excel (v1.1 – B2)
+      parameters: [ { name: jobId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ContentImportJob' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+  /admin/generate/test-sets:
+    post:
+      tags: [Admin]
+      summary: AI soạn nháp cả đề theo blueprint (số câu mỗi Part, phân bố độ khó, chủ đề) → đề nháp + câu draft source=ai vào hàng chờ duyệt (v1.1 – B2)
+      description: |
+        Job `content.draft_test`: Part đơn → generate_questions (lô 10); Part có passage → generate_item_set mỗi nhóm (passage + parts + câu);
+        mọi lời gọi qua AiGateway (Zod → repair → fallback) → draft `source = ai` (external_ref `ai-draft:<job>:<part>:<n>`) → check_question →
+        lọc trùng → gắn vào test set NHÁP (catalog.test_sets status draft, metadata.source = ai_draft). Phát hành đề: POST /admin/test-sets/{id}/publish.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/DraftTestInput' } } } }
+      responses:
+        '202': { description: Accepted, content: { application/json: { schema: { $ref: '#/components/schemas/DraftTestStarted' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /admin/generate/test-sets/{jobId}:
+    get:
+      tags: [Admin]
+      summary: Tiến độ / kết quả job AI soạn đề (v1.1 – B2)
+      parameters: [ { name: jobId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/DraftTestJob' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+  /admin/test-sets/{testSetId}/publish:
+    post:
+      tags: [Admin]
+      summary: Phát hành đề nháp trong catalog (mọi câu đã phát hành + đạt kiểm tra cấu trúc) – teacher/admin (v1.1 – B2)
+      parameters: [ { name: testSetId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [test_set_id, code, status, structure], properties: { test_set_id: { type: string, format: uuid }, code: { type: string }, status: { type: string, enum: [published] }, structure: { type: object } } } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -2565,7 +2685,7 @@ components:
         order_no: { type: integer }
         content: { type: object }
         media: { type: array, description: 'Audio/ảnh của câu và của lựa chọn (v1.1: kể cả options[].image_asset_id/audio_asset_id)', items: { type: object, properties: { id: { type: string, format: uuid }, kind: { type: string }, url: { type: string }, duration_ms: { type: integer }, expires_at: { type: [string, 'null'], format: date-time, description: 'Hạn URL ký (v1.1 – Sprint 4); null = URL không hết hạn. Gia hạn qua GET /attempts/{attemptId}/media' } } } }
-        passage: { type: object, nullable: true, description: 'Passage audio_script (Part 3/4): body = null khi làm bài (transcript chỉ có trong Review – v1.1 Sprint 4). TOEIC Part 1/2: stem và options[].text bị xoá trong Attempt (được đọc trong audio)', properties: { id: { type: string, format: uuid }, kind: { type: string }, title: { type: string }, body: { type: [string, 'null'] }, media_url: { type: [string, 'null'] }, media_asset_id: { type: [string, 'null'], format: uuid, description: v1.1 }, media_expires_at: { type: [string, 'null'], format: date-time, description: v1.1 } } }
+        passage: { type: object, nullable: true, description: 'Passage audio_script (Part 3/4): body = null khi làm bài (transcript chỉ có trong Review – v1.1 Sprint 4). TOEIC Part 1/2: stem và options[].text bị xoá trong Attempt (được đọc trong audio)', properties: { id: { type: string, format: uuid }, kind: { type: string }, title: { type: string }, body: { type: [string, 'null'] }, media_url: { type: [string, 'null'] }, media_asset_id: { type: [string, 'null'], format: uuid, description: v1.1 }, media_expires_at: { type: [string, 'null'], format: date-time, description: v1.1 }, parts: { type: array, items: { $ref: '#/components/schemas/PassagePart' }, description: 'v1.1 – B5/S24: văn bản của bộ đôi/bộ ba Part 7 theo sort_order (tab từng văn bản); thiếu/rỗng = passage một văn bản (`body`). `body` vẫn là bản gộp `[Tiêu đề]` (dự phòng). Script audio khi làm bài: không có parts' } } }
     AttemptCreate:
       type: object
       required: [program, mode]
@@ -4517,3 +4637,255 @@ components:
               title: { type: object, properties: { vi: { type: string }, en: { type: string } } }
               web_path: { type: string }
               note: { type: [string, 'null'] }
+
+    # ---------------------------------------------------------------- v1.1 – B2/B5
+    PassagePart:
+      type: object
+      description: 'Một văn bản của passage nhiều đoạn (catalog.passage_parts – TOEIC Part 7 bộ đôi/bộ ba) – v1.1 B5/S24'
+      required: [id, sort_order, title, body]
+      properties:
+        id: { type: string, format: uuid }
+        sort_order: { type: integer }
+        title: { type: [string, 'null'] }
+        body: { type: string }
+        media_url: { type: [string, 'null'] }
+        media_asset_id: { type: [string, 'null'], format: uuid }
+    AutoCheck:
+      type: object
+      required: [code, level]
+      properties:
+        code: { type: string, enum: [content_invalid, type_mismatch, stem_missing, answer_key_missing, answer_key_not_in_options, duplicate_options, empty_option, option_count, passage_missing, audio_missing, image_missing, explanation_missing] }
+        level: { type: string, enum: [error, warning] }
+        params: { type: object, additionalProperties: true }
+    DuplicateInfo:
+      type: object
+      required: [flagged, method, similarity, of_question_id, similar]
+      properties:
+        flagged: { type: boolean }
+        method: { type: [string, 'null'], enum: [embedding, trigram, in_batch, null] }
+        similarity: { type: [number, 'null'] }
+        of_question_id: { type: [string, 'null'], format: uuid }
+        of_stem: { type: [string, 'null'] }
+        checked_at: { type: [string, 'null'], format: date-time }
+        similar:
+          type: array
+          items: { type: object, required: [question_id, similarity, method], properties: { question_id: { type: string, format: uuid }, similarity: { type: number }, method: { type: string, enum: [embedding, trigram] }, stem: { type: [string, 'null'] } } }
+    StaffRef:
+      type: object
+      required: [id, display_name, email]
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: string }
+        email: { type: [string, 'null'], description: Đã che (maskEmail) }
+    ContentReviewer:
+      allOf:
+        - { $ref: '#/components/schemas/StaffRef' }
+        - type: object
+          required: [role, can_review]
+          properties:
+            role: { type: string, enum: [editor, teacher, admin] }
+            can_review: { type: boolean }
+    ReviewQueueItem:
+      type: object
+      required: [id, question_version_id, version_no, program, section_code, question_type, status, workflow_status, has_pending_version, source, difficulty, external_ref, content, passage, created_by, assignee, assigned_at, created_at, updated_at, ai_check, auto_checks, duplicate]
+      properties:
+        id: { type: string, format: uuid }
+        question_version_id: { type: string, format: uuid }
+        version_no: { type: integer }
+        program: { type: string }
+        section_code: { type: string }
+        question_type: { type: string }
+        status: { type: string }
+        workflow_status: { type: string, enum: [draft, ai_checked, review1, review2, published, rejected, retired] }
+        has_pending_version: { type: boolean }
+        source: { type: string, enum: [human, ai, licensed, user_submitted] }
+        difficulty: { type: [string, 'null'] }
+        external_ref: { type: [string, 'null'] }
+        content: { type: object, description: 'Nội dung bản đang soạn (có answer_key – chỉ nhân sự nội dung)' }
+        passage:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [id, kind, title, body, parts]
+              properties:
+                id: { type: string, format: uuid }
+                kind: { type: string }
+                title: { type: [string, 'null'] }
+                body: { type: [string, 'null'] }
+                parts: { type: array, items: { type: object, required: [id, sort_order, title, body], properties: { id: { type: string, format: uuid }, sort_order: { type: integer }, title: { type: [string, 'null'] }, body: { type: string } } } }
+        created_by: { oneOf: [ { $ref: '#/components/schemas/StaffRef' }, { type: 'null' } ] }
+        assignee: { oneOf: [ { $ref: '#/components/schemas/StaffRef' }, { type: 'null' } ] }
+        assigned_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        ai_check:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [verdict, issues, checked_at]
+              properties:
+                verdict: { type: [string, 'null'], enum: [pass, needs_change, fail, null] }
+                issues: { type: array, items: { type: object, additionalProperties: true } }
+                checked_at: { type: string, format: date-time }
+        auto_checks: { type: array, items: { $ref: '#/components/schemas/AutoCheck' } }
+        duplicate: { oneOf: [ { $ref: '#/components/schemas/DuplicateInfo' }, { type: 'null' } ] }
+    ReviewQueuePage:
+      type: object
+      required: [data, next_cursor, counts]
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/ReviewQueueItem' } }
+        next_cursor: { type: [string, 'null'] }
+        counts: { type: object, additionalProperties: { type: integer }, description: Số câu theo trạng thái chờ }
+    ReviewBulkInput:
+      type: object
+      required: [question_ids, action]
+      properties:
+        question_ids: { type: array, minItems: 1, maxItems: 100, items: { type: string, format: uuid } }
+        action: { type: string, enum: [approve, reject, needs_change, submit] }
+        notes: { type: string, maxLength: 2000, description: '≥ 3 ký tự khi reject/needs_change' }
+    ReviewBulkResult:
+      type: object
+      required: [action, requested, ok, failed, results]
+      properties:
+        action: { type: string }
+        requested: { type: integer }
+        ok: { type: integer }
+        failed: { type: integer }
+        results:
+          type: array
+          items:
+            type: object
+            required: [question_id, ok, status, error]
+            properties:
+              question_id: { type: string, format: uuid }
+              ok: { type: boolean }
+              status: { type: [string, 'null'] }
+              error: { oneOf: [ { type: 'null' }, { type: object, required: [code, message], properties: { code: { type: string }, message: { type: string }, reason: { type: string } } } ] }
+    ReviewAssignInput:
+      type: object
+      required: [question_ids, assignee_id]
+      properties:
+        question_ids: { type: array, minItems: 1, maxItems: 200, items: { type: string, format: uuid } }
+        assignee_id: { type: [string, 'null'], format: uuid }
+    ContentImportInput:
+      type: object
+      required: [file_name, file_base64]
+      properties:
+        file_name: { type: string, pattern: '\.xlsx$' }
+        file_base64: { type: string, description: 'Nội dung tệp .xlsx (base64, ≤ 1 MB)' }
+        dry_run: { type: boolean, default: true }
+        confirm_fingerprint: { type: string, pattern: '^[0-9a-f]{64}$', description: 'Bắt buộc khi dry_run = false' }
+        skip_bank_duplicates: { type: boolean, default: false }
+    ContentImportStarted:
+      type: object
+      required: [job_id, status, mode, poll_url, fingerprint, rows]
+      properties:
+        job_id: { type: string, format: uuid }
+        status: { type: string }
+        mode: { type: string, enum: [queued, inline] }
+        poll_url: { type: string }
+        fingerprint: { type: string }
+        rows: { type: integer }
+    ContentImportIssue:
+      type: object
+      required: [row, column, code, level]
+      properties:
+        row: { type: integer, description: Số dòng trong sheet (tiêu đề = 1) }
+        column: { type: [string, 'null'] }
+        code: { type: string, enum: [missing_column, required, invalid_value, unsupported_type, answer_not_in_options, content_invalid, too_long, passage_conflict, duplicate_in_file, duplicate_in_bank, import_key_exists, unknown_section, too_many_rows] }
+        level: { type: string, enum: [error, warning] }
+        params: { type: object, additionalProperties: true }
+    ContentImportReport:
+      type: object
+      required: [file_name, fingerprint, dry_run, total_rows, examples_skipped, valid, created, skipped, error_rows, warning_rows, by_section, issues, duplicates, created_questions]
+      properties:
+        file_name: { type: string }
+        fingerprint: { type: string }
+        dry_run: { type: boolean }
+        total_rows: { type: integer }
+        examples_skipped: { type: integer }
+        valid: { type: integer }
+        created: { type: integer }
+        skipped: { type: integer }
+        error_rows: { type: integer }
+        warning_rows: { type: integer }
+        by_section: { type: object, additionalProperties: { type: integer } }
+        issues: { type: array, items: { $ref: '#/components/schemas/ContentImportIssue' } }
+        duplicates: { type: array, items: { type: object, required: [row, kind, of_row, question_id, similarity, method], properties: { row: { type: integer }, kind: { type: string, enum: [in_file, bank] }, of_row: { type: [integer, 'null'] }, question_id: { type: [string, 'null'], format: uuid }, similarity: { type: [number, 'null'] }, method: { type: [string, 'null'] } } } }
+        created_questions: { type: array, items: { type: object, required: [row, question_id, question_version_id, duplicate_flagged], properties: { row: { type: integer }, question_id: { type: string, format: uuid }, question_version_id: { type: string, format: uuid }, duplicate_flagged: { type: boolean } } } }
+    ContentImportJob:
+      type: object
+      required: [job_id, status, dry_run, file_name, fingerprint, progress, report, error, created_at, updated_at]
+      properties:
+        job_id: { type: string, format: uuid }
+        status: { type: string, enum: [queued, running, completed, failed] }
+        dry_run: { type: boolean }
+        file_name: { type: [string, 'null'] }
+        fingerprint: { type: [string, 'null'] }
+        progress: { type: [object, 'null'] }
+        report: { oneOf: [ { $ref: '#/components/schemas/ContentImportReport' }, { type: 'null' } ] }
+        error: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    DraftTestInput:
+      type: object
+      required: [blueprint]
+      properties:
+        program: { type: string, enum: [toeic, ielts, jlpt, hsk], default: toeic }
+        kind: { type: string, enum: [full, mini, part_drill], default: mini }
+        title: { type: object, properties: { vi: { type: string }, en: { type: string } } }
+        code: { type: string, pattern: '^[a-z0-9][a-z0-9_-]{2,63}$' }
+        blueprint:
+          type: object
+          required: [sections]
+          properties:
+            sections:
+              type: array
+              minItems: 1
+              maxItems: 12
+              items:
+                type: object
+                required: [section_code, count]
+                properties:
+                  section_code: { type: string }
+                  count: { type: integer, minimum: 1, maximum: 100 }
+                  group_sizes: { type: array, items: { type: integer, minimum: 1, maximum: 10 }, description: 'Bỏ trống = catalog.sections.rules.group_size' }
+                  multi_passage_texts: { type: integer, minimum: 1, maximum: 3, description: 'Part 7: số văn bản mỗi nhóm ≥ 5 câu (2 = bộ đôi, 3 = bộ ba)' }
+            difficulty_mix: { type: object, additionalProperties: { type: number, minimum: 0, maximum: 100 }, description: 'Tỉ lệ A1…C2, vd. {"A2": 30, "B1": 50, "B2": 20}' }
+            topics: { type: array, maxItems: 12, items: { type: string } }
+    DraftTestStarted:
+      type: object
+      required: [job_id, status, mode, poll_url, test_set_id, code, total, plan]
+      properties:
+        job_id: { type: string, format: uuid }
+        status: { type: string }
+        mode: { type: string, enum: [queued, inline] }
+        poll_url: { type: string }
+        test_set_id: { type: string, format: uuid }
+        code: { type: string }
+        total: { type: integer }
+        plan: { type: array, items: { type: object, required: [section_code, count, mode, groups, text_counts], properties: { section_code: { type: string }, count: { type: integer }, mode: { type: string, enum: [single, group] }, groups: { type: array, items: { type: integer } }, text_counts: { type: array, items: { type: integer } } } } }
+    DraftTestJob:
+      type: object
+      required: [job_id, status, test_set_id, code, total, input, progress, result, error, created_at, updated_at]
+      properties:
+        job_id: { type: string, format: uuid }
+        status: { type: string, enum: [queued, running, completed, failed] }
+        test_set_id: { type: [string, 'null'], format: uuid }
+        code: { type: [string, 'null'] }
+        total: { type: [integer, 'null'] }
+        input: { type: [object, 'null'] }
+        progress: { type: [object, 'null'], description: '{phase: generate|check|dedup, section?, done, total}' }
+        result:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [test_set_id, summary, items, invalid]
+              properties:
+                test_set_id: { type: string, format: uuid }
+                summary: { type: object, required: [requested, created, invalid, flagged_duplicates, verdicts, by_section, shortfall], properties: { requested: { type: integer }, created: { type: integer }, invalid: { type: integer }, flagged_duplicates: { type: integer }, verdicts: { type: object, additionalProperties: { type: integer } }, by_section: { type: object, additionalProperties: { type: integer } }, shortfall: { type: array, items: { type: object, additionalProperties: true } } } }
+                items: { type: array, items: { type: object, required: [question_id, question_version_id, section_code, sort_order, group_key, passage_id, difficulty, verdict, duplicate_flagged], properties: { question_id: { type: string, format: uuid }, question_version_id: { type: string, format: uuid }, section_code: { type: string }, sort_order: { type: integer }, group_key: { type: [string, 'null'] }, passage_id: { type: [string, 'null'] }, difficulty: { type: string }, verdict: { type: [string, 'null'] }, duplicate_flagged: { type: boolean } } } }
+                invalid: { type: array, items: { type: object, additionalProperties: true } }
+        error: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }

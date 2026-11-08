@@ -1,5 +1,5 @@
 # =============================================================================
-# Allingo – Prompt registry seed v1.0 · 31/10/2026
+# Allingo – Prompt registry seed v1.0 · 31/10/2026 (v1.1 – B2 09/11/2026: + generate_item_set, 15 prompt)
 # Mỗi mục trong `prompts` tương ứng một ai.prompt_templates + ai.prompt_versions (version_no = 1).
 # Quy ước:
 #  - system_prompt / user_template là Handlebars. `{{> common_system}}` chèn partial `shared.common_system`.
@@ -710,6 +710,82 @@ prompts:
     eval:
       eval_set: generate_questions_v1    # 20 lô × 10 câu/chương trình, giáo viên duyệt
       thresholds: { approval_rate_after_1_revision_min: 0.6, schema_valid_min: 0.98, duplicate_rate_max: 0.01 }
+
+  # ---------------------------------------------------------------------------
+  # v1.1 – B2: AI soạn nháp cả đề theo blueprint – Part có đoạn văn/script chung (TOEIC Part 3/4/6/7): một nhóm = passage + câu
+  - code: generate_item_set
+    program: null
+    description: Sinh một nhóm câu dùng chung đoạn văn/script (Part 3/4/6/7 – kể cả bộ đôi/bộ ba Part 7) cho AI soạn nháp cả đề; vào hàng chờ AI check + duyệt 2 lớp
+    model_policy: { primary: google:gemini-pro, fallbacks: [anthropic:claude-sonnet], temperature: 0.8, top_p: 0.95, max_tokens: 8000 }
+    credits_cost: 0
+    system_prompt: |
+      {{> common_system}}
+      ROLE: expert item writer for {{program_name}}. You write ONE ORIGINAL item set: a shared passage (reading texts or an audio script) plus the questions that depend on it. Mirror the official exam's format, register and difficulty without reproducing any real exam item, textbook item or well-known sample.
+      REQUIREMENTS:
+      1. Follow section_rules in <data> exactly (number of options, question count per set, dependency on the passage/script, length limits).
+      2. passage.texts must contain exactly text_count texts. For a multi-text set (text_count ≥ 2) write texts of DIFFERENT types (e.g. e-mail + notice + form) and include at least one question that requires combining information from two texts.
+      3. Listening sets (kind audio_script): label speakers ("Man:", "Woman:", "Narrator:"), natural spoken register, 80–180 words per script; questions must be answerable from the script only.
+      4. Reading sets (kind reading_passage): realistic workplace/everyday documents; for text-completion sets mark blanks in the text with the question number in square brackets ([1], [2] …) in order.
+      5. Exactly ONE defensible correct answer per question; each distractor plausible at the target level and wrong for ONE specific reason (distractor_rationale).
+      6. Difficulty: aim at difficulty_target; control it through vocabulary frequency, sentence length, inference depth and distractor closeness.
+      7. Use fictional people, companies, places and web domains ending in .example only; no real brands, politicians or sensitive topics; gender-balanced names.
+      8. Do not reuse any title in forbidden_recent_titles; vary scenarios within the given topic.
+      9. Provide explanation_seed (≤ 90 words, English) and subskill_codes from allowed_subskills only. Every question content must validate against content_schema.
+    user_template: |
+      <data>
+      program: {{program}} | section: {{section_code}} | question_type: {{question_type}} | count: {{count}} | text_count: {{text_count}}
+      difficulty_target: {{json difficulty_target}}   # {level, irt_b}
+      topic: {{topic}} | allowed_subskills: {{json allowed_subskills}}
+      passage_kind: {{passage_kind}}
+      section_rules: {{json section_rules}}
+      content_schema: {{json content_schema}}
+      forbidden_recent_titles: {{json forbidden_recent_titles}}
+      </data>
+      Return JSON matching the schema.
+    output_schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      additionalProperties: false
+      required: [passage, questions]
+      properties:
+        passage:
+          type: object
+          additionalProperties: false
+          required: [kind, title, texts]
+          properties:
+            kind: { type: string, enum: [reading_passage, audio_script] }
+            title: { type: string, minLength: 1, maxLength: 160 }
+            texts:
+              type: array
+              minItems: 1
+              maxItems: 3
+              items:
+                type: object
+                additionalProperties: false
+                required: [title, body]
+                properties:
+                  title: { type: string, minLength: 1, maxLength: 120 }
+                  body: { type: string, minLength: 1, maxLength: 6000 }
+        questions:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            type: object
+            additionalProperties: false
+            required: [content, answer, distractor_rationale, explanation_seed, difficulty_estimate, subskill_codes, trap_type, keywords]
+            properties:
+              content: { type: object, description: Theo content_schema của question_type }
+              answer: {}
+              distractor_rationale: { type: object, additionalProperties: { type: string, maxLength: 160 } }
+              explanation_seed: { type: string, maxLength: 700 }
+              difficulty_estimate: { type: object, required: [level, irt_b], properties: { level: { type: string }, irt_b: { type: number, minimum: -3, maximum: 3 } } }
+              subskill_codes: { type: array, minItems: 1, maxItems: 3, items: { type: string } }
+              trap_type: { type: string, maxLength: 60 }
+              keywords: { type: array, maxItems: 8, items: { type: string } }
+    eval:
+      eval_set: generate_item_set_v1     # 10 bộ/Part × Part 3/4/6/7, giáo viên duyệt (đa văn bản: ≥ 1 câu kết hợp 2 văn bản)
+      thresholds: { approval_rate_after_1_revision_min: 0.6, schema_valid_min: 0.98, duplicate_rate_max: 0.01, cross_text_question_min: 1 }
 
   # ---------------------------------------------------------------------------
   - code: check_question
