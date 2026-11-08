@@ -4,7 +4,7 @@ import * as React from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { CHECKIN_FEELINGS, CHECKIN_TEXT_MAX, WEEKDAY_CODES, type PlanAdjustProposal } from '@allingo/schemas';
+import { CHECKIN_FEELINGS, CHECKIN_TEXT_MAX, WEEKDAY_CODES, type PlanAdjustProposal } from '@allingo/schemas/api/learning-plan';
 import { Alert, AlertDescription, Button, Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, Spinner, Textarea, ToggleChip } from '@allingo/ui';
 import { getErrorCode } from '@/lib/errors';
 import { useRealtimeEvent } from '@/features/realtime/realtime-provider';

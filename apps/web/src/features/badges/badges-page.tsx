@@ -2,7 +2,7 @@
 
 import { Award, Flame, ListChecks, Lock, type LucideIcon, Medal, Rocket, Sparkles, Trophy, TrendingUp } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
-import type { Badge as BadgeDto } from '@allingo/schemas';
+import type { Badge as BadgeDto } from '@allingo/schemas/api/learning-plan';
 import { Badge, Card, CardContent, CardHeader, CardTitle, cn, Progress } from '@allingo/ui';
 import { useLocalized } from '@/lib/localized';
 import { useStats } from '@/lib/queries';

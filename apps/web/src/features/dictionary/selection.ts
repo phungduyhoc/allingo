@@ -1,4 +1,4 @@
-import { DICTIONARY_CONTEXT_MAX, DICTIONARY_QUERY_MAX } from '@allingo/schemas';
+import { DICTIONARY_CONTEXT_MAX, DICTIONARY_QUERY_MAX } from '@allingo/schemas/api/learning-tools';
 
 /**
  * Chọn từ/cụm trong đoạn văn, đề bài, transcript → mục tra (thuần – có test).

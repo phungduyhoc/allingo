@@ -1,4 +1,6 @@
-import { type NOTIFICATION_TEMPLATE_CODES, type S12_NOTIFICATION_TEMPLATE_CODES, pickLocalized, type LocalizedText, type NotificationItem } from '@allingo/schemas';
+import { type NotificationItem } from '@allingo/schemas/api/billing';
+import { type NotificationTemplateCode } from '@allingo/schemas/api/growth';
+import { pickLocalized, type LocalizedText } from '@allingo/schemas/common';
 import { formatVnd } from '@/lib/billing';
 import { VN_TIME_ZONE } from '@/lib/quota';
 
@@ -20,12 +22,10 @@ export interface Translator {
 type Params = Record<string, string | number>;
 
 /**
- * Tham số bắt buộc của từng mẫu – thiếu thì không dịch ở web (tránh câu thiếu chữ). S12 (SPEC-ISSUES S136): mã `support.reply`,
- * `content.report_resolved`, `beta.invite` nằm ở `S12_NOTIFICATION_TEMPLATE_CODES` (packages/schemas) – web đã có bản dịch nên
- * khai báo cùng bảng này; gộp vào danh sách chung khi sửa packages/schemas.
+ * Tham số bắt buộc của từng mẫu – thiếu thì không dịch ở web (tránh câu thiếu chữ). Mã S12 (`support.reply`,
+ * `content.report_resolved`, `beta.invite`) đã thuộc `NOTIFICATION_TEMPLATE_CODES` chung (B6/S149).
  */
-type TemplateCode = (typeof NOTIFICATION_TEMPLATE_CODES)[number] | (typeof S12_NOTIFICATION_TEMPLATE_CODES)[number];
-export const TEMPLATE_REQUIRED_PARAMS: Record<TemplateCode, readonly string[]> = {
+export const TEMPLATE_REQUIRED_PARAMS: Record<NotificationTemplateCode, readonly string[]> = {
   'billing.order_paid': ['plan', 'total'],
   'billing.invoice_issued': ['series', 'invoice', 'total', 'lookup'],
   'billing.subscription_expiring': ['plan', 'date', 'days'],
@@ -144,7 +144,8 @@ export function resolveNotificationHref(url: string | null | undefined): string 
   const u = str(url);
   if (!u || !u.startsWith('/') || u.startsWith('//') || u.startsWith('/\\')) return null;
   let path = u.replace(/^\/(vi|en)(?=\/|$)/, '') || '/';
-  // S12: `/support/tickets/{id}` (support.reply) và `/beta?code=` (beta.invite) là route web có sẵn – giữ nguyên
+  // S12: `/support/tickets/{id}` (support.reply), `/beta?code=` (beta.invite), `/attempts/{id}/review?focus=<qv>` | `/support`
+  // (content.report_resolved – B6/S148) là route web có sẵn – giữ nguyên
   const ALIASES: Record<string, string> = { '/practice': '/toeic/practice', '/today': '/toeic/today', '/plan': '/toeic/plan', '/stats': '/toeic/dashboard', '/dashboard': '/toeic/dashboard', '/support/tickets': '/support' };
   const [pathname, rest = ''] = path.split(/(?=[?#])/);
   if (pathname && ALIASES[pathname]) path = ALIASES[pathname] + rest;

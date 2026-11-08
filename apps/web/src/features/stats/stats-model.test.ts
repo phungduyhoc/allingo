@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Stats } from '@allingo/schemas';
+import type { Stats } from '@allingo/schemas/api/core';
 import { accuracyRows, forecastView, latestSkillScore, percentileValue, scoreSeries, weekSummary } from './stats-model';
 
 const cell = (correct: number, total: number, accuracy: number | null) => ({ correct, total, accuracy });

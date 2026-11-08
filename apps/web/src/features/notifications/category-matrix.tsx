@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
-import { DELIVERY_CHANNELS, NOTIFICATION_CATEGORIES, type NotificationCategories } from '@allingo/schemas';
+import { DELIVERY_CHANNELS, NOTIFICATION_CATEGORIES, type NotificationCategories } from '@allingo/schemas/api/learning-tools';
 import { Switch } from '@allingo/ui';
 
 /**

@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { CheckCircle2, Clock, ExternalLink, Layers, NotebookPen, RotateCcw } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { ERROR_KINDS, type ErrorKind, type ErrorLogEntry, type ErrorPatch } from '@allingo/schemas';
+import { ERROR_KINDS, type ErrorKind, type ErrorLogEntry, type ErrorPatch } from '@allingo/schemas/api/learning-s10';
 import { Badge, Button, buttonVariants, cn, NativeSelect, Spinner, Textarea } from '@allingo/ui';
 import { Link } from '@/i18n/navigation';
 import { formatAnswer } from '@/lib/format-answer';

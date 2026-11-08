@@ -1,7 +1,7 @@
 'use client';
 
 import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
-import type { ErrorLogEntry, ErrorLogPage, ErrorPatch } from '@allingo/schemas';
+import type { ErrorLogEntry, ErrorLogPage, ErrorPatch } from '@allingo/schemas/api/learning-s10';
 import { createErrorDrill, getErrors, patchError, type ErrorDrillBody } from '@/lib/s10-api';
 import { handleExamLockedError } from '@/lib/exam-lock';
 import type { Attempt } from '@/lib/types';

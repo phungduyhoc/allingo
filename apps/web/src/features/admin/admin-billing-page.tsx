@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Play, ShieldAlert } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { BILLING_JOBS, type BillingJob } from '@allingo/schemas';
+import { BILLING_JOBS, type BillingJob } from '@allingo/schemas/api/billing';
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, Spinner, Switch, Tabs, TabsList, TabsTrigger } from '@allingo/ui';
 import { FLAGS_QUERY_KEY } from '@/features/flags/flags-provider';
 import { adminKeys, getBillingSummary, getInvoiceReconciliation, runBillingJob, setFlag, type JobRunResult } from '@/lib/admin-api';
@@ -21,9 +21,10 @@ import { CreditsTab } from './admin-credits';
 import { DeadLettersTab, ReconciliationsTab } from './admin-ops';
 import { PromotionsTab } from './admin-promotions';
 import { FilterBar } from './ui';
+import { ADMIN_TABS, type AdminTab } from './admin-tabs';
 
-export const ADMIN_TABS = ['overview', 'orders', 'payments', 'invoices', 'subscriptions', 'credits', 'dead-letters', 'reconciliations', 'promotions', 'jobs'] as const;
-export type AdminTab = (typeof ADMIN_TABS)[number];
+// B6/S152: danh sách tab ở module thường (proxy kiểm tra đường dẫn `/admin/billing/<tab>` → 404 thật)
+export { ADMIN_TABS, type AdminTab } from './admin-tabs';
 
 /**
  * Billing admin `/admin/billing[/<tab>]` (S7/S8) – chỉ vai trò admin/superadmin: client ẩn menu + chặn route, SERVER vẫn trả 403.

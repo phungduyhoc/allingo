@@ -1,4 +1,5 @@
-import { isAnswered, type AnswerInput, type DiagnosticStep } from '@allingo/schemas';
+import { type DiagnosticStep } from '@allingo/schemas/api/learning-plan';
+import { isAnswered, type AnswerInput } from '@allingo/schemas/question/answer';
 
 /**
  * Máy trạng thái màn chẩn đoán (thuần, có test): một câu mỗi màn, KHÔNG hiện đúng/sai từng câu (`last_correct` bị bỏ qua).

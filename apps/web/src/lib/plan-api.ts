@@ -1,29 +1,8 @@
 import { ApiError, unwrap } from '@allingo/api-client';
-import {
-  badgeListSchema,
-  diagnosticStepSchema,
-  planAdjustApplyResultSchema,
-  planAdjustListSchema,
-  planAdjustProposalSchema,
-  planCheckinResultSchema,
-  planRegenerateResultSchema,
-  planTaskSchema,
-  planTodaySchema,
-  studyPlanSchema,
-  vocabItemSchema,
-  type AnswerInput,
-  type DiagnosticStep,
-  type LocalizedText,
-  type PlanAdjustProposal,
-  type PlanCheckinInput,
-  type PlanCreateInput,
-  type PlanTask,
-  type PlanTaskPatch,
-  type PlanToday,
-  type PlanWeek,
-  type StudyPlan,
-  type VocabItem,
-} from '@allingo/schemas';
+import { badgeListSchema, diagnosticStepSchema, planAdjustApplyResultSchema, planAdjustListSchema, planAdjustProposalSchema, planCheckinResultSchema, planRegenerateResultSchema, planTaskSchema, planTodaySchema, studyPlanSchema, type DiagnosticStep, type PlanAdjustProposal, type PlanCheckinInput, type PlanCreateInput, type PlanTask, type PlanTaskPatch, type PlanToday, type PlanWeek, type StudyPlan } from '@allingo/schemas/api/learning-plan';
+import { vocabItemSchema, type VocabItem } from '@allingo/schemas/api/learning-s10';
+import { type LocalizedText } from '@allingo/schemas/common';
+import { type AnswerInput } from '@allingo/schemas/question/answer';
 import type { z } from 'zod';
 import { getApi } from './api';
 import { pageOf, parseOr } from './zod-parse';

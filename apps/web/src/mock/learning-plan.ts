@@ -1,22 +1,7 @@
-import {
-  WEEKDAY_CODES,
-  XP_TABLE,
-  levelForXp,
-  planCheckinInputSchema,
-  planCreateInputSchema,
-  planTaskPatchSchema,
-  type Attempt,
-  type AttemptMode,
-  type Badge,
-  type DiagnosticResult,
-  type DiagnosticStep,
-  type PlanAdjustProposal,
-  type PlanTask,
-  type PlanToday,
-  type PlanWeek,
-  type Stats,
-  type StudyPlan,
-} from '@allingo/schemas';
+import { type Attempt, type AttemptMode } from '@allingo/schemas/api/attempt';
+import { type Stats } from '@allingo/schemas/api/core';
+import { WEEKDAY_CODES, planCheckinInputSchema, planCreateInputSchema, planTaskPatchSchema, type Badge, type DiagnosticResult, type DiagnosticStep, type PlanAdjustProposal, type PlanTask, type PlanToday, type PlanWeek, type StudyPlan } from '@allingo/schemas/api/learning-plan';
+import { XP_TABLE, levelForXp } from '@allingo/schemas/product/xp';
 import { TOEIC_PART_SKILL, buildDiagnosticPool, diagnosticAdvance, estimateToeicDiagnostic, initDiagnosticState, masteryFromDiagnostic, suggestToeicTarget, type DiagnosticItem, type DiagnosticState } from '@allingo/scoring';
 import { emitTo, notify } from './billing-core';
 import type { MockHandler, MockRouteDef } from './billing';

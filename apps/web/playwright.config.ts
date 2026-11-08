@@ -31,7 +31,8 @@ export default defineConfig({
   webServer: process.env.E2E_NO_SERVER
     ? undefined
     : {
-        command: 'pnpm exec next dev -p 3000',
+        // public/sw.js bị gitignore và chỉ dựng ở `prebuild` → CI (máy sạch, `next dev`) không có SW → test PWA đỏ: dựng SW trước
+        command: 'node scripts/build-sw.mjs && pnpm exec next dev -p 3000',
         url: baseURL,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,

@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ExternalLink, Smartphone } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import type { PayResult } from '@allingo/schemas';
+import type { PayResult } from '@allingo/schemas/api/billing';
 import { buttonVariants, cn, Spinner } from '@allingo/ui';
 import { Link, useRouter } from '@/i18n/navigation';
 import { billingKeys, getOrder } from '@/lib/billing-api';

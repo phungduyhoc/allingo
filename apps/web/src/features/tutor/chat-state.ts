@@ -1,11 +1,4 @@
-import {
-  tutorReplySchema,
-  type Message,
-  type RefusalCode,
-  type ThreadDetail,
-  type TutorCitation,
-  type TutorReply,
-} from '@allingo/schemas';
+import { tutorReplySchema, type Message, type RefusalCode, type ThreadDetail, type TutorCitation, type TutorReply } from '@allingo/schemas/api/core';
 import type { SseEvent } from '@allingo/api-client';
 import { INCOMPLETE_STREAM, sseToAction, type AiStreamError } from '@/lib/ai-stream';
 

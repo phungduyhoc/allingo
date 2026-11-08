@@ -19,7 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { TUTOR_MESSAGE_MAX_CHARS, type Thread } from '@allingo/schemas';
+import { TUTOR_MESSAGE_MAX_CHARS, type Thread } from '@allingo/schemas/api/core';
 import {
   Alert,
   AlertDescription,

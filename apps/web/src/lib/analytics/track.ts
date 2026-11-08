@@ -1,4 +1,4 @@
-import type { FunnelEventInput } from '@allingo/schemas';
+import type { FunnelEventInput } from '@allingo/schemas/api/learning-s10';
 import { anonymousId, browserStore, hasAnalyticsConsent, type KeyValueStore } from './consent';
 
 /**

@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { ArrowRight, CalendarClock, CircleHelp, TriangleAlert } from 'lucide-react';
 import { useFormatter, useLocale, useTranslations } from 'next-intl';
-import type { PlanAdjustProposal } from '@allingo/schemas';
+import type { PlanAdjustProposal } from '@allingo/schemas/api/learning-plan';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, cn, Spinner } from '@allingo/ui';
 import { useLocalized } from '@/lib/localized';
 import { conflictDetails } from '@/lib/plan-api';

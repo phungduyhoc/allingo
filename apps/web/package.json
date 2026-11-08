@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node scripts/build-sw.mjs",
     "dev": "next dev -p 3000",
-    "dev:mock": "NEXT_PUBLIC_API_MOCK=1 next dev -p 3000",
+    "dev:mock": "node scripts/build-sw.mjs && NEXT_PUBLIC_API_MOCK=1 next dev -p 3000",
     "sw:build": "node scripts/build-sw.mjs",
     "prebuild": "node scripts/build-sw.mjs",
     "build": "next build",

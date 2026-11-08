@@ -1,19 +1,6 @@
-import {
-  NOTE_BODY_MAX,
-  TUTOR_MESSAGE_MAX_CHARS,
-  correctAnswerOf,
-  lookupWordCount,
-  normalizeLookupTerm,
-  notificationPreferencesPatchSchema,
-  pushSubscriptionInputSchema,
-  sanitizeNoteMarkdown,
-  srsCardCreateSchema,
-  type DictionaryEntry,
-  type Note,
-  type NotificationPreferences,
-  type TutorCitation,
-  type TutorReply,
-} from '@allingo/schemas';
+import { TUTOR_MESSAGE_MAX_CHARS, type TutorCitation, type TutorReply } from '@allingo/schemas/api/core';
+import { NOTE_BODY_MAX, lookupWordCount, normalizeLookupTerm, notificationPreferencesPatchSchema, pushSubscriptionInputSchema, sanitizeNoteMarkdown, srsCardCreateSchema, type DictionaryEntry, type Note, type NotificationPreferences } from '@allingo/schemas/api/learning-tools';
+import { correctAnswerOf } from '@allingo/schemas/question/grade';
 import type { MockQuestion } from './fixtures';
 import { MOCK_DICTIONARY, trigramSimilarity, type MockDictEntry } from './dictionary';
 import type { MockMessageRecord, MockState, MockThreadRecord, MockUserRecord } from './state';

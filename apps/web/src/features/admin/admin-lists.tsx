@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Coins, Undo2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { INVOICE_STATUSES, ORDER_STATUSES, PAYMENT_PROVIDER_CODES, PAYMENT_STATUSES, SUBSCRIPTION_STATUSES, refundInputSchema } from '@allingo/schemas';
+import { INVOICE_STATUSES, ORDER_STATUSES, PAYMENT_PROVIDER_CODES, PAYMENT_STATUSES, SUBSCRIPTION_STATUSES, refundInputSchema } from '@allingo/schemas/api/billing';
 import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Label, Spinner, Textarea } from '@allingo/ui';
 import { adminKeys, listAdminInvoices, listAdminOrders, listAdminPayments, listAdminSubscriptions, refundOrder, type AdminOrder } from '@/lib/admin-api';
 import { formatVnd } from '@/lib/billing';

@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban, MailPlus, Send } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { BETA_INVITE_STATUSES } from '@allingo/schemas';
+import { BETA_INVITE_STATUSES } from '@allingo/schemas/api/s12';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, Spinner, Tabs, TabsList, TabsTrigger, Textarea } from '@allingo/ui';
 import { getErrorCode } from '@/lib/errors';
 import { createInvites, getBetaReport, listInvites, listWaitlist, revokeInvite, s12Keys, sendInvitesNow, type AdminBetaInvite, type AdminWaitlistEntry } from '@/lib/s12-api';
@@ -73,7 +73,7 @@ function WaitlistTab() {
     });
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2" aria-label={t('beta.counts')}>
+      <div className="flex flex-wrap gap-2" role="group" aria-label={t('beta.counts')}>
         {Object.entries(counts).map(([k, v]) => (
           <Badge key={k} variant="outline">
             {t(`beta.waitStatus.${k}`)}: {v}
@@ -215,17 +215,26 @@ function InvitesTab() {
   const { q, rows } = useCursorList(s12Keys.admin('invites', filter), (cursor) => listInvites({ ...filter, cursor }));
   const first = q.data?.pages[0];
   const today = first?.today;
-  const [sendOpen, setSendOpen] = React.useState(false);
+  // B6/S147: 'all' = mọi lời mời đang xếp hàng (hoặc chỉ đợt đang lọc); 'selected' = các lời mời đã chọn (theo thứ tự chọn)
+  const [sendOpen, setSendOpen] = React.useState<'all' | 'selected' | null>(null);
   const [limit, setLimit] = React.useState('50');
   const [revoke, setRevoke] = React.useState<AdminBetaInvite | null>(null);
   const [lastResult, setLastResult] = React.useState<Record<string, unknown> | null>(null);
+  const [picked, setPicked] = React.useState<string[]>([]);
+  const queuedRows = rows.filter((r) => r.status === 'queued');
+  const togglePick = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const refresh = () => void qc.invalidateQueries({ queryKey: ['admin', 's12', 'invites'] });
+  const batchFilter = filter.batch.trim();
   const send = useMutation({
-    mutationFn: () => sendInvitesNow(Math.max(1, Math.min(500, Number(limit) || 1))),
-    onSuccess: (r) => {
+    mutationFn: (mode: 'all' | 'selected') => {
+      const max = Math.max(1, Math.min(500, Number(limit) || 1));
+      return mode === 'selected' ? sendInvitesNow({ limit: max, invite_ids: picked }) : sendInvitesNow({ limit: max, batch: batchFilter || undefined });
+    },
+    onSuccess: (r, mode) => {
       setLastResult(r.result ?? { mode: r.mode, job_id: r.job_id });
-      toast.success(t('beta.sendDone', { mode: r.mode ?? '' }));
-      setSendOpen(false);
+      toast.success(t('beta.sendDone', { mode: r.mode }));
+      setSendOpen(null);
+      if (mode === 'selected') setPicked([]);
       refresh();
     },
   });
@@ -244,11 +253,15 @@ function InvitesTab() {
         <StatTile label={t('beta.todayLimit')} value={today?.limit ?? '—'} />
         <StatTile label={t('beta.todayRemaining')} value={today?.remaining ?? '—'} tone={today && today.remaining === 0 ? 'warn' : 'default'} testId="beta-today-remaining" />
         <div className="flex flex-col justify-center gap-2 rounded-xl border border-border p-4">
-          <Button variant="navy" size="sm" onClick={() => setSendOpen(true)} disabled={!today?.remaining} data-testid="beta-send-now">
+          <Button variant="navy" size="sm" onClick={() => setSendOpen('all')} disabled={!today?.remaining} data-testid="beta-send-now">
             <Send aria-hidden />
-            {t('beta.sendNow')}
+            {batchFilter ? t('beta.sendBatch', { batch: batchFilter }) : t('beta.sendNow')}
           </Button>
-          <p className="text-xs text-muted-foreground">{t('beta.sendHint')}</p>
+          <Button variant="outline" size="sm" onClick={() => setSendOpen('selected')} disabled={!today?.remaining || !picked.length} data-testid="beta-send-selected">
+            <Send aria-hidden />
+            {t('beta.sendSelected', { count: picked.length })}
+          </Button>
+          <p className="text-xs text-muted-foreground">{batchFilter ? t('beta.sendBatchHint', { batch: batchFilter }) : t('beta.sendHint')}</p>
         </div>
       </div>
       {lastResult ? (
@@ -265,12 +278,25 @@ function InvitesTab() {
       </div>
       <FilterBar
         value={filter}
-        onApply={setFilter}
+        onApply={(f) => {
+          setFilter(f);
+          setPicked([]);
+        }}
         fields={[
           { name: 'status', label: t('status'), type: 'select', options: BETA_INVITE_STATUSES.map((s) => ({ value: s, label: t(`beta.inviteStatus.${s}`) })) },
           { name: 'batch', label: t('beta.batch'), placeholder: 'dot-1' },
         ]}
       />
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="outline" size="sm" onClick={() => setPicked(queuedRows.map((r) => r.id))} disabled={!queuedRows.length} data-testid="invite-select-page">
+          {t('beta.selectQueuedPage', { count: queuedRows.length })}
+        </Button>
+        {picked.length ? (
+          <Button variant="ghost" size="sm" onClick={() => setPicked([])}>
+            {t('beta.clearSelection')}
+          </Button>
+        ) : null}
+      </div>
       <DataTable<AdminBetaInvite>
         list={{ q }}
         rows={rows}
@@ -279,6 +305,13 @@ function InvitesTab() {
         rowAttrs={(r) => ({ 'data-status': r.status })}
         empty={t('empty')}
         columns={[
+          {
+            key: 'sel',
+            header: t('select'),
+            cell: (r) => (
+              <input type="checkbox" className="size-4" checked={picked.includes(r.id)} disabled={r.status !== 'queued'} onChange={() => togglePick(r.id)} aria-label={t('beta.selectRow', { email: r.email_masked })} data-testid="invite-select" />
+            ),
+          },
           { key: 'email', header: t('email'), cell: (r) => <span className="font-mono text-xs">{r.email_masked}</span> },
           { key: 'status', header: t('status'), cell: (r) => <Badge variant={INVITE_VARIANT[r.status] ?? 'outline'}>{t(`beta.inviteStatus.${r.status}`)}</Badge> },
           { key: 'batch', header: t('beta.batch'), cell: (r) => r.batch ?? '—' },
@@ -300,14 +333,14 @@ function InvitesTab() {
         ]}
       />
       <ConfirmDialog
-        open={sendOpen}
-        onOpenChange={setSendOpen}
-        title={t('beta.confirmSendTitle')}
+        open={sendOpen !== null}
+        onOpenChange={(o) => !o && setSendOpen(null)}
+        title={sendOpen === 'selected' ? t('beta.confirmSendSelectedTitle', { count: picked.length }) : batchFilter ? t('beta.confirmSendBatchTitle', { batch: batchFilter }) : t('beta.confirmSendTitle')}
         description={t('beta.confirmSendDesc', { remaining: today?.remaining ?? 0 })}
-        confirmLabel={t('beta.sendNow')}
+        confirmLabel={sendOpen === 'selected' ? t('beta.sendSelected', { count: picked.length }) : t('beta.sendNow')}
         pending={send.isPending}
         error={send.isError ? te(`codes.${getErrorCode(send.error)}`) : null}
-        onConfirm={() => send.mutate()}
+        onConfirm={() => sendOpen && send.mutate(sendOpen)}
         testId="beta-send-confirm"
       >
         <div className="space-y-1">

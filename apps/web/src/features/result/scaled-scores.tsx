@@ -2,7 +2,7 @@
 
 import { Clock } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { toeicScaledSchema } from '@allingo/schemas';
+import { toeicScaledSchema } from '@allingo/schemas/api/attempt';
 import { Badge, Card, CardContent, CardHeader, CardTitle, cn } from '@allingo/ui';
 import type { AttemptResult, ToeicScaled } from '@/lib/types';
 

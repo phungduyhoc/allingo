@@ -21,7 +21,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import type { PlanTask } from '@allingo/schemas';
+import type { PlanTask } from '@allingo/schemas/api/learning-plan';
 import { Badge, Button, cn, NativeSelect, Spinner } from '@allingo/ui';
 import { useLocalized } from '@/lib/localized';
 import { isSelfReported } from './launch';

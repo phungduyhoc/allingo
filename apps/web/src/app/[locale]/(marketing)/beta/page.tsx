@@ -15,7 +15,7 @@ export default async function Page({ params }: { params: Promise<{ locale: strin
   const { locale } = await params;
   setRequestLocale(locale);
   return (
-    <ScopedIntl namespaces={[...MARKETING_MESSAGES, 'beta']}>
+    <ScopedIntl namespaces={[...MARKETING_MESSAGES, 'beta', 'feedback']}>
       <BetaPage />
     </ScopedIntl>
   );

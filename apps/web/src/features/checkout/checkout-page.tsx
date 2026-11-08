@@ -7,7 +7,7 @@ import { ArrowLeft, Building2, CreditCard, Lock, QrCode, Smartphone, Tag, Triang
 import { useLocale, useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
 import { FunnelTracker } from '@/features/consent/funnel-tracker';
-import type { PayResult, PromotionValidateResult } from '@allingo/schemas';
+import type { PayResult, PromotionValidateResult } from '@allingo/schemas/api/billing';
 import {
   Alert,
   AlertDescription,

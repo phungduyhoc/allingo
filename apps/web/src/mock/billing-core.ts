@@ -1,4 +1,4 @@
-import { MIN_PAYABLE_VND, type Order, type PromotionRejectReason, type Subscription } from '@allingo/schemas';
+import { MIN_PAYABLE_VND, type Order, type PromotionRejectReason, type Subscription } from '@allingo/schemas/api/billing';
 import type { Plan } from '@/lib/billing';
 import { MOCK_REALTIME_EVENT, type MockRealtimeDetail } from '@/lib/realtime';
 import { MOCK_PLANS, MOCK_PROMOTIONS, type MockPromotion } from './billing-fixtures';

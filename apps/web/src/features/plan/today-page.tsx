@@ -4,7 +4,7 @@ import * as React from 'react';
 import { CalendarCheck, CheckCircle2, Flame, Hourglass, Route, Snowflake, Sparkles } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import type { PlanTask, PlanToday } from '@allingo/schemas';
+import type { PlanTask, PlanToday } from '@allingo/schemas/api/learning-plan';
 import { ApiError } from '@allingo/api-client';
 import { Alert, AlertDescription, AlertTitle, Badge, Button, buttonVariants, Card, CardContent, CardHeader, CardTitle, cn, Progress } from '@allingo/ui';
 import { Link } from '@/i18n/navigation';

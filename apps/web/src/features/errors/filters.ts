@@ -1,4 +1,4 @@
-import { ERROR_DRILL_MAX, ERROR_KINDS, type ErrorKind, type ErrorLogEntry, type ErrorPatch } from '@allingo/schemas';
+import { ERROR_DRILL_MAX, ERROR_KINDS, type ErrorKind, type ErrorLogEntry, type ErrorPatch } from '@allingo/schemas/api/learning-s10';
 import type { ErrorDrillBody, ErrorQuery } from '@/lib/s10-api';
 
 /**

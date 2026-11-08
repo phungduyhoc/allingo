@@ -1,17 +1,15 @@
 import { createHmac } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
 import { createServer, type Server, type Socket } from 'node:net';
-import { resolve } from 'node:path';
-import { expect, type Browser, type Page } from '@playwright/test';
+import { expect, request as pwRequest, type APIRequestContext, type Browser, type Page } from '@playwright/test';
 import { REAL } from './helpers';
-import { adminApi, ADMIN, loginViaUi, logoutViaUi, PASSWORD } from './billing-helpers';
+import { adminApi, ADMIN, API, loginViaUi, logoutViaUi, PASSWORD } from './billing-helpers';
 
 /**
  * Tiện ích E2E Sprint 12 (beta kín, hỗ trợ, admin vận hành, MFA). Chạy được với API giả lập (mặc định) và API thật (E2E_REAL_API=1).
  *  - Hook mock: `window.__ALLINGO_MOCK__.<tên>(...)` (mã mời trong "hộp thư giả", bật step-up MFA, ép NPS, thêm DLQ, đặt cờ).
  *  - API thật: cờ qua admin API (luôn khôi phục), mã mời đọc từ email thật bằng SMTP sink cục bộ (:1025 – SMTP_HOST/PORT dev),
- *    SQL dev qua psql (cấp vai trò admin tạm cho tài khoản E2E để thử MFA – không đụng tài khoản demo).
+ *    vai trò admin tạm cho tài khoản E2E (thử MFA) cấp/thu hồi qua API bằng `superadmin@allingo.dev` của seed demo (B6/S151 –
+ *    thay cho psql trực tiếp vào DB dev; không đụng tài khoản demo khác).
  *  - TOTP RFC 6238 tính bằng `node:crypto` (độc lập với mã của web/API).
  */
 
@@ -58,22 +56,27 @@ export async function setFlag(page: Page, key: string, enabled: boolean, rules?:
   await mockHook(page, 'setFlag', key, enabled);
 }
 
-// ----------------------------------------------------------------------------- SQL dev (chỉ API thật)
-function repoEnv(): Record<string, string> {
-  const file = resolve(process.cwd(), '../../.env');
-  if (!existsSync(file)) return {};
-  const out: Record<string, string> = {};
-  for (const line of readFileSync(file, 'utf8').split('\n')) {
-    const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
-    if (m) out[m[1]!] = m[2]!.replace(/\s+#.*$/, '').replace(/^"|"$/g, '');
-  }
-  return out;
+// ----------------------------------------------------------------------------- superadmin (chỉ API thật, B6/S151)
+/** Tài khoản superadmin của seed demo (chặn production) – chỉ superadmin cấp được vai trò `admin` */
+export const SUPERADMIN = { email: 'superadmin@allingo.dev', password: 'Allingo@2026' };
+
+export async function superadminApi(): Promise<APIRequestContext> {
+  const ctx = await pwRequest.newContext({ baseURL: `${API}/`, extraHTTPHeaders: { Origin: 'http://localhost:3000' } });
+  const res = await ctx.post('auth/login', { data: SUPERADMIN });
+  expect(res.ok(), `đăng nhập ${SUPERADMIN.email} (chạy pnpm db:seed --set demo): ${res.status()}`).toBe(true);
+  return ctx;
 }
 
-/** Chạy một câu SQL trên DB dev (E2E_DATABASE_URL hoặc DATABASE_URL của .env gốc) – trả stdout dạng không căn lề */
-export function psql(sql: string): string {
-  const url = process.env.E2E_DATABASE_URL ?? repoEnv().DATABASE_URL ?? 'postgres://allingo:allingo@localhost:5432/allingo';
-  return execFileSync('psql', [url, '-v', 'ON_ERROR_STOP=1', '-At', '-c', sql], { stdio: 'pipe' }).toString().trim();
+/** Cấp/thu hồi vai trò qua `POST /admin/users/{id}/roles` (superadmin) – trả danh sách vai trò sau thao tác */
+export async function setRoleViaApi(userId: string, role: 'admin' | 'beta_tester' | 'teacher' | 'editor', action: 'grant' | 'revoke'): Promise<string[]> {
+  const su = await superadminApi();
+  try {
+    const res = await su.post(`admin/users/${assertUuid(userId)}/roles`, { data: { role_code: role, action } });
+    expect(res.status(), await res.text()).toBe(200);
+    return ((await res.json()) as { roles: string[] }).roles;
+  } finally {
+    await su.dispose();
+  }
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

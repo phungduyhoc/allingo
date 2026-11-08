@@ -1,4 +1,4 @@
-import { isDangerousLinkTarget } from '@allingo/schemas';
+import { isDangerousLinkTarget } from '@allingo/schemas/api/learning-tools';
 
 /**
  * Liên kết từ nội dung CMS (CTA, Lexical): chỉ http(s)/mailto/tel/đường dẫn nội bộ/neo; đường dẫn nội bộ (không tiền tố locale

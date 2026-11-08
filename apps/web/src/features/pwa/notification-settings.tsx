@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, BellOff, BellRing, Plus, Smartphone, Trash2, TriangleAlert } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { NOTIFICATION_CHANNELS, type NotificationPreferences } from '@allingo/schemas';
+import { NOTIFICATION_CHANNELS, type NotificationPreferences } from '@allingo/schemas/api/learning-tools';
 import { CategoryMatrix } from '@/features/notifications/category-matrix';
 import {
   Alert,

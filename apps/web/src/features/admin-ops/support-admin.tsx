@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Coins, Headset, UserCheck } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { adminSupportReplySchema, SUPPORT_CATEGORIES, SUPPORT_PRIORITIES, SUPPORT_STATUSES } from '@allingo/schemas';
+import { adminSupportReplySchema, SUPPORT_CATEGORIES, SUPPORT_PRIORITIES, SUPPORT_STATUSES } from '@allingo/schemas/api/s12';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, cn, Input, Label, NativeSelect, Spinner, Textarea } from '@allingo/ui';
 import { Link } from '@/i18n/navigation';
 import { useMe } from '@/lib/queries';

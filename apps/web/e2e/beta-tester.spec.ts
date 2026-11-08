@@ -28,10 +28,13 @@ async function inviteViaAdminUi(admin: Page, email: string): Promise<void> {
   await expect(admin.getByText(/Đã xếp hàng 1 lời mời/)).toBeVisible();
   await admin.getByTestId('beta-tab-invites').click();
   await expect(admin).toHaveURL(/tab=invites/);
-  await admin.getByTestId('beta-send-now').click();
-  await admin.locator('#beta-send-limit').fill('500');
+  // B6/S147: chỉ gửi lời mời vừa xếp hàng (mới nhất đầu danh sách) – "Gửi đã chọn", không gửi cả hàng đợi tồn từ lần chạy trước
+  const row = admin.locator('[data-testid="invite-row"][data-status="queued"]').first();
+  await row.getByTestId('invite-select').check();
+  await expect(admin.getByTestId('beta-send-selected')).toContainText('(1)');
+  await admin.getByTestId('beta-send-selected').click();
   await admin.getByTestId('beta-send-confirm-confirm').click();
-  await expect(admin.getByTestId('beta-send-result')).toBeVisible({ timeout: 30_000 });
+  await expect(admin.getByTestId('beta-send-result')).toContainText('"sent": 1', { timeout: 30_000 });
 }
 
 test('tester: mời → gate chặn → nhập mã → khảo sát → đề mini → báo lỗi câu → góp ý có ảnh → ticket → admin trả lời → thông báo', async ({ page, browser, isMobile }) => {
@@ -70,6 +73,16 @@ test('tester: mời → gate chặn → nhập mã → khảo sát → đề min
     await registerViaUi(page, { email, name: 'E2E Beta Tester' });
     await expect(page).toHaveURL(/\/vi\/beta\?next=/, { timeout: 30_000 });
     await expect(page.getByTestId('beta-redeem')).toBeVisible();
+
+    // (2b) B6/S150: chưa có mã vẫn góp ý được ngay trên /beta (POST /feedback miễn gate; đính ảnh ẩn vì presign vẫn theo gate)
+    await page.getByTestId('feedback-button').click();
+    const blockedFb = page.getByTestId('feedback-dialog');
+    await expect(blockedFb.getByTestId('feedback-no-screenshot')).toBeVisible();
+    await expect(blockedFb.getByTestId('feedback-file')).toHaveCount(0);
+    await blockedFb.getByTestId('feedback-message').fill('Chưa nhận được email mời dù đã đăng ký danh sách chờ (E2E)');
+    await blockedFb.getByTestId('feedback-submit').click();
+    await expect(blockedFb.getByTestId('feedback-done')).toBeVisible({ timeout: 20_000 });
+    await blockedFb.getByTestId('feedback-close').click();
 
     // (3) Mã sai → lỗi i18n; mã đúng (gõ thường, thiếu gạch) → quyền lợi theo phản hồi API
     const input = page.getByTestId('beta-code-input');

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SrsCard } from '@allingo/schemas';
+import type { SrsCard } from '@allingo/schemas/api/learning-tools';
 import { AGAIN_GAP, checkDictation, currentCard, initialSession, intervalOf, keyToAction, sessionProgress, sessionReducer, sessionStatus, sessionSummary, suggestedRating, type SessionState } from './session';
 
 const card = (id: string, state: SrsCard['state'] = 'new', extra: Partial<SrsCard> = {}): SrsCard => ({

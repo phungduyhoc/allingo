@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight, CalendarCheck, CheckCircle2, ExternalLink, Megaphone, MessageSquareHeart, NotebookPen, Sparkles, Timer } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { BETA_DEVICES, BETA_GOALS, betaSurveyInputSchema, type BetaSurveyInput } from '@allingo/schemas';
+import { BETA_DEVICES, BETA_GOALS, betaSurveyInputSchema, type BetaSurveyInput } from '@allingo/schemas/api/s12';
 import { Alert, AlertDescription, Badge, Button, buttonVariants, Card, CardContent, CardDescription, CardHeader, CardTitle, cn, Input, Label, NativeSelect, Spinner, ToggleChip } from '@allingo/ui';
 import { env } from '@/env';
 import { useRouter } from '@/i18n/navigation';

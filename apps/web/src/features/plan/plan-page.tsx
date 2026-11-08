@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { CalendarCheck, CalendarDays, Lock, RefreshCw, Sparkles, Target, WandSparkles } from 'lucide-react';
 import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { CHECKIN_TEXT_MAX, type PlanTask, type PlanWeek, type StudyPlan } from '@allingo/schemas';
+import { CHECKIN_TEXT_MAX, type PlanTask, type PlanWeek, type StudyPlan } from '@allingo/schemas/api/learning-plan';
 import { ApiError } from '@allingo/api-client';
 import {
   Alert,

@@ -6,7 +6,7 @@ import { Eye, EyeOff, FileSearch, Lock, LockOpen, Trash2 } from 'lucide-react';
 import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle, Badge, Button, buttonVariants, Card, CardContent, CardHeader, CardTitle, cn, Spinner, Tabs, TabsList, TabsTrigger } from '@allingo/ui';
-import { pickLocalized, type LocalizedText } from '@allingo/schemas';
+import { pickLocalized, type LocalizedText } from '@allingo/schemas/common';
 import { Link } from '@/i18n/navigation';
 import { useMe } from '@/lib/queries';
 import { getErrorCode } from '@/lib/errors';

@@ -1,4 +1,5 @@
-import type { QuestionContent, TestSetSummary } from '@allingo/schemas';
+import type { TestSetSummary } from '@allingo/schemas/api/core';
+import type { QuestionContent } from '@allingo/schemas/question/content';
 
 /**
  * Dữ liệu mẫu cho chế độ mock (NEXT_PUBLIC_API_MOCK=1). Nội dung câu hỏi tự biên soạn (source = 'human'),

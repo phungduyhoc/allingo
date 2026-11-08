@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createTranslator } from 'next-intl';
 import { messages } from '@allingo/i18n';
-import { NOTIFICATION_TEMPLATE_CODES, S12_NOTIFICATION_TEMPLATE_CODES, type NotificationItem } from '@allingo/schemas';
+import { type NotificationItem } from '@allingo/schemas/api/billing';
+import { NOTIFICATION_TEMPLATE_CODES } from '@allingo/schemas/api/growth';
 import { notificationText, resolveNotificationHref, templateParams, TEMPLATE_REQUIRED_PARAMS, type Translator } from './notification-text';
 
 const tr = (locale: 'vi' | 'en'): Translator => createTranslator({ locale, messages: messages[locale], namespace: 'notifications', timeZone: 'Asia/Ho_Chi_Minh' }) as unknown as Translator;
@@ -26,7 +27,9 @@ describe('dịch thông báo theo template_code', () => {
   it('mọi mã NOTIFICATION_TEMPLATE_CODES có bản dịch vi/en (title + body) và khai báo tham số', () => {
     for (const locale of ['vi', 'en'] as const) {
       const t = tr(locale);
-      for (const code of [...NOTIFICATION_TEMPLATE_CODES, ...S12_NOTIFICATION_TEMPLATE_CODES]) {
+      // B6/S149: gồm cả 3 mã S12 (support.reply, content.report_resolved, beta.invite)
+      expect(NOTIFICATION_TEMPLATE_CODES).toEqual(expect.arrayContaining(['support.reply', 'content.report_resolved', 'beta.invite']));
+      for (const code of NOTIFICATION_TEMPLATE_CODES) {
         expect(t.has(`templates.${code}.title`), `${locale}:${code}`).toBe(true);
         expect(t.has(`templates.${code}.body`), `${locale}:${code}`).toBe(true);
         expect(TEMPLATE_REQUIRED_PARAMS[code]).toBeDefined();
@@ -92,6 +95,9 @@ describe('resolveNotificationHref', () => {
     expect(resolveNotificationHref('/badges')).toBe('/badges');
     expect(resolveNotificationHref('/stats')).toBe('/toeic/dashboard');
     expect(resolveNotificationHref('/admin/billing/dead-letters')).toBe('/admin/billing/dead-letters');
+    // B6/S148: content.report_resolved → trang xem lại câu đã báo (giữ ?focus=) hoặc trung tâm hỗ trợ
+    expect(resolveNotificationHref('/attempts/3f2b8c1e-1d2a-4b3c-8d4e-123456789abc/review?focus=9a0c6f50-8f2e-4f7a-9d55-0d0d6a1c2b3e')).toBe('/attempts/3f2b8c1e-1d2a-4b3c-8d4e-123456789abc/review?focus=9a0c6f50-8f2e-4f7a-9d55-0d0d6a1c2b3e');
+    expect(resolveNotificationHref('/vi/support')).toBe('/support');
   });
   it('chặn URL ngoài / scheme lạ', () => {
     expect(resolveNotificationHref('https://evil.com')).toBeNull();

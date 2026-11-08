@@ -1,4 +1,4 @@
-import { transcriptHighlightSchema, type TranscriptHighlight } from '@allingo/schemas';
+import { transcriptHighlightSchema, type TranscriptHighlight } from '@allingo/schemas/api/attempt';
 
 /**
  * Transcript Listening (Review / phản hồi practice): dòng theo người nói (M/W/N…), dòng đang phát theo mốc thời gian

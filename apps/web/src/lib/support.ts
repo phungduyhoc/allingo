@@ -1,4 +1,4 @@
-import { SUPPORT_FIRST_RESPONSE_SLA_HOURS } from '@allingo/schemas';
+import { SUPPORT_FIRST_RESPONSE_SLA_HOURS } from '@allingo/schemas/api/s12';
 
 /**
  * Hỗ trợ (S12): SLA phản hồi đầu 24 giờ (`first_response_due_at`), trạng thái open → waiting_user (admin trả lời) → open (người

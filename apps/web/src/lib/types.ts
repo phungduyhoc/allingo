@@ -40,7 +40,8 @@ export type {
   ProgramCode,
   Locale,
 } from '@allingo/schemas';
-import type { AttemptReview, PublicQuestionContent } from '@allingo/schemas';
+import type { AttemptReview } from '@allingo/schemas/api/attempt';
+import type { PublicQuestionContent } from '@allingo/schemas/question/public';
 
 export type ReviewItem = AttemptReview['items'][number];
 

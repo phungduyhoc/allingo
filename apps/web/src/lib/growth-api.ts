@@ -1,16 +1,7 @@
 import { unwrap } from '@allingo/api-client';
-import {
-  notificationItemSchema,
-  notificationManageSchema,
-  notificationReadAllResultSchema,
-  referralLandingSchema,
-  referralSummarySchema,
-  type NotificationCategories,
-  type NotificationItem,
-  type NotificationManage,
-  type ReferralLanding,
-  type ReferralSummary,
-} from '@allingo/schemas';
+import { notificationItemSchema, type NotificationItem } from '@allingo/schemas/api/billing';
+import { notificationManageSchema, notificationReadAllResultSchema, referralLandingSchema, referralSummarySchema, type NotificationManage, type ReferralLanding, type ReferralSummary } from '@allingo/schemas/api/growth';
+import { type NotificationCategories } from '@allingo/schemas/api/learning-tools';
 import { getApi } from './api';
 import { parseOr } from './zod-parse';
 

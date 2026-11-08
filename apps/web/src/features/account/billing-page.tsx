@@ -6,7 +6,7 @@ import { ChevronRight, Coins, Crown, Gift, ReceiptText } from 'lucide-react';
 import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import type { LedgerEntry, Order, Subscription } from '@allingo/schemas';
+import type { LedgerEntry, Order, Subscription } from '@allingo/schemas/api/billing';
 import {
   Alert,
   AlertDescription,

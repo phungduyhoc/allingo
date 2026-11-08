@@ -1,4 +1,6 @@
-import type { AttemptMode, PlanTask, ProgramCode } from '@allingo/schemas';
+import type { AttemptMode } from '@allingo/schemas/api/attempt';
+import type { PlanTask } from '@allingo/schemas/api/learning-plan';
+import type { ProgramCode } from '@allingo/schemas/common';
 
 /**
  * Ánh xạ `PlanTask.launch` → hành động mở nội dung (thuần, có test). Server quyết định `launch`; web chỉ chọn màn:

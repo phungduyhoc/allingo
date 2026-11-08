@@ -6,7 +6,7 @@ import { X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Alert, AlertDescription, Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, NativeSelect } from '@allingo/ui';
 import { useRouter } from '@/i18n/navigation';
-import { TIMED_DRILL_FALLBACK_SEC, TIMED_DRILL_SEC_PER_QUESTION } from '@allingo/schemas';
+import { TIMED_DRILL_FALLBACK_SEC, TIMED_DRILL_SEC_PER_QUESTION } from '@allingo/schemas/api/attempt';
 import { unwrap } from '@allingo/api-client';
 import { getApi } from '@/lib/api';
 import { getErrorCode, isApiError } from '@/lib/errors';

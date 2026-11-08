@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Repeat2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { ERROR_DRILL_MAX, ERROR_KINDS, type ErrorKind } from '@allingo/schemas';
+import { ERROR_DRILL_MAX, ERROR_KINDS, type ErrorKind } from '@allingo/schemas/api/learning-s10';
 import { Alert, AlertDescription, Button, Card, CardContent, cn, NativeSelect, Spinner, ToggleChip } from '@allingo/ui';
 import { usePathname, useRouter } from '@/i18n/navigation';
 import { PageHeader } from '@/components/page-header';

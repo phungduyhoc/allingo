@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient, type UseQueryOptions, type UseQueryResult } from '@tanstack/react-query';
 import { unwrap } from '@allingo/api-client';
-import { attemptAiDiagnosisSchema } from '@allingo/schemas';
+import { attemptAiDiagnosisSchema } from '@allingo/schemas/api/core';
 import { queryKeys } from '@allingo/api-client/react';
 import { getApi } from './api';
 import { login, logout, register } from './auth';

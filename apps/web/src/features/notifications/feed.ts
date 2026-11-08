@@ -1,4 +1,4 @@
-import type { NotificationItem } from '@allingo/schemas';
+import type { NotificationItem } from '@allingo/schemas/api/billing';
 
 /**
  * Trạng thái hộp thông báo in-app (S8) – reducer thuần, có test. Lưu trong cache TanStack Query (khoá growthKeys.notifications)

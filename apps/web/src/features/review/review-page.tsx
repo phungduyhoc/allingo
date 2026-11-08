@@ -213,19 +213,25 @@ export function ReviewPage({ attemptId }: { attemptId: string }) {
       {/* Điều hướng theo lỗi: dính đáy màn hình */}
       {!review.isPending && !review.isError && items.length > 0 ? (
         <div
-          className="sticky bottom-3 z-20 mx-auto flex w-fit items-center gap-2 rounded-full border border-border bg-card/95 p-1.5 shadow-lg backdrop-blur"
+          className="sticky bottom-20 z-20 mx-auto flex w-fit max-w-full items-center gap-1 rounded-full border border-border bg-card/95 p-1.5 shadow-lg backdrop-blur sm:gap-2 md:bottom-3"
           data-testid="wrong-nav"
         >
+          {/*
+            Mobile: nằm TRÊN thanh điều hướng đáy (fixed, ~70 px) và không rộng hơn màn hình – nhãn "Câu sai trước/tiếp theo" chỉ hiện
+            từ sm (dưới sm là nút biểu tượng có nhãn cho trình đọc màn hình). Trước đây `w-fit` + nhãn đầy đủ rộng ~410 px: với font hệ
+            thống rộng (DejaVu Sans trên Linux/CI) tràn ngang 412 px → trình duyệt mobile thu nhỏ trang, thanh đáy/header che nút (E2E CI).
+          */}
           <Button
             variant="ghost"
             size="sm"
             className="rounded-full"
             onClick={() => jump(-1)}
             disabled={stepWrong(wrong, cursor, -1) === null}
+            aria-label={t('prevWrong')}
             data-testid="prev-wrong"
           >
             <ChevronUp aria-hidden />
-            {t('prevWrong')}
+            <span className="sr-only sm:not-sr-only">{t('prevWrong')}</span>
           </Button>
           <span
             className="tabular min-w-20 text-center text-xs font-semibold text-muted-foreground"
@@ -242,9 +248,10 @@ export function ReviewPage({ attemptId }: { attemptId: string }) {
             className="rounded-full"
             onClick={() => jump(1)}
             disabled={stepWrong(wrong, cursor, 1) === null}
+            aria-label={t('nextWrong')}
             data-testid="next-wrong"
           >
-            {t('nextWrong')}
+            <span className="sr-only sm:not-sr-only">{t('nextWrong')}</span>
             <ChevronDown aria-hidden />
           </Button>
         </div>

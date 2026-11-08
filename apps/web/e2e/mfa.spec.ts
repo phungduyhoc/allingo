@@ -1,14 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
 import { freshGuestStorage, REAL } from './helpers';
 import { ADMIN, currentUserId, loginViaUi, logoutViaUi, PASSWORD, registerNewUser } from './billing-helpers';
-import { assertUuid, freshTotp, mockHook, psql } from './s12-helpers';
+import { assertUuid, freshTotp, mockHook, setRoleViaApi } from './s12-helpers';
 
 /**
  * S12 – MFA TOTP cho admin (RFC 6238 – mã tính trong test bằng node:crypto từ khoá base32 hiển thị trên trang):
  * bật (enroll → khoá + otpauth, không QR) → xác nhận bằng mã → 10 mã khôi phục hiện MỘT lần (tải .txt, phải tích "đã lưu") →
  * trạng thái đã bật + phiên đã xác minh → đăng nhập lại → xác minh phiên → tạo lại mã khôi phục (mã TOTP mới – chống replay).
  * Step-up (mock – dev API tắt ADMIN_MFA_REQUIRED): request admin 403 `mfa_required` → hộp thoại → mã đúng → request tự gửi lại.
- * API thật: tài khoản E2E mới được cấp vai trò admin TẠM qua SQL dev (chỉ superadmin cấp được qua API) rồi gỡ + xoá factor.
+ * API thật: tài khoản E2E mới được cấp vai trò admin TẠM qua API bằng superadmin của seed demo (B6/S151) rồi thu hồi qua API.
  */
 
 test.beforeEach(async ({ page }) => {
@@ -54,7 +54,7 @@ test('MFA: bật TOTP → mã khôi phục một lần → đăng nhập lại �
     email = await registerNewUser(page, 'mfa-admin');
     password = PASSWORD;
     userId = assertUuid(await currentUserId(page));
-    psql(`insert into iam.user_roles (user_id, role_code) values ('${userId}', 'admin') on conflict do nothing`);
+    expect(await setRoleViaApi(userId, 'admin', 'grant')).toContain('admin');
     await logoutViaUi(page);
   }
   try {
@@ -80,9 +80,8 @@ test('MFA: bật TOTP → mã khôi phục một lần → đăng nhập lại �
     await expect(page.getByTestId('mfa-status')).toHaveAttribute('data-enrolled', 'true');
   } finally {
     if (REAL && userId) {
-      // Dọn: gỡ vai trò admin tạm + factor MFA của tài khoản E2E
-      psql(`delete from iam.user_roles where user_id = '${userId}' and role_code = 'admin'`);
-      psql(`delete from iam.mfa_factors where user_id = '${userId}'`);
+      // Dọn: thu hồi vai trò admin tạm qua API (tài khoản E2E dùng một lần – factor TOTP còn lại vô hại khi không còn vai trò admin)
+      expect(await setRoleViaApi(userId, 'admin', 'revoke')).not.toContain('admin');
     }
   }
 });

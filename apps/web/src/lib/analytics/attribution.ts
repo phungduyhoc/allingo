@@ -1,4 +1,4 @@
-import type { AttributionInput } from '@allingo/schemas';
+import type { AttributionInput } from '@allingo/schemas/api/learning-s10';
 import { browserStore, type KeyValueStore } from './consent';
 
 /**

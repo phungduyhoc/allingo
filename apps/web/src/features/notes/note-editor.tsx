@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Check, Lock, NotebookPen, Pencil, RotateCcw, Trash2, TriangleAlert } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { NOTE_BODY_MAX, type Note } from '@allingo/schemas';
+import { NOTE_BODY_MAX, type Note } from '@allingo/schemas/api/learning-tools';
 import { Button, cn, Label, Spinner, Textarea } from '@allingo/ui';
 import { Markdown } from '@/components/markdown';
 import { handleExamLockedError } from '@/lib/exam-lock';

@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, RotateCcw, Upload } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { DEAD_LETTER_JOBS, PAYMENT_PROVIDER_CODES, type PaymentProviderCode, type ReconciliationRun } from '@allingo/schemas';
+import { DEAD_LETTER_JOBS, PAYMENT_PROVIDER_CODES, type PaymentProviderCode, type ReconciliationRun } from '@allingo/schemas/api/billing';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, NativeSelect, Spinner, Switch, Textarea } from '@allingo/ui';
 import { adminKeys, createReconciliation, downloadReconciliationCsv, listDeadLetters, listReconciliations, retryDeadLetter } from '@/lib/admin-api';
 import { formatVnd } from '@/lib/billing';

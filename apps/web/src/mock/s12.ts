@@ -1,14 +1,5 @@
-import {
-  BETA_DEFAULTS,
-  CONTENT_REPORT_SLA_HOURS,
-  SUPPORT_FIRST_RESPONSE_SLA_HOURS,
-  betaSurveyInputSchema,
-  contentReportInputSchema,
-  feedbackInputSchema,
-  npsInputSchema,
-  supportTicketInputSchema,
-  type User,
-} from '@allingo/schemas';
+import { type User } from '@allingo/schemas/api/core';
+import { BETA_DEFAULTS, CONTENT_REPORT_SLA_HOURS, adminBetaInviteSendInputSchema, SUPPORT_FIRST_RESPONSE_SLA_HOURS, betaSurveyInputSchema, contentReportInputSchema, feedbackInputSchema, isStaffRoles, npsInputSchema, supportTicketInputSchema } from '@allingo/schemas/api/s12';
 import { env } from '@/env';
 import { addLedger, notify } from './billing-core';
 import type { MockState, MockUserRecord } from './state';
@@ -101,6 +92,8 @@ const countBy = <T>(rows: T[], key: (r: T) => string) => rows.reduce<Record<stri
 /** Đường dẫn không bị beta gate chặn (như @Public / @BetaExempt của API – A194) */
 export function betaExempt(method: string, path: string): boolean {
   if (path === '/me') return method === 'GET' || method === 'PATCH' || method === 'DELETE';
+  // B6/S150: góp ý miễn gate (gửi được từ trang /beta); /uploads/presign (ảnh) vẫn theo gate
+  if (path === '/feedback') return method === 'POST';
   const prefixes = ['/auth/', '/flags', '/legal/', '/beta/', '/waitlist', '/support/tickets', '/me/support/', '/me/mfa', '/me/sessions', '/me/consents', '/programs', '/plans', '/payments/providers', '/payments/mock', '/referrals/', '/r/', '/lessons', '/analytics/events', '/promotions/validate', '/notifications/manage', '/notifications/unsubscribe', '/push/vapid-public-key', '/mock-upload/'];
   return prefixes.some((p) => path === p.replace(/\/$/, '') || path.startsWith(p));
 }
@@ -146,7 +139,9 @@ export function s12Mock<R>(d: S12Deps<R>) {
     const done = s().surveys[u.id] ?? {};
     const out: Array<{ kind: 'beta_onboarding' | 'nps_d7' | 'nps_d14'; due_at: string; expires_at: string | null }> = [];
     const inv = redeemedInvite(u.id);
-    if (u.roles.includes('beta_tester') && !done.beta_onboarding) out.push({ kind: 'beta_onboarding', due_at: inv?.redeemed_at ?? u.created_at, expires_at: null });
+    // B6/S146 (như API): chỉ beta tester (đổi mã/vai trò beta_tester) nhận khảo sát; nhân sự (STAFF_ROLES) không nhận
+    if (!(u.roles.includes('beta_tester') || inv) || isStaffRoles(u.roles)) return out;
+    if (!done.beta_onboarding) out.push({ kind: 'beta_onboarding', due_at: inv?.redeemed_at ?? u.created_at, expires_at: null });
     const base = Date.parse(inv?.redeemed_at ?? u.created_at);
     const forced = s().npsDue[u.id];
     for (const [kind, day, until] of [
@@ -503,17 +498,24 @@ export function s12Mock<R>(d: S12Deps<R>) {
     route('POST', '/admin/beta/invites/send', ({ body }) => {
       const a = requireAdmin();
       if (a instanceof Response) return a;
-      const limit = Math.min(500, Number((body as { limit?: number } | null)?.limit ?? BETA_DEFAULTS.daily_invite_limit));
+      // B6/S147 (như API): invite_ids (theo thứ tự truyền) và/hoặc batch → chỉ lô đã chọn; không truyền → mọi lời mời đang xếp hàng
+      const p = adminBetaInviteSendInputSchema.safeParse(body ?? {});
+      if (!p.success) return error(400, 'validation_failed', 'Invalid body', { issues: p.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) });
+      const limit = Math.min(500, p.data.limit ?? BETA_DEFAULTS.daily_invite_limit);
       const all = Object.values(s().invites);
       const sentToday = all.filter((i) => i.sent_at && Date.parse(i.sent_at) >= vnDayStart(Date.now())).length;
       const room = Math.max(0, Math.min(limit, BETA_DEFAULTS.daily_invite_limit - sentToday));
-      const queue = all.filter((i) => i.status === 'queued').sort((x, y) => x.created_at.localeCompare(y.created_at)).slice(0, room);
+      const ids = p.data.invite_ids ? [...new Set(p.data.invite_ids)] : null;
+      const eligible = all.filter((i) => i.status === 'queued' && (!ids || ids.includes(i.id)) && (!p.data.batch || i.batch === p.data.batch));
+      const ordered = ids ? eligible.sort((x, y) => ids.indexOf(x.id) - ids.indexOf(y.id)) : eligible.sort((x, y) => x.created_at.localeCompare(y.created_at));
+      const queue = ordered.slice(0, room);
       for (const i of queue) {
         Object.assign(i, { status: 'sent', sent_at: nowIso(), expires_at: new Date(Date.now() + BETA_DEFAULTS.invite_ttl_days * DAY).toISOString(), send_attempts: i.send_attempts + 1 });
         s().outbox.push({ to: i.email, code: i.code, at: nowIso() });
       }
       persist();
-      return json(202, { job_id: `beta.invites_send__manual-${Date.now()}`, mode: 'inline', result: { sent: queue.length, failed: 0, expired: 0 } });
+      const sentNow = all.filter((i) => i.sent_at && Date.parse(i.sent_at) >= vnDayStart(Date.now())).length;
+      return json(202, { job_id: `beta.invites_send__manual-${Date.now()}`, mode: 'inline', result: { sent: queue.length, failed: 0, expired: 0, remaining_today: Math.max(0, BETA_DEFAULTS.daily_invite_limit - sentNow), skipped: ids ? ids.length - eligible.length : 0 } });
     }),
     route('POST', '/admin/beta/invites/{inviteId}/revoke', ({ params }) => {
       const a = requireAdmin();
@@ -584,7 +586,17 @@ export function s12Mock<R>(d: S12Deps<R>) {
       r.resolution_note = b.resolution_note ?? r.resolution_note;
       r.updated_at = nowIso();
       r.resolved_at = r.status === 'open' ? null : nowIso();
-      if (r.status !== 'open' && was === 'open') notify(state, r.user_id, 'content.report_resolved', { report_id: r.id, fixed: r.status === 'fixed' }, { category: 'learning', url: '/notifications' });
+      if (r.status !== 'open' && was === 'open') {
+        // B6/S148 (như API): về trang xem lại câu đã báo trong bài đã nộp gần nhất; không có → /support
+        const qid = d.questionByVersion(r.question_version_id)?.question_id;
+        const att = qid
+          ? Object.values(state.attempts)
+              .filter((x) => x.user_id === r.user_id && (x.status === 'submitted' || x.status === 'graded') && !!x.answers[qid])
+              .sort((x, y) => (y.submitted_at ?? y.started_at).localeCompare(x.submitted_at ?? x.started_at))[0]
+          : undefined;
+        const link = att ? `/attempts/${att.id}/review?focus=${r.question_version_id}` : '/support';
+        notify(state, r.user_id, 'content.report_resolved', { report_id: r.id, fixed: r.status === 'fixed', attempt_id: att?.id ?? null, question_version_id: att ? r.question_version_id : null }, { category: 'learning', url: link });
+      }
       audit('content_report.update', a, 'content_report', r.id, { status: r.status }, { status: was });
       persist();
       return json(200, reportDto(r));
@@ -845,7 +857,12 @@ export function s12Mock<R>(d: S12Deps<R>) {
     },
     setNpsDue: (email: string, kind: 'nps_d7' | 'nps_d14' = 'nps_d7') => {
       const u = Object.values(state.users).find((x) => x.email?.toLowerCase() === email.toLowerCase());
-      if (u) s().npsDue[u.id] = kind;
+      if (u) {
+        s().npsDue[u.id] = kind;
+        // NPS chỉ dành cho beta tester (S146) → ép đến hạn = tester đã làm khảo sát onboarding
+        if (!u.roles.includes('beta_tester')) u.roles = [...u.roles, 'beta_tester'];
+        (s().surveys[u.id] ??= {}).beta_onboarding ??= { submitted_at: new Date().toISOString(), score: null, answers: {} };
+      }
       persist();
     },
     addDeadLetter: (job = 'beta.invites_send', queue = 'notify') => {

@@ -6,7 +6,9 @@ import { Check, Coins, Crown, Gift, Minus, Sparkles, Tag, TriangleAlert } from '
 import { useLocale, useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { FEATURE_GATES, GATE_KEYS, PROGRAM_CODES, type GateKey, type ProgramCode, type PromotionValidateResult } from '@allingo/schemas';
+import { type PromotionValidateResult } from '@allingo/schemas/api/billing';
+import { PROGRAM_CODES, type ProgramCode } from '@allingo/schemas/common';
+import { FEATURE_GATES, GATE_KEYS, type GateKey } from '@allingo/schemas/product/entitlements';
 import { Alert, AlertDescription, Badge, Button, buttonVariants, cn, Input, Label, Spinner, Tabs, TabsList, TabsTrigger } from '@allingo/ui';
 import { Link } from '@/i18n/navigation';
 import { useFlag } from '@/features/flags/flags-provider';

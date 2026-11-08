@@ -1,4 +1,5 @@
-import { ALLOWED_IMAGE_MIME, FEEDBACK_CATEGORIES, feedbackInputSchema, type FeedbackInput } from '@allingo/schemas';
+import { ALLOWED_IMAGE_MIME } from '@allingo/schemas/api/media';
+import { FEEDBACK_CATEGORIES, feedbackInputSchema, type FeedbackInput } from '@allingo/schemas/api/s12';
 import { env } from '@/env';
 
 /**

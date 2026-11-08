@@ -15,7 +15,7 @@ import { latestTraceId } from '@/lib/telemetry/last-trace';
  * chụp màn hình) tải qua `/uploads/presign` + PUT, tự gắn `trace_id` gần nhất + đường dẫn trang + phiên bản ứng dụng (hiển thị rõ
  * cho người dùng; không gửi email/SĐT). Ảnh xem trước bằng blob URL (CSP img-src có blob:), thu hồi khi đổi/đóng.
  */
-export function FeedbackDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function FeedbackDialog({ open, onOpenChange, allowScreenshot = true }: { open: boolean; onOpenChange: (open: boolean) => void; allowScreenshot?: boolean }) {
   const t = useTranslations('feedback');
   const te = useTranslations('errors');
   const pathname = usePathname();
@@ -79,6 +79,7 @@ export function FeedbackDialog({ open, onOpenChange }: { open: boolean; onOpenCh
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)} data-testid="feedback-dialog">
       <DialogContent
         onPaste={(e) => {
+          if (!allowScreenshot) return;
           const img = imageFromClipboard(e.clipboardData);
           if (img) {
             e.preventDefault();
@@ -133,6 +134,8 @@ export function FeedbackDialog({ open, onOpenChange }: { open: boolean; onOpenCh
                 {t('count', { count: message.length, max: FEEDBACK_MESSAGE_MAX })}
               </p>
             </div>
+            {/* B6/S150: trên /beta khi chưa có quyền beta – tải ảnh (/uploads/presign) vẫn theo beta gate → chỉ góp ý dạng chữ */}
+            {allowScreenshot ? (
             <div className="space-y-2">
               <span className="text-sm font-medium">{t('screenshot')}</span>
               {preview ? (
@@ -171,6 +174,11 @@ export function FeedbackDialog({ open, onOpenChange }: { open: boolean; onOpenCh
                 </p>
               ) : null}
             </div>
+            ) : (
+              <p className="text-xs text-muted-foreground" data-testid="feedback-no-screenshot">
+                {t('screenshotUnavailable')}
+              </p>
+            )}
             <p className="flex gap-2 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground" data-testid="feedback-context">
               <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               <span>

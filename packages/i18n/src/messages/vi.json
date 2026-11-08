@@ -3111,7 +3111,8 @@
       "message_short": "Viết ít nhất 3 ký tự.",
       "message_long": "Tối đa 4.000 ký tự.",
       "category": "Chọn loại góp ý."
-    }
+    },
+    "screenshotUnavailable": "Đính kèm ảnh màn hình sẽ mở sau khi bạn kích hoạt mã mời beta. Bạn vẫn gửi góp ý bằng chữ được."
   },
   "contentReport": {
     "button": "Báo lỗi câu hỏi",
@@ -3376,7 +3377,14 @@
         "crashFree": "Crash-free",
         "notConnected": "Chưa nối Sentry Release Health"
       },
-      "weekPlaceholder": "2026-W45"
+      "weekPlaceholder": "2026-W45",
+      "sendBatch": "Gửi đợt {batch}",
+      "sendBatchHint": "Chỉ gửi lời mời đang chờ của đợt {batch} (theo bộ lọc).",
+      "sendSelected": "Gửi đã chọn ({count})",
+      "selectQueuedPage": "Chọn {count} lời mời đang chờ",
+      "clearSelection": "Bỏ chọn",
+      "confirmSendSelectedTitle": "Gửi {count} lời mời đã chọn?",
+      "confirmSendBatchTitle": "Gửi lời mời của đợt {batch}?"
     },
     "feedback": {
       "category": "Loại",

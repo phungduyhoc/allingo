@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, Clock, LifeBuoy, MessageSquareText } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { SUPPORT_CATEGORIES, supportTicketInputSchema, type SupportTicketInput } from '@allingo/schemas';
+import { SUPPORT_CATEGORIES, supportTicketInputSchema, type SupportTicketInput } from '@allingo/schemas/api/s12';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, NativeSelect, Spinner, Textarea } from '@allingo/ui';
 import { Link, useRouter } from '@/i18n/navigation';
 import { useMe } from '@/lib/queries';

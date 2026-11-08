@@ -5,7 +5,7 @@ import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-q
 import { Coins } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { adminCreditAdjustInputSchema } from '@allingo/schemas';
+import { adminCreditAdjustInputSchema } from '@allingo/schemas/api/billing';
 import { Alert, AlertDescription, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, Spinner, Textarea } from '@allingo/ui';
 import { adjustUserCredits, adminKeys, listUserLedger, type CreditAdjustResult } from '@/lib/admin-api';
 import { getErrorCode } from '@/lib/errors';

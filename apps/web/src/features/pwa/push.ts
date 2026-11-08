@@ -1,4 +1,4 @@
-import type { PushSubscriptionInput } from '@allingo/schemas';
+import type { PushSubscriptionInput } from '@allingo/schemas/api/learning-tools';
 
 /**
  * Web Push phía trình duyệt (thuần – có test): chuyển khoá VAPID base64url → Uint8Array cho `pushManager.subscribe`,

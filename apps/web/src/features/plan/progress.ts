@@ -1,4 +1,5 @@
-import { levelForXp, WEEKDAY_CODES, type PlanWeek, type StudyPlan } from '@allingo/schemas';
+import { WEEKDAY_CODES, type PlanWeek, type StudyPlan } from '@allingo/schemas/api/learning-plan';
+import { levelForXp } from '@allingo/schemas/product/xp';
 
 /**
  * Định dạng tiến độ / dự báo / ngày của lộ trình (thuần, có test). Ngày lộ trình là ngày LỊCH của người học (YYYY-MM-DD) – luôn

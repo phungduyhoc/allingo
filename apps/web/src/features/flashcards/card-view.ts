@@ -1,4 +1,5 @@
-import type { SrsCard, VocabItem } from '@allingo/schemas';
+import type { VocabItem } from '@allingo/schemas/api/learning-s10';
+import type { SrsCard } from '@allingo/schemas/api/learning-tools';
 import { formatAnswer } from '@/lib/format-answer';
 
 /**

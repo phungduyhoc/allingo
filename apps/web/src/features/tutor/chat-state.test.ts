@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Message, TutorReply } from '@allingo/schemas';
+import type { Message, TutorReply } from '@allingo/schemas/api/core';
 import {
   chatReducer,
   fromApiMessage,

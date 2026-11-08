@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Copy, ImageIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { FEEDBACK_CATEGORIES, FEEDBACK_STATUSES } from '@allingo/schemas';
+import { FEEDBACK_CATEGORIES, FEEDBACK_STATUSES } from '@allingo/schemas/api/s12';
 import { NativeSelect } from '@allingo/ui';
 import { Link } from '@/i18n/navigation';
 import { copyText } from '@/lib/clipboard';

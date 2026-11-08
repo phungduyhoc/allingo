@@ -1,4 +1,4 @@
-import type { SrsCard } from '@allingo/schemas';
+import type { SrsCard } from '@allingo/schemas/api/learning-tools';
 
 /**
  * Phiên ôn thẻ (S10) – reducer thuần, có test. Thẻ đang xem = `queue[0]`. Chấm điểm cập nhật lạc quan (người học không phải

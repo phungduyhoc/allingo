@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Check, ClipboardCheck, Clock, Globe, GraduationCap, Target } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { WEEKDAY_CODES } from '@allingo/schemas';
+import { WEEKDAY_CODES } from '@allingo/schemas/api/learning-plan';
 import { Alert, AlertDescription, Badge, Button, Card, CardContent, CardHeader, CardTitle, cn, Input, Label, NativeSelect, Spinner, Switch, ToggleChip } from '@allingo/ui';
 import { useRouter } from '@/i18n/navigation';
 import { getErrorCode } from '@/lib/errors';

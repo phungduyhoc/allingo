@@ -1,4 +1,8 @@
-import { correctAnswerOf, grade, isAnswered, scorePartOf, type AttemptMode, type Forecast, type Stats } from '@allingo/schemas';
+import { type AttemptMode } from '@allingo/schemas/api/attempt';
+import { type Stats } from '@allingo/schemas/api/core';
+import { scorePartOf, type Forecast } from '@allingo/schemas/api/learning-s10';
+import { isAnswered } from '@allingo/schemas/question/answer';
+import { correctAnswerOf, grade } from '@allingo/schemas/question/grade';
 import { MOCK_DICTIONARY, type MockDictEntry } from './dictionary';
 import { MOCK_SUBSKILL_OF_TAG, type MockQuestion } from './fixtures';
 import { MOCK_VOCAB_LIST } from './learning-plan';

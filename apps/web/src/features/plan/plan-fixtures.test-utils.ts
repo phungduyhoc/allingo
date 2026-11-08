@@ -1,4 +1,4 @@
-import type { PlanTask, PlanWeek } from '@allingo/schemas';
+import type { PlanTask, PlanWeek } from '@allingo/schemas/api/learning-plan';
 
 /** Dữ liệu dựng nhanh cho test thuần của lộ trình (không phải mock API) */
 let seq = 0;

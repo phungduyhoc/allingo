@@ -1,4 +1,4 @@
-import { emptyAnswer, isAnswered } from '@allingo/schemas';
+import { emptyAnswer, isAnswered } from '@allingo/schemas/question/answer';
 import type { AnswerInput, Attempt, AttemptAnswersPut, AttemptMode, QuestionPublic } from '@/lib/types';
 import type { DraftEntry } from './draft-queue';
 

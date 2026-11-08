@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Calculator, PencilLine } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { CONTENT_REPORT_REASONS, CONTENT_REPORT_STATUSES } from '@allingo/schemas';
+import { CONTENT_REPORT_REASONS, CONTENT_REPORT_STATUSES } from '@allingo/schemas/api/s12';
 import { Badge, Button, cn, Label, NativeSelect, Tabs, TabsList, TabsTrigger } from '@allingo/ui';
 import { getErrorCode } from '@/lib/errors';
 import { getQuestionStats, listContentReports, patchContentReport, recomputeQuestionStats, s12Keys, type ContentReportItem, type QuestionStats } from '@/lib/s12-api';

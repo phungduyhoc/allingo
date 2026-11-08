@@ -1,4 +1,5 @@
-import { REFERRAL_DEFAULTS, notificationPreferencesPatchSchema, type NotificationCategories, type NotificationPreferences } from '@allingo/schemas';
+import { REFERRAL_DEFAULTS } from '@allingo/schemas/api/growth';
+import { notificationPreferencesPatchSchema, type NotificationCategories, type NotificationPreferences } from '@allingo/schemas/api/learning-tools';
 import { addLedger, notificationDto, notify } from './billing-core';
 import type { BillingDeps, MockRouteDef } from './billing';
 import type { MockReferralRecord, MockState, MockUserRecord } from './state';

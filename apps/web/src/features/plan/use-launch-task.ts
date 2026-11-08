@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@allingo/api-client';
-import type { PlanTask } from '@allingo/schemas';
+import type { PlanTask } from '@allingo/schemas/api/learning-plan';
 import { useRouter } from '@/i18n/navigation';
 import { queryKeys } from '@/lib/queries';
 import { createErrorsDrill, createPlanAttempt } from '@/lib/plan-api';

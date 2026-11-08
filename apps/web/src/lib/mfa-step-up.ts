@@ -9,7 +9,7 @@ import { ApiError } from '@allingo/api-client';
  */
 
 export interface MfaRequiredInfo {
-  /** `details.enrolled` (false → phải đăng ký TOTP trước) – API hiện chưa luôn gửi → null = chưa biết */
+  /** `details.enrolled` (false → phải đăng ký TOTP trước) – API gửi từ B7/S144; null = API cũ không gửi (web tra /me/mfa dự phòng) */
   enrolled: boolean | null;
   reason: string | null;
 }

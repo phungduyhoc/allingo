@@ -3,7 +3,7 @@
 import * as React from 'react';
 import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
-import type { Thread } from '@allingo/schemas';
+import type { Thread } from '@allingo/schemas/api/core';
 import { listThreads } from '@/lib/learning-api';
 import { isFreeContext, THREADS_KEY, useTutorChat, type TutorContext } from './use-tutor-chat';
 

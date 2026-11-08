@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { ArrowRight, Info, Target } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import type { DiagnosticResult } from '@allingo/schemas';
+import type { DiagnosticResult } from '@allingo/schemas/api/learning-plan';
 import { Alert, AlertDescription, Badge, Button, buttonVariants, Card, CardContent, CardHeader, CardTitle, cn, Progress, Spinner } from '@allingo/ui';
 import { Link, useRouter } from '@/i18n/navigation';
 import { getErrorCode } from '@/lib/errors';

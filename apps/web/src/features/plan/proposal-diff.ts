@@ -1,4 +1,4 @@
-import type { PlanAdjustProposal, PlanTask } from '@allingo/schemas';
+import type { PlanAdjustProposal, PlanTask } from '@allingo/schemas/api/learning-plan';
 
 /**
  * So sánh trước/sau của đề xuất điều chỉnh (thuần, có test): mỗi task thay đổi → một dòng (bỏ / dời ngày / giảm phút / thêm).

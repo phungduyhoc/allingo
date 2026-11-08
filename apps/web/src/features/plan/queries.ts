@@ -1,7 +1,8 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
-import type { PlanAdjustProposal, PlanCheckinInput, PlanCreateInput, PlanTask, PlanTaskPatch, PlanToday, ProgramCode, StudyPlan } from '@allingo/schemas';
+import type { PlanAdjustProposal, PlanCheckinInput, PlanCreateInput, PlanTask, PlanTaskPatch, PlanToday, StudyPlan } from '@allingo/schemas/api/learning-plan';
+import type { ProgramCode } from '@allingo/schemas/common';
 import { queryKeys } from '@/lib/queries';
 import {
   applyProposal,

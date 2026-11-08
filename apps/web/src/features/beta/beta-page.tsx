@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BadgeCheck, CalendarClock, Coins, KeyRound, LifeBuoy, Sparkles } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Alert, AlertDescription, Badge, Button, buttonVariants, Card, CardContent, CardDescription, CardHeader, CardTitle, cn, Input, Label, Spinner } from '@allingo/ui';
-import { BETA_DEFAULTS } from '@allingo/schemas';
+import { BETA_DEFAULTS } from '@allingo/schemas/api/s12';
 import { Link, useRouter } from '@/i18n/navigation';
 import { useMe } from '@/lib/queries';
 import { isApiError } from '@/lib/errors';
@@ -13,6 +13,7 @@ import { betaNextPath, formatInviteCodeInput, hasAmbiguousChars, isCompleteInvit
 import { getBetaStatus, redeemBetaCode, s12Keys, type BetaRedeemResult } from '@/lib/s12-api';
 import { useClientValue } from '@/lib/use-mounted';
 import { WaitlistForm } from '@/features/marketing/waitlist-form';
+import { FeedbackButton } from '@/features/feedback/feedback-button';
 
 /**
  * Trang beta kín `/beta` (S12): nơi listener của khu vực học chuyển tới khi API trả 403 `beta_required`, đích của email mời
@@ -90,12 +91,16 @@ export function BetaPage() {
             </Card>
           ) : null}
           {user && !user.is_guest ? (
-            <p className="text-sm text-muted-foreground">
-              {t('needHelp')}{' '}
-              <Link href="/support" className="font-semibold text-primary underline-offset-4 hover:underline" data-testid="beta-support-link">
-                {t('contactSupport')}
-              </Link>
-            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-sm text-muted-foreground">
+                {t('needHelp')}{' '}
+                <Link href="/support" className="font-semibold text-primary underline-offset-4 hover:underline" data-testid="beta-support-link">
+                  {t('contactSupport')}
+                </Link>
+              </p>
+              {/* B6/S150: góp ý miễn beta gate – gửi được ngay cả khi chưa có mã; chưa có quyền → không đính ảnh (presign có gate) */}
+              <FeedbackButton examAware={false} allowScreenshot={status.data?.has_access === true} variant="outline" />
+            </div>
           ) : null}
         </div>
       </div>

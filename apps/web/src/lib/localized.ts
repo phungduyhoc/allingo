@@ -1,4 +1,4 @@
-import { pickLocalized, type LocalizedText } from '@allingo/schemas';
+import { pickLocalized, type LocalizedText } from '@allingo/schemas/common';
 import { useLocale } from 'next-intl';
 
 /** Lấy chuỗi đa ngôn ngữ JSONB {vi,en,...} theo locale hiện tại, fallback en → vi (CLAUDE.md §5.11) */

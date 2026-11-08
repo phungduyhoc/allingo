@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { CheckCircle2 } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { CONTENT_REPORT_REASONS, CONTENT_REPORT_SLA_HOURS } from '@allingo/schemas';
+import { CONTENT_REPORT_REASONS, CONTENT_REPORT_SLA_HOURS } from '@allingo/schemas/api/s12';
 import { Button, Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Label, NativeSelect, Spinner, Textarea } from '@allingo/ui';
 import { getErrorCode } from '@/lib/errors';
 import { createContentReport, type ContentReportCreated } from '@/lib/s12-api';

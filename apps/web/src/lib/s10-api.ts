@@ -1,26 +1,6 @@
 import { ApiError, unwrap } from '@allingo/api-client';
-import {
-  errorLogEntrySchema,
-  errorLogPageSchema,
-  forecastSchema,
-  funnelEventResultSchema,
-  srsCardSchema,
-  srsDueListSchema,
-  vocabEnrollResultSchema,
-  vocabItemSchema,
-  vocabListSchema,
-  type ErrorKind,
-  type ErrorLogEntry,
-  type ErrorLogPage,
-  type ErrorPatch,
-  type Forecast,
-  type FunnelEventInput,
-  type SrsCard,
-  type SrsDueList,
-  type VocabEnrollResult,
-  type VocabItem,
-  type VocabList,
-} from '@allingo/schemas';
+import { errorLogEntrySchema, errorLogPageSchema, forecastSchema, funnelEventResultSchema, srsDueListSchema, vocabEnrollResultSchema, vocabItemSchema, vocabListSchema, type ErrorKind, type ErrorLogEntry, type ErrorLogPage, type ErrorPatch, type Forecast, type FunnelEventInput, type SrsDueList, type VocabEnrollResult, type VocabItem, type VocabList } from '@allingo/schemas/api/learning-s10';
+import { srsCardSchema, type SrsCard } from '@allingo/schemas/api/learning-tools';
 import type { z } from 'zod';
 import { getApi } from './api';
 import { pageOf, parseOr } from './zod-parse';

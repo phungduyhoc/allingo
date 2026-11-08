@@ -2,7 +2,7 @@
 
 import { Bell, CreditCard, GraduationCap, Megaphone, ShieldAlert } from 'lucide-react';
 import { useFormatter, useLocale, useTranslations } from 'next-intl';
-import type { NotificationItem } from '@allingo/schemas';
+import type { NotificationItem } from '@allingo/schemas/api/billing';
 import { cn } from '@allingo/ui';
 import { useRouter } from '@/i18n/navigation';
 import { useNowMinute } from '@/features/quota/quota-ui';

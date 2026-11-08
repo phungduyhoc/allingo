@@ -4,7 +4,7 @@ import * as React from 'react';
 import { BookOpenCheck, CheckCircle2, Layers, Lock, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import type { VocabList } from '@allingo/schemas';
+import type { VocabList } from '@allingo/schemas/api/learning-s10';
 import { Badge, Button, buttonVariants, Card, CardContent, cn, Spinner } from '@allingo/ui';
 import { Link, useRouter } from '@/i18n/navigation';
 import { PageHeader } from '@/components/page-header';

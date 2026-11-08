@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseSocketFrame, reconnectDelay, socketUrl } from './realtime';
 import { parseReferralParams } from './referral';
 import { pickBanner } from '@/features/billing/banner';
-import type { Subscription } from '@allingo/schemas';
+import type { Subscription } from '@allingo/schemas/api/billing';
 
 describe('giao thức Socket.IO tối giản', () => {
   it('khung Engine.IO: open/ping/close', () => {

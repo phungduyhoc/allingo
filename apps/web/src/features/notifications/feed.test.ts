@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { NotificationItem } from '@allingo/schemas';
+import type { NotificationItem } from '@allingo/schemas/api/billing';
 import { EMPTY_FEED, badgeText, feedReducer, type NotificationFeed } from './feed';
 
 const item = (id: string, at: string, read = false, channel = 'inapp'): NotificationItem => ({

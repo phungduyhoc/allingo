@@ -68,6 +68,18 @@ test('khu vực học: chân trang có tuyên bố không liên kết ETS + liê
   await expectNoHorizontalOverflow(page, 'dashboard');
 });
 
+test('B6/S152: trang không tồn tại trong khu vực học trả HTTP 404 thật (không phải 200 + nội dung "không tìm thấy")', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'Một lần (desktop)');
+  for (const p of ['/vi/admin/khong-co', '/vi/admin/billing/khong-co', '/vi/attempts/khong-phai-uuid/review', '/vi/support/tickets/123', '/vi/account/orders/abc', '/vi/toeic/khong-co']) {
+    const res = await page.goto(p);
+    expect(res?.status(), p).toBe(404);
+    await expect(page.getByRole('heading', { name: 'Không tìm thấy trang' }), p).toBeVisible();
+  }
+  // Route hợp lệ vẫn 200 (AuthGate xử lý đăng nhập ở client)
+  expect((await page.goto('/vi/admin/beta'))?.status()).toBe(200);
+  expect((await page.goto('/vi/attempts/3f2b8c1e-1d2a-4b3c-8d4e-123456789abc/review'))?.status()).toBe(200);
+});
+
 test('NPS ngày 7: không hiện khi đang thi; "Để sau" ẩn 24 giờ; gửi 0–10 + lý do → cảm ơn → không hiện lại', async ({ page, isMobile }) => {
   test.skip(REAL, 'Mốc ngày 7/14 do server tính từ ngày đổi mã – mock ép đến hạn');
   test.skip(isMobile, 'Một lần (desktop)');

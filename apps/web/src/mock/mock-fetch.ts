@@ -1,30 +1,9 @@
-import {
-  ATTEMPT_GRACE_SECONDS,
-  DEFAULT_QUOTAS,
-  XP_RULES,
-  aiFeedbackInputSchema,
-  answerInputSchema,
-  attemptEventSchema,
-  attemptUiStateSchema,
-  correctAnswerOf,
-  grade,
-  isAnswered,
-  isSpokenTextSection,
-  redactSpokenText,
-  timedDrillBudgetSeconds,
-  toPublicContent,
-  type Attempt,
-  type AttemptAiDiagnosis,
-  type AttemptMode,
-  type AttemptResult,
-  type AttemptReview,
-  type AttemptSummary,
-  type Entitlements,
-  type Explanation,
-  type Stats,
-  type TranscriptHighlight,
-  type User,
-} from '@allingo/schemas';
+import { attemptEventSchema, attemptUiStateSchema, timedDrillBudgetSeconds, type Attempt, type AttemptMode, type AttemptResult, type AttemptReview, type AttemptSummary, type TranscriptHighlight } from '@allingo/schemas/api/attempt';
+import { aiFeedbackInputSchema, type AttemptAiDiagnosis, type Entitlements, type Explanation, type Stats, type User } from '@allingo/schemas/api/core';
+import { ATTEMPT_GRACE_SECONDS, DEFAULT_QUOTAS, XP_RULES } from '@allingo/schemas/product';
+import { answerInputSchema, isAnswered } from '@allingo/schemas/question/answer';
+import { correctAnswerOf, grade } from '@allingo/schemas/question/grade';
+import { isSpokenTextSection, redactSpokenText, toPublicContent } from '@allingo/schemas/question/public';
 import { SCALE_INFO, TOEIC_PART_SKILL, diagnoseAttempt, toeicLr, toeicLrEstimate } from '@allingo/scoring';
 import { env } from '@/env';
 import { FLAG_DEFAULTS, PUBLIC_FLAG_KEYS } from '@/lib/flags';

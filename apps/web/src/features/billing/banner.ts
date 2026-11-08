@@ -1,4 +1,4 @@
-import type { Subscription } from '@allingo/schemas';
+import type { Subscription } from '@allingo/schemas/api/billing';
 
 const EXPIRING_DAYS = 7;
 const ENDED_RECENT_MS = 3 * 86_400_000;

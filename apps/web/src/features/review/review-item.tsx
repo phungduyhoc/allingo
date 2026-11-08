@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Check, Flag, Headphones, MessagesSquare, Quote, Users, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { explanationSchema } from '@allingo/schemas';
+import { explanationSchema } from '@allingo/schemas/api/core';
 import { Badge, Button, cn } from '@allingo/ui';
 import {
   asPublicContent,

@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookmarkCheck, BookmarkPlus, Languages, Lock, Sparkles, TriangleAlert, Volume2, X } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import type { DictionaryEntry } from '@allingo/schemas';
+import type { DictionaryEntry } from '@allingo/schemas/api/learning-tools';
 import { Badge, Button, cn, Skeleton, Spinner } from '@allingo/ui';
 import { handleExamLockedError } from '@/lib/exam-lock';
 import { getErrorCode, isApiError } from '@/lib/errors';

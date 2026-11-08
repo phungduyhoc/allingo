@@ -49,7 +49,8 @@ function errKeyOf(err: unknown): ErrKey {
 function StepUpDialog({ info, onDone }: { info: MfaRequiredInfo; onDone: (ok: boolean) => void }) {
   const t = useTranslations('mfaStepUp');
   const qc = useQueryClient();
-  const status = useQuery({ queryKey: s12Keys.mfa, queryFn: getMfaStatus, staleTime: 0 });
+  // B7/S144: API gửi `details.enrolled` trong 403 mfa_required → không gọi thêm /me/mfa; chỉ dự phòng khi API cũ không gửi
+  const status = useQuery({ queryKey: s12Keys.mfa, queryFn: getMfaStatus, staleTime: 0, enabled: info.enrolled === null });
   const enrolled = info.enrolled ?? status.data?.enrolled ?? null;
   const [recovery, setRecovery] = React.useState(false);
   const [code, setCode] = React.useState('');

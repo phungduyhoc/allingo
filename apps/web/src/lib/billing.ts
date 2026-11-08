@@ -1,12 +1,6 @@
 import { ApiError } from '@allingo/api-client';
-import {
-  buyerInfoSchema,
-  normalizeVnTaxCode,
-  type BuyerInfo,
-  type OrderStatus,
-  type PromotionValidateResult,
-  type planSchema,
-} from '@allingo/schemas';
+import { buyerInfoSchema, normalizeVnTaxCode, type BuyerInfo, type OrderStatus, type PromotionValidateResult } from '@allingo/schemas/api/billing';
+import { type planSchema } from '@allingo/schemas/api/core';
 import type { z } from 'zod';
 
 /**

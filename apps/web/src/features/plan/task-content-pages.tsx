@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, BookOpen, CheckCircle2, Dumbbell } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { pickLocalized, type LocalizedText } from '@allingo/schemas';
+import { pickLocalized, type LocalizedText } from '@allingo/schemas/common';
 import { Badge, Button, buttonVariants, Card, CardContent, Spinner } from '@allingo/ui';
 import { Link, useRouter } from '@/i18n/navigation';
 import { Markdown } from '@/components/markdown';

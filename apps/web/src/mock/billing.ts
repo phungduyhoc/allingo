@@ -1,13 +1,4 @@
-import {
-  BILLING_JOBS,
-  adminCreditAdjustInputSchema,
-  buyerInfoSchema,
-  promotionCreateInputSchema,
-  promotionPatchInputSchema,
-  refundInputSchema,
-  type ReconciliationMismatch,
-  type ReconciliationRun,
-} from '@allingo/schemas';
+import { BILLING_JOBS, adminCreditAdjustInputSchema, buyerInfoSchema, promotionCreateInputSchema, promotionPatchInputSchema, refundInputSchema, type ReconciliationMismatch, type ReconciliationRun } from '@allingo/schemas/api/billing';
 import { MOCK_PLANS, type MockPromotion } from './billing-fixtures';
 import {
   addLedger,

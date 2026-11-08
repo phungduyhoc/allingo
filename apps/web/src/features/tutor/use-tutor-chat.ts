@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { tutorReplySchema } from '@allingo/schemas';
+import { tutorReplySchema } from '@allingo/schemas/api/core';
 import { aiErrorToApiError, toAiStreamError, type AiStreamError } from '@/lib/ai-stream';
 import { handleExamLockedError } from '@/lib/exam-lock';
 import { createThread, getThread, listOlderMessages, sendThreadMessage } from '@/lib/learning-api';

@@ -1,4 +1,4 @@
-import type { PromotionConditions, PromotionKind } from '@allingo/schemas';
+import type { PromotionConditions, PromotionKind } from '@allingo/schemas/api/billing';
 import type { Plan } from '@/lib/billing';
 
 /**

@@ -1,4 +1,9 @@
-import type { AnswerInput, AttemptAiDiagnosis, AttemptMode, AttemptResult, Enrollment, Explanation, Note, NotificationPreferences, PlanAdjustProposal, PlanSettings, PlanTask, ReconciliationRun, RefusalCode, TutorCitation, User } from '@allingo/schemas';
+import type { AttemptMode, AttemptResult } from '@allingo/schemas/api/attempt';
+import type { ReconciliationRun } from '@allingo/schemas/api/billing';
+import type { AttemptAiDiagnosis, Enrollment, Explanation, RefusalCode, TutorCitation, User } from '@allingo/schemas/api/core';
+import type { PlanAdjustProposal, PlanSettings, PlanTask } from '@allingo/schemas/api/learning-plan';
+import type { Note, NotificationPreferences } from '@allingo/schemas/api/learning-tools';
+import type { AnswerInput } from '@allingo/schemas/question/answer';
 import type { DiagnosticState } from '@allingo/scoring';
 import type { MockPromotion } from './billing-fixtures';
 import type { MockS12State } from './s12';

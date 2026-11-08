@@ -92,7 +92,9 @@ test('đổi ngày task trong tuần: kéo thả + menu "Chuyển sang ngày…"
   if (!isMobile) {
     const second = day(d0).locator('[data-testid="plan-task"][data-status="pending"]').first();
     const id2 = (await second.getAttribute('data-task-id'))!;
-    await second.dragTo(day(d1));
+    // Thả gần đầu ô ngày đích (cùng hàng với ô hôm nay, lg:grid-cols-2): thả vào TÂM ô cao (font hệ thống rộng trên CI → ô ~490 px)
+    // buộc Playwright cuộn trang giữa thao tác kéo HTML5 → Chromium bỏ sự kiện dragover/drop (CI đỏ, cục bộ xanh)
+    await second.dragTo(day(d1), { targetPosition: { x: 40, y: 24 } });
     await expect(day(d1).locator(`[data-task-id="${id2}"]`)).toBeVisible({ timeout: 15_000 });
     await page.reload();
     await expect(day(d1).locator(`[data-task-id="${id2}"]`)).toBeVisible();

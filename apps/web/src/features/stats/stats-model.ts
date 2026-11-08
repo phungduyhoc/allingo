@@ -1,4 +1,5 @@
-import type { Forecast, Stats } from '@allingo/schemas';
+import type { Stats } from '@allingo/schemas/api/core';
+import type { Forecast } from '@allingo/schemas/api/learning-s10';
 
 /**
  * Mô hình hiển thị thống kê (S10) – thuần, có test. Chuyển `GET /me/stats` (trường S10 tuỳ chọn – API cũ/mock thiếu thì rỗng)

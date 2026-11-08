@@ -1,23 +1,6 @@
 import { unwrap } from '@allingo/api-client';
-import {
-  creditBalanceSchema,
-  ledgerEntrySchema,
-  orderSchema,
-  payResultSchema,
-  paymentProvidersSchema,
-  planSchema,
-  promotionRedeemResultSchema,
-  promotionValidateResultSchema,
-  subscriptionSchema,
-  type BuyerInfo,
-  type LedgerEntry,
-  type Order,
-  type PayResult,
-  type PaymentProviders,
-  type PromotionRedeemResult,
-  type PromotionValidateResult,
-  type Subscription,
-} from '@allingo/schemas';
+import { ledgerEntrySchema, orderSchema, payResultSchema, paymentProvidersSchema, promotionRedeemResultSchema, promotionValidateResultSchema, subscriptionSchema, type BuyerInfo, type LedgerEntry, type Order, type PayResult, type PaymentProviders, type PromotionRedeemResult, type PromotionValidateResult, type Subscription } from '@allingo/schemas/api/billing';
+import { creditBalanceSchema, planSchema } from '@allingo/schemas/api/core';
 import type { z } from 'zod';
 import { getApi } from './api';
 import type { Plan } from './billing';

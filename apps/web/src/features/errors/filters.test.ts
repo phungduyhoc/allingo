@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ErrorLogEntry } from '@allingo/schemas';
+import type { ErrorLogEntry } from '@allingo/schemas/api/learning-s10';
 import { applyEntryPatch, DEFAULT_ERROR_FILTERS, errorDrillBody, errorFiltersToQuery, errorFiltersToSearch, parseErrorFilters, sortedCounts, sortedSections } from './filters';
 
 const entry = (id: string, extra: Partial<ErrorLogEntry> = {}): ErrorLogEntry => ({

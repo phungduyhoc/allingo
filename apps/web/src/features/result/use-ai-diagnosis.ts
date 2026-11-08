@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { attemptAiDiagnosisSchema } from '@allingo/schemas';
+import { attemptAiDiagnosisSchema } from '@allingo/schemas/api/core';
 import { postJsonOrStream } from '@/lib/api';
 import { aiErrorToApiError, aiStreamReducer, consumeAiResponse, initialAiStream, toAiStreamError, type AiStreamAction, type AiStreamState } from '@/lib/ai-stream';
 import { notifyApiError } from '@/lib/api-error-events';

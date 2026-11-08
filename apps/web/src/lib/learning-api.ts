@@ -1,28 +1,6 @@
 import { unwrap } from '@allingo/api-client';
-import {
-  dictionaryEntrySchema,
-  messageSchema,
-  noteSchema,
-  notificationPreferencesSchema,
-  pushSubscriptionSchema,
-  srsCardSchema,
-  threadDetailSchema,
-  threadSchema,
-  ttsResultSchema,
-  vapidPublicKeySchema,
-  type DictionaryEntry,
-  type Message,
-  type Note,
-  type NotificationPreferences,
-  type NotificationPreferencesPatch,
-  type PushSubscriptionInput,
-  type PushSubscriptionView,
-  type SrsCard,
-  type SrsCardCreate,
-  type Thread,
-  type ThreadDetail,
-  type TtsResult,
-} from '@allingo/schemas';
+import { messageSchema, threadDetailSchema, threadSchema, type Message, type Thread, type ThreadDetail } from '@allingo/schemas/api/core';
+import { dictionaryEntrySchema, noteSchema, notificationPreferencesSchema, pushSubscriptionSchema, srsCardSchema, ttsResultSchema, vapidPublicKeySchema, type DictionaryEntry, type Note, type NotificationPreferences, type NotificationPreferencesPatch, type PushSubscriptionInput, type PushSubscriptionView, type SrsCard, type SrsCardCreate, type TtsResult } from '@allingo/schemas/api/learning-tools';
 import type { z } from 'zod';
 import { getApi, postJsonOrStream } from './api';
 import type { Page } from './types';

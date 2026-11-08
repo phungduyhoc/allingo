@@ -1,4 +1,4 @@
-import { WEEKDAY_CODES, type PlanCreateInput } from '@allingo/schemas';
+import { WEEKDAY_CODES, type PlanCreateInput } from '@allingo/schemas/api/learning-plan';
 
 /**
  * Nháp onboarding 4 bước (S9): chương trình → mục tiêu + ngày thi → giờ học/tuần + ngày học + giờ nhắc + múi giờ → chẩn đoán →

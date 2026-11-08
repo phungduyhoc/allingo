@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { notificationItemSchema } from '@allingo/schemas';
+import { notificationItemSchema } from '@allingo/schemas/api/billing';
 import { useRouter } from '@/i18n/navigation';
 import { billingKeys } from '@/lib/billing-api';
 import { realtimeHub } from '@/lib/realtime-hub';

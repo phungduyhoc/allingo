@@ -477,3 +477,19 @@ packages/ui/src                component dùng chung (Button, Card, Dialog/Sheet
   1,08 MB JS chưa nén / 24 tệp, 14 request API (khách không gọi `/me/surveys/pending`; nút Góp ý dùng chung query bài thi đang làm `useExamLock` đã có ở dashboard). Thêm vào khung app: nút Góp ý (hộp thoại nạp
   lười), chân trang, listener beta/MFA; dashboard: thẻ khảo sát dựng khi rảnh. Chưa đo Lighthouse (không có Lighthouse trong phiên).
 
+
+### Backlog B6 + B7 (09/11/2026)
+
+- **Tách gói `@allingo/schemas` (S141)**: ESM tách chunk + một entry/module + `sideEffects: false`; web nhập theo đường dẫn con
+  (`@allingo/schemas/api/s12`, `/api/core`, `/question/answer`, `/product/xp`…). Bản build: JS tải lần đầu dashboard 1.035,3 → 991,1 KB
+  (gzip 306,8 → 298,2 KB), `/beta` 929,3 → 882,1 KB, `/admin/<mục>` 989,5 → 944,9 KB; schema admin/AI/chấm điểm/đề mẫu không còn ở
+  dashboard. Thêm import mới: nhập từ đường dẫn con của module định nghĩa tên (không nhập gốc `@allingo/schemas` trong mã client).
+- **Admin S12 (S145)**: kiểu `components['schemas']` dùng trực tiếp (OpenAPI đã khai báo `required`) – bỏ `Full<>`/ép kiểu; Zod admin ở
+  `packages/schemas/src/api/s12-admin.ts`. Beta: tab Lời mời có chọn từng lời mời → "Gửi đã chọn" và "Gửi đợt <batch>" theo bộ lọc (S147).
+- **404 thật (S152)**: `src/lib/app-routes.ts` + `proxy.ts` rewrite route (app) sai dạng sang route bắt-mọi → HTTP 404 (AuthGate client
+  không cho `notFound()` trong (app) đổi mã trạng thái). **Góp ý trên `/beta`** (S150, chỉ chữ khi chưa có quyền beta).
+  **Step-up MFA** không gọi `/me/mfa` khi API đã gửi `details.enrolled` (S144). Thông báo báo lỗi câu trỏ trang xem lại câu (S148).
+- **E2E CI**: `public/sw.js` (gitignore) dựng trước `next dev` (`predev`, `dev:mock`, webServer Playwright) – CI máy sạch thiếu SW làm test
+  PWA đỏ. Thanh "Câu sai trước/tiếp" ở Review không còn tràn ngang mobile với font hệ thống rộng (DejaVu Sans trên runner Ubuntu) – nguyên
+  nhân gốc các ca click "intercepts pointer events" trên Pixel 7 (trình duyệt thu nhỏ trang tràn ngang). Tái hiện cục bộ:
+  `FONTCONFIG_FILE=$PWD/e2e/fonts/ci-like.conf CI=1 pnpm exec playwright test --project=mobile` (ép sans-serif/system-ui = DejaVu Sans, loại Inter – như runner CI).

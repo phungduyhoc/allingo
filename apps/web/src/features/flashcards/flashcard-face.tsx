@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { CheckCircle2, CircleAlert, Volume2, XCircle } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import type { SrsCard } from '@allingo/schemas';
+import type { SrsCard } from '@allingo/schemas/api/learning-tools';
 import { Badge, Button, cn, Input } from '@allingo/ui';
 import { cardView, type CardView } from './card-view';
 import { checkDictation, type DictationResult, type ReviewMode, type Side } from './session';

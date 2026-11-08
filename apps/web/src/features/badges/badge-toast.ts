@@ -1,4 +1,5 @@
-import { pickLocalized, type LocalizedText, type NotificationItem } from '@allingo/schemas';
+import { type NotificationItem } from '@allingo/schemas/api/billing';
+import { pickLocalized, type LocalizedText } from '@allingo/schemas/common';
 
 /**
  * Tên huy hiệu trong thông báo `learning.badge_awarded` (payload `badge_name` {vi,en} hoặc chuỗi; ưu tiên `payload.data`) –

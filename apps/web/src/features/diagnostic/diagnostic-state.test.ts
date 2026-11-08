@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DiagnosticStep } from '@allingo/schemas';
+import type { DiagnosticStep } from '@allingo/schemas/api/learning-plan';
 import { answerBody, currentQuestionId, diagnosticProgress, diagnosticReducer, initialDiagnosticState, type DiagnosticUiState } from './diagnostic-state';
 
 const step = (qid: string | null, over: Partial<DiagnosticStep> = {}): DiagnosticStep => ({

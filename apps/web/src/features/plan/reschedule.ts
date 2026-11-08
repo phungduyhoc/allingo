@@ -1,4 +1,4 @@
-import type { PlanTask, PlanWeek } from '@allingo/schemas';
+import type { PlanTask, PlanWeek } from '@allingo/schemas/api/learning-plan';
 
 /**
  * Đổi ngày task trong tuần (kéo thả / menu "Chuyển sang ngày…") – luật hiển thị bám PATCH /plan-tasks/{id} của API (server vẫn kiểm
