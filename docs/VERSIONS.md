@@ -24,6 +24,17 @@
 | handlebars / nodemailer | 4.7.x / 10.3.x | Sprint 8 dùng lại (đã có từ S0/S1): mẫu thông báo vi/en, email SMTP/SES; Resend gọi HTTP bằng fetch; PDF hoá đơn mock tự dựng – không thêm thư viện |
 | fast-check | 4.10.x | Sprint 9 – devDependency `packages/planner` (property-based test PlanGenerator, 500 ca/thuộc tính) |
 
+## Sprint 12 – không thêm thư viện; overrides bảo mật (`package.json` gốc `pnpm.overrides`)
+
+| Gói (bắc cầu) | Ép lên | Lý do |
+| --- | --- | --- |
+| dompurify (monaco của Payload admin) | 3.4.17 | GHSA high – pentest-1 F11 |
+| zod (`@serwist/next` build) | 4.6.7 | GHSA – cùng dòng 4.6.x của repo |
+| happy-dom (peer vitest) | 21.0.4 | GHSA critical (chỉ dev/test) |
+
+TOTP (RFC 6238/4226), base32, AES-256-GCM tự viết bằng `node:crypto` (không thêm `otplib`/`speakeasy`); danh sách mật khẩu lộ offline
+trong mã nguồn (`apps/api/src/modules/iam/password/common-passwords.ts`); HIBP qua `fetch`.
+
 ## Công cụ vận hành/bảo mật (Sprint 11 – không phải phụ thuộc npm runtime)
 
 | Công cụ | Phiên bản | Dùng ở |

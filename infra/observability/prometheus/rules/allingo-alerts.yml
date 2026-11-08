@@ -160,3 +160,12 @@ groups:
           summary: 'Thiếu partition tháng tới cho {{ $labels.table }}'
           description: 'Job ops.partition.ensure không chạy/thất bại – chèn dữ liệu tháng mới sẽ lỗi. Chạy pnpm --filter @allingo/db exec tsx scripts/ensure-partitions.ts.'
           runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/db-slow.md#partition
+      # S12 – beta kín: SLA hỗ trợ (báo lỗi câu xử lý 48 giờ, ticket phản hồi đầu 24 giờ) – gauge do job ops.sla_check cập nhật 15′/lần
+      - alert: SupportSlaBreached
+        expr: max by (kind) (support_sla_overdue) > 0
+        for: 30m
+        labels: { severity: ticket, team: support }
+        annotations:
+          summary: '{{ $value }} mục {{ $labels.kind }} quá hạn SLA'
+          description: 'content_report: báo lỗi câu mở quá 48 giờ (hàng đợi CMS "Báo lỗi câu hỏi"); support_ticket: ticket chưa phản hồi đầu quá 24 giờ (GET /admin/support/tickets?overdue=true).'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/beta-ops.md#sla

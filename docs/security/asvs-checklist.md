@@ -18,13 +18,13 @@ API (CSP nonce, Sentry web, flags client do sprint web). Trạng thái: ✅ đ�
 ## V2 Xác thực
 | ID | Yêu cầu | TT | Bằng chứng / ghi chú |
 | --- | --- | --- | --- |
-| 2.1.1 / 2.1.7 | Mật khẩu ≥ 12 ký tự / kiểm mật khẩu lộ | ⚠️ | Schema hiện ≥ 8 ký tự; chưa kiểm HIBP (đề xuất S12, cần quyết định sản phẩm) |
+| 2.1.1 / 2.1.7 | Mật khẩu ≥ 12 ký tự / kiểm mật khẩu lộ | ✅ | S12: `PASSWORD_MIN_LENGTH` 12 + danh sách lộ offline + biến thể; HIBP k-anonymity tuỳ chọn (`PASSWORD_HIBP_ENABLED`) |
 | 2.2.1 | Chống brute force / credential stuffing | ✅ | Khoá theo email 10 lần sai/15′ (cả email không tồn tại), bucket `login_ip`, WAF `/v1/auth/*`, Turnstile; `s11-ops-security.test.ts` |
 | 2.2.3 | Thông báo người dùng khi đổi xác thực | ⚠️ | Audit `auth.login_locked`; email cảnh báo đăng nhập lạ chưa có |
 | 2.5.2 | Không gợi nhớ mật khẩu / câu hỏi bí mật | ✅ | Không có |
 | 2.7.x | OTP: 6 số, 5′, 5 lần sai khoá 30′, lưu băm HMAC | ✅ | S1 `otp.test.ts`, `iam-sprint1.test.ts` |
-| 2.8.x | TOTP/MFA | ❌ | Ngoài phạm vi GĐ1 (S1) |
-| 2.10.x | Bí mật dịch vụ (INTERNAL_API_TOKEN) so khớp hằng thời gian | ✅ | `metrics.controller.ts` `timingSafeEqual`; InternalTokenGuard dùng `!==` ⚠️ (đề xuất đổi sang timingSafeEqual – S12) |
+| 2.8.x | TOTP/MFA | ✅ | S12: TOTP RFC 6238 cho admin/superadmin (`/auth/mfa/*`), chống replay theo bước, mã khôi phục băm |
+| 2.10.x | Bí mật dịch vụ (INTERNAL_API_TOKEN) so khớp hằng thời gian | ✅ | `metrics.controller.ts` `timingSafeEqual`; S12: InternalTokenGuard `constantTimeEquals` |
 
 ## V3 Quản lý phiên
 | ID | Yêu cầu | TT | Bằng chứng / ghi chú |
@@ -41,7 +41,7 @@ API (CSP nonce, Sentry web, flags client do sprint web). Trạng thái: ✅ đ�
 | 4.1.1 / 4.1.3 | Deny by default, least privilege | ✅ | Guard toàn cục, `@Public` tường minh |
 | 4.2.1 | IDOR | ✅ | #1 attempt/order/notes; ownership ở service |
 | 4.2.2 | CSRF | ✅ | Kiểm Origin/Sec-Fetch-Site/Referer cho cookie-auth + mọi POST `/auth/*` (`security.ts`); SameSite=Lax; `s11-ops-security.test.ts` |
-| 4.3.1 | Admin cần MFA | ❌ | Chưa có MFA; bù: WAF geo/IP cho `/v1/admin` (Terraform cdn-waf) |
+| 4.3.1 | Admin cần MFA | ✅ | S12: step-up MFA bắt buộc cho endpoint `@Roles` khi vai trò admin/superadmin (`ADMIN_MFA_REQUIRED=auto` → staging/prod); WAF geo/IP vẫn giữ |
 
 ## V5 Validation, sanitization, encoding
 | ID | Yêu cầu | TT | Bằng chứng / ghi chú |
@@ -109,5 +109,5 @@ API (CSP nonce, Sentry web, flags client do sprint web). Trạng thái: ✅ đ�
 | 14.4.x | Header HTTP | ✅ | Như V13.2.6; web CSP nonce: sprint web |
 | 14.5.3 | CORS allowlist | ✅ | `CORS_ORIGINS` tường minh, credentials |
 
-Tổng: L2 áp dụng cho API – đạt phần lớn; mở: MFA admin (❌), mật khẩu ≥ 12/HIBP (⚠️), email cảnh báo đăng nhập (⚠️), sniff ghi âm khi
+Tổng: L2 áp dụng cho API – đạt phần lớn; mở: ~~MFA admin~~, ~~mật khẩu ≥ 12/HIBP~~ (đã đóng S12), email cảnh báo đăng nhập (⚠️), sniff ghi âm khi
 tiêu thụ (⚠️ GĐ2), phụ thuộc bắc cầu chấp nhận có hạn (⚠️), threat model riêng (⚠️), InternalTokenGuard so khớp hằng thời gian (⚠️).
