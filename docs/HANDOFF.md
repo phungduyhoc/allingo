@@ -1,8 +1,8 @@
 # HANDOFF — Sprint 1 → Sprint 12 (08/11/2026)
 
-Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1–12 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A39), `docs/SPEC-ISSUES.md` (S1–S29), ADR 0001–0025. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
+Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1–12 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A214), `docs/SPEC-ISSUES.md` (S1–S142), ADR 0001–0035, `docs/gates/GATE-2-report.md`. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
 
-Repo chưa push (theo yêu cầu: làm tiếp trên phiên, push sau). Mọi kiểm tra dưới đây chạy trong phiên cloud: Postgres 16 + pgvector, Valkey/Redis cục bộ, không Docker, không Meilisearch/MinIO/Azure/khoá AI thật (A1, A25).
+Mọi kiểm tra dưới đây chạy trong phiên cloud: Postgres 16 + pgvector, Valkey/Redis cục bộ, không Docker, không Meilisearch/MinIO/Azure/khoá AI/cổng thanh toán thật (A1, A25). Quy trình cài trên máy mới đã chạy thử trên bản clone sạch (A214).
 
 ## 1. Nghiệm thu theo sprint
 
@@ -172,54 +172,69 @@ Bổ sung bảo mật: MFA TOTP step-up cho admin (RFC 6238), mật khẩu ≥ 1
 
 **Sprint 4.** Đề **TOEIC Listening đầy đủ 01** (100 câu tự biên soạn, 23 hội thoại/bài nói, 6 ảnh SVG tự vẽ, script nhiều giọng us/uk/au/ca) + 4 bộ luyện, đề **L&R 200 câu/120 phút**, 2 đề mini tự sinh; script `seed:media` sinh TTS theo segment + ghép ffmpeg + transcript có mốc thời gian. API: không lộ transcript khi làm bài, `GET /attempts/{id}/media` gia hạn URL, `timed_drill`, nguồn câu luyện (chưa làm → sai gần đây, giữ nhóm), sinh đề mini, `audio_plays`, ảnh SVG nội dung (chặn SVG chủ động), điểm L/R/Tổng + `by_skill`, thống kê câu cập nhật khi nộp. Web: chuỗi phát Exam Mode, player luyện tập, gia hạn URL, transcript Review, kết quả L/R/Tổng. CMS: trường `listen_policy`/`pause_ms`.
 
-**Sửa lỗi quan trọng phát hiện trong phiên.** `QueueService.enqueue` luôn thất bại âm thầm vì jobId chứa `:` (BullMQ ≥ 5) → `jobIdFor()`; Postgres jsonb đổi thứ tự khoá làm so sánh nội dung sai → so sánh chuẩn hoá; `@allingo/db` dist nhúng kiểu cũ → luôn build lại sau khi sửa schema.
+**Sprint 5.** AI Gateway mức sản xuất (timeout/retry jitter, circuit breaker, fallback, chi phí theo bảng giá, OTel + Langfuse – ADR-0026), `JobsService` chạy inline khi không có worker (ADR-0027), giải thích AI stream SSE + cache + đánh giá 👍/👎, chẩn đoán AI trên màn kết quả (Pro, 10 credit), metering/quota; CMS sinh câu hỏi bằng AI (draft `source = ai`); bộ eval explain 179 câu. Web: giải thích stream, phân tích AI (Free thấy thẻ khoá + CTA).
+
+**Sprint 6.** Gia sư AI theo ngữ cảnh (threads SSE, ContextBuilder cắt ngân sách token, khoá Exam Mode – ADR-0028, guard trước model), tra từ < 200 ms + từ điển TOEIC Anh–Việt tự biên soạn 1.750 mục, SRS/ghi chú, Web Push. Web: panel gia sư, tra từ khi bôi đen, ghi chú.
+
+**Sprint 7–8.** Thanh toán webhook-first VNPay/MoMo/ZaloPay + mock (ADR-0029), gating `FEATURE_GATES` dùng chung, credit ledger append-only, đối soát; hoá đơn điện tử MISA + mock (ADR-0030), khuyến mãi, referral, thông báo đa kênh. Web: bảng giá, checkout, đơn hàng/hoá đơn, giới thiệu bạn, admin billing.
+
+**Sprint 9.** Chẩn đoán thích ứng, lộ trình đến ngày thi (`@allingo/planner`, ADR-0031/0032), task tự hoàn thành qua `attempt.graded`. Web: onboarding 4 bước, chẩn đoán, lộ trình tuần, Hôm nay.
+
+**Sprint 10.** FSRS-5 + optimizer (ADR-0033), bộ từ TOEIC 600, sổ lỗi, stats/forecast; CMS marketing (pages/posts/redirects, revalidate ký HMAC). Web: ôn thẻ, sổ lỗi, dashboard/thống kê, landing/blog SEO, cookie consent.
+
+**Sprint 11.** Quan sát (redaction PII, trace_id, metrics RED/BullMQ/DB, Sentry không SDK), rate limit + khoá đăng nhập, CSRF theo Origin, migration guard, độ phủ partition, stack quan sát as code + 18 alert có runbook, job bảo mật CI, pentest-1, diễn tập PITR, tối ưu tải (deadlock pool – Critical, N+1) – ADR-0034. Web: CSP nonce, cờ tính năng/kill-switch UI, 429/503, telemetry, i18n theo trang, axe.
+
+**Sprint 12.** Beta gate + mời theo lô + Pro trial, khảo sát onboarding/NPS, góp ý, báo lỗi câu (đồng bộ CMS), ticket hỗ trợ SLA 24 giờ, admin (người dùng, nội dung, AI, hệ thống, DLQ, audit), MFA TOTP step-up, mật khẩu ≥ 12 + danh sách lộ, sự kiện analytics + `pnpm report:beta`, seed `beta-demo` giả lập (ADR-0035), báo cáo GATE-2 bản kỹ thuật. Web: xem mục giao diện Sprint 12 ở bảng nghiệm thu.
+
+**Sửa lỗi quan trọng phát hiện trong phiên.** `QueueService.enqueue` luôn thất bại âm thầm vì jobId chứa `:` (BullMQ ≥ 5) → `jobIdFor()`; Postgres jsonb đổi thứ tự khoá làm so sánh nội dung sai → so sánh chuẩn hoá; `@allingo/db` dist nhúng kiểu cũ → luôn build lại sau khi sửa schema; SSE thiếu header CORS làm trình duyệt chặn explain/gia sư (S6); CMS production thiếu migration Payload (S6); deadlock pool kết nối dưới tải (S11); `POST /submit` 500 khi truyền Date vào SQL thô (S11); `seed:media` không dựng được context và thoát im lặng, `db:migrate` không đọc `.env`, compose dev thiếu bucket hoá đơn (phát hiện khi chạy thử cài máy mới).
 
 ## 3. Số liệu kiểm thử (lần chạy cuối)
 
-| Gói | Test | Kết quả |
-| --- | --- | --- |
-| `packages/schemas` | 251 | xanh |
-| `packages/scoring` | 21 | xanh |
-| `db` | 57 (cấu trúc đề Reading 01, Listening 01, đề mini tự sinh, integration DB) | xanh |
-| `apps/api` | 130 (unit + integration trên PG/Redis cục bộ) | xanh |
-| `apps/cms` | 32 | xanh |
-| `packages/api-client`, `packages/fsrs` | 8, 4 | xanh |
-| `apps/web` | unit 70; E2E 28 (mock) + 28 (API thật) | xanh |
-
-`pnpm api:diff`: 55/116 operation đã triển khai, 0 lệch. `pnpm db:diff`: 97 bảng, 189 index, 4 policy khớp DDL tham chiếu (v1.1).
+_(điền sau lượt kiểm thử toàn repo cuối cùng)_
 
 ## 4. Cách chạy
 
 ```bash
-pnpm i && pnpm docker:up && pnpm db:migrate && pnpm db:seed --set core,demo
-pnpm dev                                  # web :3000, api :4000, cms :3001, worker
-pnpm --filter @allingo/api search:reindex # sau khi bật Meilisearch
-STORAGE_DRIVER=fs pnpm --filter @allingo/api dev   # thử upload khi không có MinIO
+pnpm i
+cp .env.example .env                                   # mặc định AI/thanh toán/giọng nói giả lập
+pnpm docker:up                                         # postgres, redis, meilisearch, minio (+ bucket media/recordings/invoices), mailpit
+pnpm --filter './packages/*' --filter @allingo/db build
+pnpm db:migrate
+pnpm db:seed --set core,demo                           # + beta-demo: dữ liệu beta GIẢ LẬP cho report:beta (chặn production)
+pnpm --filter @allingo/api seed:media                  # audio Listening + ảnh Part 1 (cần ffmpeg)
+pnpm --filter @allingo/cms exec tsx scripts/seed-cms.ts
+pnpm dev                                               # web :3000, api :4000 (/docs), cms :3001/admin, worker
 pnpm lint && pnpm typecheck && pnpm test && pnpm db:diff && pnpm api:openapi && pnpm api:diff
 E2E_REAL_API=1 E2E_CMS_URL=http://localhost:3001 pnpm --filter @allingo/web test:e2e
-node tests/load/attempt-flow.autocannon.mjs   # đo cục bộ; k6 run tests/load/attempt-flow.js trên staging
+pnpm report:beta                                       # báo cáo beta tuần (Markdown)
+k6 run tests/load/exam-day.js                          # trên staging (5.000 VU / 30 phút)
 ```
 
-Đề demo: `toeic-mini-part5-01`, `toeic-mini-part2-01`, `toeic-mini-lr-01/02` (tự sinh), `toeic-reading-full-01`, `toeic-listening-full-01`, `toeic-lr-full-01`, 7 bộ luyện `toeic-{reading,listening}-01-drill-part1…7`. Sau `db:seed --set demo` chạy `pnpm --filter @allingo/api seed:media` để sinh audio/ảnh. Tài khoản demo mật khẩu `Allingo@2026`: `learner_free@`, `learner_pro@`, `teacher@`, `admin@`, `org_admin@allingo.dev`.
+Windows: chạy trong WSL2 (Ubuntu), mã nguồn đặt trong thư mục nhà của Ubuntu. Tài khoản demo mật khẩu `Allingo@2026`: `learner_free@`, `learner_pro@`, `teacher@`, `admin@`, `org_admin@allingo.dev`.
 
 ## 5. Việc còn lại
 
-| # | Việc | Sprint |
+| # | Việc | Khi nào |
 | --- | --- | --- |
-| T1 | Push GitHub `phungduyhoc/allingo`, bật branch protection, xác nhận CI (gồm `terraform-validate`, ffmpeg trong job integration) | Khi anh sẵn sàng |
-| T2 | Thử Google/Apple/Facebook thật với client id của anh; Zalo ZNS/eSMS thật | S1 dư |
-| T3 | GATE-1 số liệu thật: dataset Writing/Speaking có điểm giáo viên + khoá AI/Azure → `pnpm --filter @allingo/api poc:w|poc:p` | Trước GATE-1 |
-| T4 | Meilisearch + MinIO thật trên máy dev (`pnpm docker:up`), chạy lại test search/media với driver thật | S4 |
-| T5 | k6 1.000 VU trên staging; tối ưu index nếu p95 > 150 ms | Trước GATE-2 |
-| T6 | Outbox: retry + dead-letter cho consumer (S26) | S5 |
-| T7 | Bảng `passage_parts` cho Part 7 đa đoạn (S24); custom view kéo thả test set trong CMS (A26) | v1.2 |
-| T8 | Job xoá ghi âm hết hạn + lifecycle bucket; xử lý EXIF orientation ảnh | S6/S8 |
-| T9 | Lighthouse mobile Performance ≥ 85: giảm JS client (messages next-intl theo trang, dashboard RSC, tải lười recharts/tutor) | S11 |
+| T1 | Push GitHub, bật branch protection, CI xanh (gồm `terraform-validate`, ffmpeg trong job integration), tag `v0.9.0-beta` | Ngay |
+| T2 | Credential thật: OAuth Google/Apple/Facebook, VNPay/MoMo/ZaloPay sandbox, MISA, khoá AI (Gemini/Claude/OpenAI), Azure Speech, PostHog, Sentry, SMTP/Zalo ZNS/eSMS | Tuần 1–2 trước beta |
+| T3 | Staging theo ADR-0023 (Terraform), Payload `migrate`, Meilisearch/MinIO/R2 thật; k6 5.000 VU/30′; SLO 2 tuần | Tuần 1–3 |
+| T4 | Nội dung: ≥ 3.000 câu, ≥ 10 đề full, 30 mini, 60 drill (AI nháp + duyệt 2 lớp), rà ngẫu nhiên không sao chép | Tuần 1–6 |
+| T5 | Eval AI thật (explain ≥ 4/5, guard recall ≥ 98 %), GATE-1 số liệu thật (Writing/Speaking có điểm giáo viên) | Tuần 2 / trước GĐ2 |
+| T6 | Pháp lý: luật sư duyệt điều khoản/riêng tư/hoàn tiền/xử lý giọng nói; kế toán xác nhận huỷ/điều chỉnh hoá đơn khi hoàn tiền (S90) | Tuần 3–4 |
+| T7 | Beta kín thật 300 người, 2 tuần; điền lại `GATE-2-report.md` bằng số thật | Tuần 5–6 |
+| T8 | Bật RLS 3 bảng billing có `org_id` (S124) trước khi bán B2B | Trước B2B |
+| T9 | Hiệu năng: tree-shake `@allingo/schemas` (S141), đo Lighthouse dashboard trên staging | GĐ2 |
+| T10 | Outbox retry + dead-letter cho consumer (S26); xếp hạng tìm kiếm (S140) | GĐ2 |
+| T11 | Bảng `passage_parts` cho Part 7 đa đoạn (S24); custom view kéo thả test set trong CMS (A26) | v1.2 |
+| T12 | Theo dõi GHSA bắc cầu đã override (hạn 30/11/2026, Renovate) | 30/11/2026 |
 
 ## 6. Rủi ro & lưu ý
 
-- **Không có hạ tầng thật trong phiên**: Meilisearch, MinIO/R2, Azure Speech, OAuth thật, Terraform chưa chạy — mọi adapter có test với mock/fake; lần chạy thật đầu tiên có thể lộ lỗi cấu hình.
-- **Thang điểm 5–495 là ước tính** do Allingo tự xây dựng, không phải bảng ETS — giao diện phải luôn ghi "ước tính".
+- **Chưa có hạ tầng/credential thật**: Meilisearch, MinIO/R2, Azure Speech, OAuth, cổng thanh toán, MISA, AI thật, Terraform chưa chạy với môi trường thật — adapter đều có test với mock/fake; lần chạy thật đầu tiên có thể lộ lỗi cấu hình.
+- **Số liệu beta trong báo cáo là giả lập** (`beta-demo`), chỉ để kiểm công cụ đo; không dùng để ra quyết định GATE-2.
+- **Thang điểm 5–495 là ước tính** do Allingo tự xây dựng, không phải bảng ETS — giao diện luôn ghi "ước tính".
 - **Đề demo** tự biên soạn (`source = human`), tên riêng hư cấu, tên miền `.example`; trước khi bán cần biên tập viên rà soát.
-- **ffmpeg bắt buộc** cho worker (image đã cài); thiếu ffmpeg thì test media tự skip — CI đã cài để không bỏ sót.
-- **`INTERNAL_API_TOKEN`** dùng chung API ↔ CMS: đổi trên staging/prod (Key Vault).
+- **ffmpeg bắt buộc** cho worker và `seed:media`; thiếu ffmpeg thì test media tự skip — CI đã cài.
+- **`INTERNAL_API_TOKEN`, `AUTH_SECRET`, `MFA_ENCRYPTION_KEY`, `PAYLOAD_SECRET`**: đặt riêng trên staging/prod (Key Vault), không dùng giá trị dev.
+- **Hoá đơn khi hoàn tiền**: đang huỷ hoá đơn; quy định thường yêu cầu điều chỉnh/thay thế — chờ kế toán (S90).
