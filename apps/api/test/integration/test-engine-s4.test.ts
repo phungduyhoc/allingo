@@ -47,8 +47,10 @@ describe('test engine sprint 4 (integration)', () => {
   };
 
   beforeAll(async () => {
-    // Thống kê câu (community_avg_time_ms) cập nhật qua job – chạy inline trong test (CI không có .env/worker)
+    // Không phụ thuộc .env cục bộ (CI không có .env): job chạy inline; tắt cache câu 30 s (S11) vì test đọc thống kê cộng đồng
+    // (community_avg_time_ms) ngay sau khi nộp – trên máy CI nhanh, bản cache lúc làm bài (avg = null) còn hạn
     process.env.JOBS_INLINE = 'true';
+    process.env.CATALOG_CACHE_TTL_SECONDS = '0';
     process.env.STORAGE_DRIVER = '';
     process.env.STORAGE_FS_DIR = storageDir;
     process.env.SEARCH_PROVIDER = 'pg';
@@ -153,6 +155,7 @@ describe('test engine sprint 4 (integration)', () => {
 
   afterAll(async () => {
     delete process.env.JOBS_INLINE;
+    delete process.env.CATALOG_CACHE_TTL_SECONDS;
     await app?.close();
     fs.rmSync(storageDir, { recursive: true, force: true });
   });

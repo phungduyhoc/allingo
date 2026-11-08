@@ -7,7 +7,8 @@ import globals from 'globals';
 
 /** @type {import('eslint').Linter.Config[]} */
 export const baseConfig = [
-  { ignores: ['**/dist/**', '**/.next/**', '**/coverage/**', '**/node_modules/**', '**/*.generated.*', '**/payload-types.ts'] },
+  // tsup.config.bundled_*.mjs: tệp tạm tsup tạo/xoá khi build chạy song song với lint (turbo) → ESLint ENOENT
+  { ignores: ['**/dist/**', '**/.next/**', '**/coverage/**', '**/node_modules/**', '**/*.generated.*', '**/payload-types.ts', '**/tsup.config.bundled_*'] },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {
