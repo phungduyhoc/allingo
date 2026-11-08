@@ -233,7 +233,7 @@ Windows: chạy trong WSL2 (Ubuntu), mã nguồn đặt trong thư mục nhà c�
 
 | # | Việc | Khi nào |
 | --- | --- | --- |
-| T1 | Push GitHub, bật branch protection, CI xanh (gồm `terraform-validate`, ffmpeg trong job integration), tag `v0.9.0-beta` | Ngay |
+| T1 | Đã push (08/11/2026). CI GitHub: Lint · Typecheck · Unit, Integration (db:diff, api:diff, build), Observability **xanh**; Security đỏ ở Semgrep – ~40 phát hiện từ ruleset `p/nodejsscan` (phần lớn dương tính giả: regex_dos, Math.random cho lấy mẫu, mật khẩu demo trong seed/mock, MD5 ETag, SHA-1 của HIBP) chờ quyết định chính sách loại trừ (S154); E2E tăng timeout 50′. Sau đó: branch protection, tag `v0.9.0-beta` | Ngay |
 | T2 | Credential thật: OAuth Google/Apple/Facebook, VNPay/MoMo/ZaloPay sandbox, MISA, khoá AI (Gemini/Claude/OpenAI), Azure Speech, PostHog, Sentry, SMTP/Zalo ZNS/eSMS | Tuần 1–2 trước beta |
 | T3 | Staging theo ADR-0023 (Terraform), Payload `migrate`, Meilisearch/MinIO/R2 thật; k6 5.000 VU/30′; SLO 2 tuần | Tuần 1–3 |
 | T4 | Nội dung: ≥ 3.000 câu, ≥ 10 đề full, 30 mini, 60 drill (AI nháp + duyệt 2 lớp), rà ngẫu nhiên không sao chép | Tuần 1–6 |
