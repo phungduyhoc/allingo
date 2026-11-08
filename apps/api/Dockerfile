@@ -24,8 +24,9 @@ ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
     npm_config_store_dir=/pnpm/store \
     CI=true
-# corepack có sẵn trong image node chính thức; ghim đúng phiên bản packageManager của repo
-RUN corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
+# Ghim đúng phiên bản packageManager của repo
+# Cài pnpm qua npm thay vì corepack: corepack đi kèm image node có thể mang khoá ký npm cũ → "Cannot find matching keyid"
+RUN npm install -g "pnpm@${PNPM_VERSION}" && pnpm --version
 WORKDIR /repo
 
 # ---------- deps -------------------------------------------------------------

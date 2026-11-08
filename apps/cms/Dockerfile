@@ -30,7 +30,8 @@ ENV PNPM_HOME=/pnpm \
     npm_config_store_dir=/pnpm/store \
     CI=true \
     NEXT_TELEMETRY_DISABLED=1
-RUN corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
+# Cài pnpm qua npm thay vì corepack: corepack đi kèm image node có thể mang khoá ký npm cũ → "Cannot find matching keyid"
+RUN npm install -g "pnpm@${PNPM_VERSION}" && pnpm --version
 WORKDIR /repo
 
 # ---------- deps -------------------------------------------------------------
