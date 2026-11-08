@@ -23,6 +23,9 @@ Biến môi trường (validate bằng Zod trong `src/env.ts`):
 | `E2E_CHROME_CHANNEL` | – | `chrome` để Playwright dùng Google Chrome cài sẵn khi không tải được Chromium |
 | `E2E_BASE_URL` + `E2E_NO_SERVER=1` | – | Chạy e2e với server có sẵn (vd. bản `next start -p 3100` để kiểm tra PWA/offline trên production) |
 | `E2E_CHROME_ARGS` | – | Tham số Chrome thêm, vd. `--disable-web-security` khi web chạy ở cổng ngoài `CORS_ORIGINS` của API (:3100) |
+| `NEXT_PUBLIC_COMMUNITY_ZALO_URL` / `NEXT_PUBLIC_COMMUNITY_DISCORD_URL` | – | S12: kênh phản hồi cộng đồng beta ở onboarding (chỉ nhận `https://`; trống/sai → ẩn) |
+| `E2E_SMTP_PORT` | `1025` | S12 E2E API thật: cổng SMTP sink cục bộ đọc email mời beta (trùng `SMTP_PORT` dev của API; cần cổng còn trống) |
+| `E2E_DATABASE_URL` | `DATABASE_URL` của `.env` gốc | E2E API thật dùng psql cho DB dev (lùi thời gian thanh toán S8; cấp/gỡ vai trò admin tạm cho E2E MFA S12) |
 
 ## Cấu trúc
 
@@ -404,3 +407,73 @@ packages/ui/src                component dùng chung (Button, Card, Dialog/Sheet
   hợp đồng `GET /flags`), `csp.spec.ts` (nonce mỗi request, mọi `<script>` có nonce; không vi phạm CSP ở landing, dashboard, Exam, kết quả,
   Review + giải thích, Listening, checkout cổng mock, blog CMS; không `MISSING_MESSAGE` trên 17 trang + điều hướng client), `a11y.spec.ts`.
   `ai-explain.spec.ts` (API thật) bật `ff.ai.diagnose` trong lúc chạy rồi trả lại trạng thái cũ.
+
+## Sprint 12 – beta kín, góp ý/báo lỗi/hỗ trợ, admin vận hành, MFA, pháp lý, hoàn thiện (giao diện)
+
+- **Lớp API** – `lib/s12-api.ts` (beta, khảo sát/NPS, góp ý + ảnh, báo lỗi câu, hỗ trợ, pháp lý, MFA, toàn bộ admin S12; Zod của
+  `packages/schemas/src/api/s12.ts`, phần admin dùng kiểu `components['schemas']` sinh từ OpenAPI – `Full<>` bỏ `?` vì schema không khai
+  báo `required`). Client sinh lại (`pnpm --filter @allingo/api-client build`) để có 100 đường dẫn v1.1.
+- **Beta gate** – `lib/beta.ts` (thuần, có test): 403 `beta_required` từ mọi query/mutation → `notifyApiError` → sự kiện
+  `allingo:beta-required` → `features/beta/beta-gate-listener.tsx` (CHỈ trong layout (app) – landing/marketing không bao giờ bị chuyển)
+  → `/beta?next=<trang>`; trang miễn: `/support*`, `/settings*`, `/onboarding/beta`, `/beta` (API cũng miễn endpoint tương ứng – A194).
+  Trang `/beta` (marketing, `noindex`, không sau AuthGate): khách ẩn danh → đăng ký/đăng nhập giữ `?code=` qua `?next=`; tài khoản khách
+  → cần đăng ký; đã có quyền → vào học/khảo sát; chưa có → ô mã định dạng `ALG-XXXX-XXXX` khi gõ/dán (chuẩn hoá như API, cảnh báo ký tự
+  0/1/I/L/O), lỗi theo `details.reason` (`invite_invalid` gộp sai/hết hạn/thu hồi, `invite_used`, `already_beta`, khách, 429) → i18n
+  `beta.redeemErrors.*`; thành công → quyền lợi đọc từ PHẢN HỒI (`trial_ends_at`/`trial_skipped`, `credits_granted`, `balance`) +
+  đăng ký chờ TOEIC (`WaitlistForm program="toeic"`).
+- **Onboarding beta `/onboarding/beta`** – khảo sát 5 câu (`betaSurveyInputSchema`), hướng dẫn 60 giây 4 thẻ (bỏ qua được, nhớ
+  `localStorage` `allingo.beta-tour.v1`), kênh cộng đồng Zalo/Discord từ `NEXT_PUBLIC_COMMUNITY_*` (ẩn khi trống). Dashboard nhắc khảo sát
+  khi `GET /me/surveys/pending` còn `beta_onboarding`.
+- **NPS** – `features/surveys/survey-prompts.tsx` + `lib/surveys.ts` (thuần, có test): thẻ trong luồng trang dashboard (không phủ nội
+  dung, dựng khi rảnh), thang 0–10 (radio thật) + câu hỏi lý do theo nhóm NPS, khung ngày 7/14 do server quyết (`due_at`/`expires_at`),
+  không hiện khi Exam Mode (`useExamLock`), "Để sau" 24 giờ (`allingo.nps-snooze.v1`, try/catch); khách không gọi API.
+- **Góp ý in-app** – nút "Góp ý" trong header AppShell (ẩn khi Exam Mode; màn thi không có AppShell), hộp thoại nạp lười
+  (`features/feedback/*`): loại, nội dung, ảnh tuỳ chọn – chọn tệp hoặc dán Ctrl/⌘+V (không thư viện chụp màn hình; PNG/JPEG/WebP ≤ 8 MB)
+  → `POST /uploads/presign {kind: image}` → PUT URL ký (không cookie) → `screenshot_upload_id`. `lib/feedback.ts` chuẩn hoá payload theo
+  schema: đường dẫn trang bỏ query/hash/locale, `trace_id` gần nhất (`lib/telemetry/last-trace.ts` – ghi `X-Trace-Id` mọi phản hồi trong
+  `getApiFetch`, ưu tiên trace lỗi ≤ 15′), `app_version` = release Sentry; hiển thị rõ cho người dùng những gì được gửi kèm (không PII).
+- **Báo lỗi câu hỏi** – `features/content-report/*` theo `question_version_id`: Review (ẩn khi có bài thi exam đang làm) và màn làm bài
+  Practice/drill (khối practice – Exam Mode không có); 8 lý do i18n, mô tả tuỳ chọn, hạn SLA 48 giờ, `duplicate` → "đang được xử lý".
+- **Hỗ trợ** – `/support` (tạo ticket: chủ đề, tiêu đề, nội dung, đính kèm trace gần nhất, `?attempt=` gắn bài làm, `?from=` trang; danh
+  sách cursor + trạng thái + SLA 24 giờ `lib/support.ts`), `/support/tickets/{id}` (đích `support.reply`: hội thoại 2 chiều, trả lời mở
+  lại ticket resolved, closed → 409; làm mới 30 s). Thông báo S12 trong trung tâm thông báo: `support.reply` (+ credit bù),
+  `content.report_resolved` (đã sửa/đã xem), `beta.invite` – `TEMPLATE_REQUIRED_PARAMS` gồm mã S12 (SPEC-ISSUES S136; chưa gộp vào
+  `NOTIFICATION_TEMPLATE_CODES` vì packages/schemas ngoài phạm vi web).
+- **MFA** – `/settings/security` (`features/security/security-page.tsx`): trạng thái `/me/mfa`; chỉ admin bật được (người học: giải thích);
+  enroll → khoá base32 nhóm 4 + sao chép khoá/otpauth + "Mở trong ứng dụng" (API không trả ảnh QR → KHÔNG thêm thư viện QR); confirm →
+  10 mã khôi phục hiện MỘT lần (sao chép/tải `.txt`, phải tích "đã lưu"); xác minh phiên; tạo lại mã (cần TOTP hiện tại).
+  **Step-up**: `lib/mfa-step-up.ts` (thuần, có test) – middleware openapi-fetch giữ bản sao request `/admin/*`, gặp 403 `mfa_required`
+  → hộp thoại `features/security/mfa-step-up-provider.tsx` (layout (app); mã TOTP hoặc mã khôi phục, 429 khoá 15′) → `POST /auth/mfa/verify`
+  → GỬI LẠI đúng request một lần (nhiều request lỗi cùng lúc dùng chung một lần hỏi); huỷ → 403 giữ nguyên → ErrorState
+  `errors.codes.mfa_required` + nút tới Bảo mật. Áp cho cả billing admin S8 (không sửa từng lời gọi).
+- **Admin vận hành `/admin`, `/admin/<beta|feedback|content|support|users|ai|system|audit>`** (`features/admin-ops/*`, mỗi mục nạp lười,
+  tab con qua `?tab=` + History API như billing admin; chỉ admin/superadmin – server vẫn 403): tổng quan (Redis, DLQ chưa replay, SLA quá
+  hạn, beta hôm nay); beta (danh sách chờ chọn → xếp hàng theo đợt, mời theo email, lời mời + hạn mức/ngày + "Gửi ngay" + thu hồi, báo cáo
+  tuần KPI + Markdown); góp ý (trace sao chép, ảnh URL ký, đổi trạng thái); nội dung (báo lỗi câu – xử lý + ghi chú; thống kê câu p-value/
+  phân biệt/thời gian/báo lỗi, đề xuất retire/review + lý do, tính lại); hỗ trợ (lọc, hội thoại, trạng thái/ưu tiên/nhận xử lý, trả lời
+  kênh in-app/email + credit bù ghi chú BẮT BUỘC); người dùng (tìm – PII che, hồ sơ, khoá/mở khoá, yêu cầu xoá có ô xác nhận, "xem như"
+  CHỈ ĐỌC: token Bearer trong bộ nhớ trang (không cookie), banner + đếm ngược 10′ + Thoát, email/SĐT che `lib/admin-format.ts`); AI (👍/👎
+  theo prompt version, refused); hệ thống (hàng đợi, partition, outbox, DLQ + replay, cờ); audit (lọc actor/action tiền tố/đối tượng/ngày
+  giờ VN). Mọi thao tác phá huỷ/khó đảo ngược qua `ConfirmDialog` (lý do ghi audit). `useCursorList` (S8) giữ kiểu trang đầu (`counts`,
+  `today`…); `DataTable` vùng cuộn ngang tới được bằng bàn phím (axe `scrollable-region-focusable`).
+- **Pháp lý** – `/legal/{terms,privacy,refund,voice-consent}` (RSC): phiên bản/ngày hiệu lực/trạng thái từ `GET /legal/policies` (cache
+  300 s, lỗi → dự phòng), nhãn "Bản nháp chờ luật sư duyệt" khi `draft_pending_legal_review`; nội dung placeholder `legal.*` (hoàn tiền,
+  giọng nói mới); `/terms`, `/privacy` chuyển hướng 308; chân trang marketing + **chân trang khu vực học** (`components/app-footer.tsx`:
+  pháp lý, hỗ trợ, tuyên bố không liên kết ETS trên mọi trang TOEIC trong app); sitemap/robots cập nhật.
+- **Hoàn thiện** – KPI "Điểm ước tính" sau mini một kỹ năng (SPEC-ISSUES S142): "Gần nhất: Reading x/495" + "điểm tổng cần đề có cả
+  Listening và Reading" (`latestSkillScore` – `score_history[].part`); mock S10 bám API S12 (ước tính/dự báo/phân vị chỉ từ thang tổng).
+  a11y: Logo không ghi đè tên truy cập (axe `label-content-name-mismatch` ở header marketing), NPS radio thật. Header mobile: "Thanh toán"
+  vào qua Cài đặt để chừa chỗ nút Góp ý (không tràn 360 px).
+- **Mock S12** – `src/mock/s12.ts` (+ `totp.ts` RFC 6238 Web Crypto, có test vector): guard như API (impersonate chỉ đọc, khoá → phiên thu
+  hồi, step-up `/admin/*` khi bật, beta gate với danh sách miễn), mọi endpoint S12, mã mời trong "hộp thư giả", `X-Trace-Id` mọi phản hồi.
+  Hook E2E: `__ALLINGO_MOCK__.lastInviteCode(email)`, `.setAdminMfaRequired(on)`, `.setNpsDue(email, kind)`, `.addDeadLetter()`.
+- **E2E S12**: `beta-tester.spec.ts` (mời qua UI admin → gửi → bật gate → đăng ký bị chặn → mã sai/đúng → khảo sát → hướng dẫn → đề mini →
+  báo lỗi câu (+ trùng) → góp ý có ảnh → ticket → admin trả lời + 150 credit → thông báo `support.reply` → trả lời; API thật đọc mã từ email
+  qua SMTP sink cục bộ `e2e/s12-helpers.ts`), `admin-ops.spec.ts` (khoá → phiên người học bị thu hồi ngay + đăng nhập 401, mở khoá,
+  impersonate chỉ đọc + thoát, audit; hệ thống/DLQ/cờ/thống kê/AI/báo cáo), `mfa.spec.ts` (TOTP tính bằng `node:crypto`; API thật: tài khoản
+  E2E được cấp vai trò admin TẠM qua psql rồi gỡ + xoá factor; step-up chỉ mock vì dev tắt `ADMIN_MFA_REQUIRED`), `s12-pages.spec.ts`
+  (pháp lý, ETS, NPS, axe + tràn ngang trên trang/hộp thoại S12 và 14 màn admin, không MISSING_MESSAGE/CSP). Cờ beta gate luôn khôi phục.
+- **Hiệu năng (bản build, khách, 2026-11-08)**: HTML dashboard 65 KB (S11: 68 KB), landing 95 KB (S10: 94 KB); dashboard tải lại
+  1,08 MB JS chưa nén / 24 tệp, 14 request API (khách không gọi `/me/surveys/pending`; nút Góp ý dùng chung query bài thi đang làm `useExamLock` đã có ở dashboard). Thêm vào khung app: nút Góp ý (hộp thoại nạp
+  lười), chân trang, listener beta/MFA; dashboard: thẻ khảo sát dựng khi rảnh. Chưa đo Lighthouse (không có Lighthouse trong phiên).
+

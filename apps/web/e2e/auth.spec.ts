@@ -33,7 +33,9 @@ test('trang điều khoản và chính sách hiển thị bản dự thảo', as
   await page.goto('/vi/terms');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Điều khoản sử dụng');
   await expect(page.getByText(/Bản dự thảo/)).toBeVisible();
+  // S12: /terms, /privacy chuyển hướng vĩnh viễn sang /legal/* (tiêu đề theo GET /legal/policies)
   await page.goto('/vi/privacy');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Chính sách bảo mật');
+  await expect(page).toHaveURL(/\/vi\/legal\/privacy$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Chính sách quyền riêng tư');
   await expect(page.getByText(/Nghị định 13\/2023/)).toBeVisible();
 });

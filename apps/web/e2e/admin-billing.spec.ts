@@ -15,7 +15,7 @@ test('admin cấp 100 credit (ghi chú bắt buộc) → ledger admin_adjust; ho
   test.setTimeout(120_000);
   const email = await registerNewUser(page, 'adm-learner');
   // Học viên: không có menu admin, route bị chặn phía client
-  await expect(page.getByTestId('nav-admin-billing')).toHaveCount(0);
+  await expect(page.getByTestId('nav-admin')).toHaveCount(0);
   await page.goto('/vi/admin/billing');
   await expect(page.getByTestId('admin-forbidden')).toBeVisible();
 
