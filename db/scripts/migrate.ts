@@ -13,6 +13,14 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { splitStatements } from '../src/migration-guard.js';
 
+// Chạy cục bộ: nạp .env (thư mục db/ rồi gốc repo) như API – biến đã có trong process.env (CI/staging) không bị ghi đè
+for (const candidate of [path.resolve(process.cwd(), '.env'), path.resolve(process.cwd(), '../.env')]) {
+  if (fs.existsSync(candidate)) {
+    process.loadEnvFile(candidate);
+    break;
+  }
+}
+
 const url = process.env.DATABASE_URL_MIGRATE ?? process.env.DATABASE_URL;
 if (!url) {
   console.error('Thiếu DATABASE_URL_MIGRATE/DATABASE_URL');
