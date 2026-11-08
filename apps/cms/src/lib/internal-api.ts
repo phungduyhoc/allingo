@@ -35,6 +35,8 @@ export interface PublishQuestionRequest {
   source: 'human' | 'ai';
   change_note?: string;
   created_by_email?: string;
+  /** B5: passage của câu (id catalog = id passage CMS – đồng bộ trước bằng syncPassage); null = bỏ liên kết */
+  passage_id?: string | null;
 }
 export interface PublishQuestionResponse {
   question_id: string;
@@ -168,6 +170,21 @@ export function syncQuestion(body: SyncQuestionRequest): Promise<PublishQuestion
 /** POST /internal/content/questions/duplicates – trùng trong lô + với catalog (pg_trgm ≥ 0,85) */
 export function findDuplicates(body: { program: string; stems: string[]; threshold?: number; exclude_external_refs?: string[] }): Promise<DuplicatesResponse> {
   return request<DuplicatesResponse>({ method: 'POST', path: '/internal/content/questions/duplicates', body, timeoutMs: 30_000 });
+}
+
+/** B5: passage + văn bản từng phần (bộ đôi/bộ ba Part 7) → catalog.passages + passage_parts (id catalog = id CMS) */
+export interface SyncPassageRequest {
+  passage_id: string;
+  program: string;
+  kind: 'reading_passage' | 'audio_script' | 'image_prompt' | 'chart_prompt' | 'dialogue';
+  title?: string | null;
+  body?: string | null;
+  difficulty?: string | null;
+  status: 'draft' | 'ready' | 'retired';
+  parts: Array<{ title?: string | null; body: string }>;
+}
+export function syncPassage(body: SyncPassageRequest): Promise<{ passage_id: string; parts: number; status: string }> {
+  return request<{ passage_id: string; parts: number; status: string }>({ method: 'POST', path: '/internal/content/passages/sync', body });
 }
 
 /** POST /internal/content/test-sets/validate – kiểm tra cấu trúc (TOEIC full: Part 1–7 đúng số câu) */

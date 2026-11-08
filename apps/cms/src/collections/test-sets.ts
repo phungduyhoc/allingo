@@ -5,6 +5,8 @@ import type { TestSet } from '../payload-types';
 import { describeError, publishTestSet } from '../lib/internal-api';
 import { PROGRAM_OPTIONS, TOEIC_SECTIONS } from '../lib/reference';
 import { findUnpublishedItems, relationshipId, validateTestSetStructure, type TestSetShape } from '../lib/validate';
+import { blueprintErrors, blueprintReport } from '../lib/test-set-builder';
+import { testSetStructureEndpoint } from '../endpoints/test-set-structure';
 
 /**
  * Bộ đề soạn trong CMS; khi `published` gọi `POST /internal/content/test-sets/publish` (ADR-0019).
@@ -60,6 +62,12 @@ const validateAndPublish: CollectionBeforeChangeHook<TestSet> = async ({ data, o
   const role = roleOf(req);
   if (to === 'published' && from !== 'published') {
     if (role !== 'teacher' && role !== 'admin') fail('status', 'Chỉ teacher/admin được phát hành bộ đề.', req);
+    // A26/B5: blueprint (nếu khai báo) – đủ đúng số câu mỗi Part trước khi xuất bản
+    const bp = (merged.blueprint ?? []).filter((b) => b.sectionCode && typeof b.count === 'number').map((b) => ({ sectionCode: b.sectionCode, count: b.count }));
+    if (bp.length) {
+      const errs = blueprintErrors(blueprintReport(bp, { items: shape.items }));
+      if (errs.length) fail('blueprint', `Chưa đạt blueprint: ${errs.join(' ')}`, req);
+    }
     if (operation === 'create') fail('status', 'Lưu bộ đề ở trạng thái nháp trước, rồi phát hành.', req);
     const externalRef = merged.externalRef ?? (original?.id ? String(original.id) : null);
     if (!externalRef) fail('status', 'Thiếu externalRef – lưu bộ đề trước khi phát hành.', req);
@@ -99,11 +107,13 @@ export const TestSets: CollectionConfig = {
     group: { vi: 'Nội dung', en: 'Content' },
     defaultColumns: ['code', 'program', 'kind', 'isFree', 'status', 'updatedAt'],
     description: {
-      vi: 'TOEIC full cần đủ Part 1–7 (6/25/39/30/30/16/54 câu). Mini/part_drill ≥ 1 câu. Mọi câu phải đã phát hành.',
-      en: 'TOEIC full requires Part 1–7 (6/25/39/30/30/16/54). Mini/part_drill ≥ 1 item. All items must be published.',
+      vi: 'TOEIC full cần đủ Part 1–7 (6/25/39/30/30/16/54 câu). Mini/part_drill ≥ 1 câu. Mọi câu phải đã phát hành. Dùng "Trình dựng kéo thả" để sắp xếp Part/nhóm/câu và kiểm tra blueprint.',
+      en: 'TOEIC full requires Part 1–7 (6/25/39/30/30/16/54). Mini/part_drill ≥ 1 item. All items must be published. Use the drag-and-drop builder to order parts/groups/items and check the blueprint.',
     },
+    components: { edit: { beforeDocumentControls: ['/components/test-set-builder-link#TestSetBuilderLink'] } },
   },
   access: { read: isLoggedIn, create: isReviewer, update: isReviewer, delete: isAdmin },
+  endpoints: [testSetStructureEndpoint],
   hooks: {
     beforeChange: [validateAndPublish],
     afterChange: [
@@ -186,6 +196,22 @@ export const TestSets: CollectionConfig = {
             { name: 'sortOrder', type: 'number', required: true, min: 0, label: { vi: 'Thứ tự', en: 'Sort order' } },
             { name: 'groupKey', type: 'text', label: { vi: 'Nhóm (passage)', en: 'Group key' } },
             { name: 'points', type: 'number', min: 0, defaultValue: 1, label: { vi: 'Điểm', en: 'Points' } },
+          ],
+        },
+      ],
+    },
+    {
+      // A26/B5: số câu mỗi Part bắt buộc khi xuất bản (trống = chỉ kiểm cấu trúc theo loại đề)
+      name: 'blueprint',
+      type: 'array',
+      label: { vi: 'Blueprint (số câu mỗi Part)', en: 'Blueprint (questions per part)' },
+      admin: { initCollapsed: true, description: { vi: 'Trình dựng kéo thả chặn xuất bản khi số câu từng Part lệch blueprint.', en: 'Publishing is blocked when a part does not match the blueprint.' } },
+      fields: [
+        {
+          type: 'row',
+          fields: [
+            { name: 'sectionCode', type: 'text', required: true, label: 'section_code' },
+            { name: 'count', type: 'number', required: true, min: 1, max: 200, label: { vi: 'Số câu', en: 'Count' } },
           ],
         },
       ],

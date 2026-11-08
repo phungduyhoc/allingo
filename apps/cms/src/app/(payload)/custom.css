@@ -106,3 +106,88 @@
   text-align: left;
   vertical-align: top;
 }
+
+/* A26 – trình dựng bộ đề kéo thả */
+.allingo-dnd-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.allingo-dnd-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--theme-elevation-150);
+  border-radius: 6px;
+  background: var(--theme-elevation-0);
+  cursor: grab;
+}
+.allingo-dnd-item[data-drop-target='true'] {
+  border-color: var(--allingo-gold);
+  box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.35);
+}
+.allingo-dnd-handle {
+  color: var(--theme-elevation-500);
+  user-select: none;
+  line-height: 1.6;
+}
+.allingo-dnd-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.allingo-dnd-question {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+  word-break: break-word;
+}
+.allingo-dnd-buttons {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.allingo-dnd-buttons button,
+.allingo-link-button {
+  border: 1px solid var(--theme-elevation-200);
+  background: var(--theme-elevation-50);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  color: var(--theme-text);
+}
+.allingo-dnd-buttons button:disabled,
+.allingo-link-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.allingo-dnd-buttons button:focus-visible,
+.allingo-link-button:focus-visible {
+  outline: 2px solid var(--allingo-gold);
+  outline-offset: 1px;
+}
+.allingo-issues {
+  margin: 12px 0 0;
+  padding-left: 18px;
+}
+.allingo-bank-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.allingo-bank-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}

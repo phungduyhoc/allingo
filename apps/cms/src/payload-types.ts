@@ -246,7 +246,20 @@ export interface Passage {
         | 'mixed'
       )
     | null;
+  /**
+   * Multi-text passages: generated from "Texts" below when there are ≥ 2 texts.
+   */
   body?: string | null;
+  /**
+   * One entry per text, in order (drag to reorder) – learners see one tab per text. Single passage: leave empty and use "Body".
+   */
+  parts?:
+    | {
+        title?: string | null;
+        body: string;
+        id?: string | null;
+      }[]
+    | null;
   media?: (string | Media)[] | null;
   wordCount?: number | null;
   status: 'draft' | 'ready' | 'retired';
@@ -364,7 +377,7 @@ export interface Question {
   createdAt: string;
 }
 /**
- * TOEIC full requires Part 1–7 (6/25/39/30/30/16/54). Mini/part_drill ≥ 1 item. All items must be published.
+ * TOEIC full requires Part 1–7 (6/25/39/30/30/16/54). Mini/part_drill ≥ 1 item. All items must be published. Use the drag-and-drop builder to order parts/groups/items and check the blueprint.
  *
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "test_sets".
@@ -396,6 +409,16 @@ export interface TestSet {
     points?: number | null;
     id?: string | null;
   }[];
+  /**
+   * Publishing is blocked when a part does not match the blueprint.
+   */
+  blueprint?:
+    | {
+        sectionCode: string;
+        count: number;
+        id?: string | null;
+      }[]
+    | null;
   status: 'draft' | 'published';
   externalRef?: string | null;
   publishedRef?: {
@@ -1167,6 +1190,13 @@ export interface PassagesSelect<T extends boolean = true> {
   kind?: T;
   difficulty?: T;
   body?: T;
+  parts?:
+    | T
+    | {
+        title?: T;
+        body?: T;
+        id?: T;
+      };
   media?: T;
   wordCount?: T;
   status?: T;
@@ -1256,6 +1286,13 @@ export interface TestSetsSelect<T extends boolean = true> {
         sortOrder?: T;
         groupKey?: T;
         points?: T;
+        id?: T;
+      };
+  blueprint?:
+    | T
+    | {
+        sectionCode?: T;
+        count?: T;
         id?: T;
       };
   status?: T;

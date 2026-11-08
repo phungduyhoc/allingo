@@ -7,10 +7,11 @@ import type { Question } from '../payload-types';
 import { importQuestionsEndpoint } from '../endpoints/import-questions';
 import { referenceEndpoint } from '../endpoints/reference';
 import { isAdmin, isLoggedIn, roleOf } from '../lib/access';
-import { describeError, syncQuestion, type SyncQuestionRequest } from '../lib/internal-api';
+import { describeError, syncPassage, syncQuestion, type SyncQuestionRequest } from '../lib/internal-api';
+import { toSyncPassage } from '../lib/passages';
 import { isListeningSection, LISTEN_POLICIES, MAX_PAUSE_MS, mergeListeningMedia } from '../lib/listening';
 import { DIFFICULTY_CODES, PROGRAM_OPTIONS, QUESTION_TYPE_OPTIONS } from '../lib/reference';
-import { validateMcqAnswerKeys, validateQuestionContent } from '../lib/validate';
+import { relationshipId, validateMcqAnswerKeys, validateQuestionContent } from '../lib/validate';
 import {
   EDITABLE_CONTENT_STATUSES,
   evaluateTransition,
@@ -95,6 +96,18 @@ const normalizeBeforeValidate: CollectionBeforeValidateHook<Question> = ({ data,
   return data;
 };
 
+/**
+ * B5: passage của câu → đồng bộ passage (kể cả văn bản từng phần) sang catalog trước, trả id catalog (= id CMS) để gửi `passage_id`.
+ * Không có passage → null (bỏ liên kết). Lỗi đồng bộ passage → ném lỗi (câu phải trỏ passage đã có ở catalog).
+ */
+async function catalogPassageId(req: PayloadRequest, passage: unknown): Promise<string | null> {
+  const id = relationshipId(passage);
+  if (!id) return null;
+  const doc = await req.payload.findByID({ collection: 'passages', id, depth: 0, req, overrideAccess: true });
+  await syncPassage(toSyncPassage(doc));
+  return id;
+}
+
 /** Máy trạng thái + phát hành (xem lib/workflow.ts) */
 const workflowBeforeChange: CollectionBeforeChangeHook<Question> = async ({ data, operation, originalDoc, req }) => {
   const ctx = req.context as { skipWorkflow?: boolean; aiCheck?: boolean };
@@ -107,6 +120,8 @@ const workflowBeforeChange: CollectionBeforeChangeHook<Question> = async ({ data
 
   const prevContent = original?.content;
   const contentChanged = operation === 'update' && data.content !== undefined && !sameJson(data.content, prevContent);
+  // B5: đổi passage (vd. gắn bộ đôi Part 7) cũng đồng bộ catalog
+  const passageChanged = operation === 'update' && data.passage !== undefined && relationshipId(data.passage) !== relationshipId(original?.passage);
 
   if (ctx.skipWorkflow) {
     // Seed/import hệ thống: chỉ kiểm tra content, không áp máy trạng thái
@@ -154,7 +169,7 @@ const workflowBeforeChange: CollectionBeforeChangeHook<Question> = async ({ data
 
   // Đồng bộ sang catalog khi trạng thái hoặc nội dung đổi (cả sửa nhanh câu đã phát hành của teacher/admin → phiên bản mới)
   const statusChanged = from !== to;
-  if (statusChanged || contentChanged || catalogReview) {
+  if (statusChanged || contentChanged || catalogReview || passageChanged) {
     const merged: QuestionData = { ...original, ...data };
     const content = validateQuestionContent(merged.questionType, merged.content);
     if (!content.ok) {
@@ -163,12 +178,14 @@ const workflowBeforeChange: CollectionBeforeChangeHook<Question> = async ({ data
       const externalRef = merged.externalRef ?? (original?.id ? String(original.id) : null);
       if (!externalRef) fail('status', 'Thiếu externalRef – lưu câu hỏi trước khi đổi trạng thái.', req);
       try {
+        const passageId = await catalogPassageId(req, merged.passage);
         const res = await syncQuestion({
           external_ref: externalRef,
           program: merged.program ?? 'toeic',
           section_code: merged.sectionCode ?? '',
           question_type: merged.questionType ?? content.value.type,
           content: content.value,
+          passage_id: passageId,
           status: to,
           difficulty: merged.difficulty ?? undefined,
           topic_code: merged.topicCode ?? undefined,
@@ -221,8 +238,10 @@ export const Questions: CollectionConfig = {
           const content = validateQuestionContent(doc.questionType, doc.content);
           if (content.ok && !(req.context as { skipWorkflow?: boolean }).skipWorkflow) {
             try {
+              const passageId = await catalogPassageId(req, doc.passage);
               await syncQuestion({
                 external_ref: String(doc.id),
+                passage_id: passageId,
                 program: doc.program ?? 'toeic',
                 section_code: doc.sectionCode ?? '',
                 question_type: doc.questionType ?? content.value.type,

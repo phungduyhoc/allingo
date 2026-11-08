@@ -119,3 +119,15 @@ scripts/seed-cms.ts          seed idempotent
 - GraphQL tắt (`graphQL.disable`), chỉ dùng REST.
 - `externalRef` = id (UUID) của document, gán trong `afterChange` khi tạo.
 - `reviews.decision` mở rộng thêm `submit`/`retire`/`reopen` (CMS nội bộ) để ghi mọi chuyển trạng thái.
+
+## B5 + B2 (09/11/2026)
+
+- **Đoạn văn / script → "Các văn bản"** (TOEIC Part 7 bộ đôi/bộ ba): mỗi văn bản một mục (kéo để đổi thứ tự); ≥ 2 văn bản → `body` tự gộp
+  `[Tiêu đề]`. Mỗi lần lưu passage đồng bộ `POST /internal/content/passages/sync` (id catalog = id CMS); câu có passage đồng bộ passage trước rồi
+  gửi `passage_id`.
+- **Trình dựng bộ đề kéo thả** (`/admin/test-set-builder?id=…`, nút "Trình dựng kéo thả" trong trang sửa bộ đề, liên kết ở thanh điều hướng):
+  sắp Part và khối (câu đơn / trọn nhóm passage) bằng kéo thả hoặc nút ↑/↓, bớt câu, thêm câu từ ngân hàng (lọc Part/độ khó/trạng thái/từ
+  khoá), blueprint (mẫu TOEIC full 200 / mini 60 hoặc tự nhập – lưu trường `blueprint`, hook chặn xuất bản khi lệch), "Kiểm tra cấu trúc (API)"
+  (`POST /api/test_sets/validate-structure`), lưu/xuất bản qua REST collection (hook phát hành hiện có).
+- Migration Payload `20261108_201805_b5_passage_parts_blueprint` (bảng `passages_parts`, `test_sets_blueprint`) – staging/production chạy
+  `payload migrate` trước `next start`; dev DB đồng bộ bằng push (chạy `scripts/seed-cms.ts` một lần, S139).

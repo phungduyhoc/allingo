@@ -33,6 +33,8 @@ export default buildConfig({
       views: {
         importQuestions: { Component: '/components/import-view#ImportView', path: '/import-questions', exact: true },
         aiGenerate: { Component: '/components/ai-generate-view#AiGenerateView', path: '/ai-generate', exact: true },
+        // A26: trình dựng bộ đề kéo thả
+        testSetBuilder: { Component: '/components/test-set-builder-view#TestSetBuilderView', path: '/test-set-builder', exact: true },
       },
     },
     dateFormat: 'dd/MM/yyyy HH:mm',
