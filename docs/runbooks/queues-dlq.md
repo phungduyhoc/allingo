@@ -17,6 +17,21 @@ select queue, job_id, attempts, failed_at, left(error, 200) from ops.jobs_deadle
    `RETENTION_DEADLETTER_DAYS` (90 ngày). Trạng thái tổng: `GET /v1/admin/system/status` (độ sâu hàng đợi, DLQ, partition, outbox).
 3. Không replay mù job thanh toán/credit – kiểm ledger trước (`payments.md` §5).
 
+<a id="outbox"></a>
+## 1b. Outbox (B7/S26 – ADR-0036)
+Consumer sự kiện miền lỗi → chỉ consumer đó được thử lại theo backoff (10 s·2^(n−1), trần 1 giờ, `OUTBOX_MAX_ATTEMPTS` = 10 lần) →
+quá hạn (hoặc `OutboxPermanentError`) vào `ops.jobs_deadletter` với `queue = 'outbox'`, `job = event_type` (alert `DeadLetterJobs`
+cùng gauge `bullmq_deadletter_jobs{queue="outbox"}`). Theo dõi: `outbox_backlog_events{state}`, `outbox_consumer_failures_total{consumer}`,
+`GET /v1/admin/system/status` → `outbox.retrying | dead_lettered | oldest_unpublished_sec`.
+```sql
+select id, event_type, attempts, pending_consumers, left(last_error, 200), next_attempt_at, dead_lettered_at
+from ops.outbox where published_at is null and (attempts > 0 or dead_lettered_at is not null) order by id desc limit 50;
+```
+1. `last_error` dạng `<Class.method>: <thông điệp>` → tìm consumer, sửa nguyên nhân (provider, dữ liệu, deploy).
+2. Replay: trang Admin → Hệ thống → Dead-letter (lọc queue `outbox`) hoặc `POST /v1/admin/jobs/dead-letters/{id}/replay` – giao NGAY các
+   consumer còn lỗi (consumer đã thành công không chạy lại); kết quả `delivered | retry | already_delivered`. Lỗi lại → vòng thử lại mới.
+3. Lỗi tạm thời đang thử lại không cần thao tác; muốn thử ngay: `update ops.outbox set next_attempt_at = now() where id = …`.
+
 <a id="backlog"></a>
 ## 2. Tồn đọng
 1. Worker sống? `az containerapp replica list -n allingo-stg-worker`; log `worker started`, `backpressure: low-priority workers paused`.

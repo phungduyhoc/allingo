@@ -238,6 +238,14 @@ export const OPS_METRICS = {
   info: metrics.gauge('allingo_build_info', 'Thông tin build (giá trị luôn 1)', ['service', 'version', 'env']),
 };
 
+/** B7/S26 – outbox: kết quả giao theo sự kiện, consumer lỗi, tồn đọng (gauge cập nhật bởi OpsMetricsService) */
+export const OUTBOX_METRICS = {
+  events: metrics.counter('outbox_events_total', 'Sự kiện outbox theo kết quả lần giao (delivered, retry, dead_letter)', ['event_type', 'result']),
+  consumerFailures: metrics.counter('outbox_consumer_failures_total', 'Lần consumer outbox lỗi (transient = sẽ thử lại, permanent = dead-letter ngay)', ['consumer', 'kind']),
+  backlog: metrics.gauge('outbox_backlog_events', 'Sự kiện outbox chưa giao theo trạng thái (pending, retrying, dead_letter)', ['state']),
+  oldestPending: metrics.gauge('outbox_oldest_pending_seconds', 'Tuổi sự kiện outbox chưa giao lâu nhất (không tính dead-letter)', []),
+};
+
 /** S12 – beta kín & hỗ trợ: đăng ký chờ, mời/đổi mã, góp ý, SLA (alert SupportSlaBreached đọc gauge) */
 export const GROWTH_METRICS = {
   waitlist: metrics.counter('beta_waitlist_signups_total', 'Đăng ký danh sách chờ mới theo chương trình', ['program']),

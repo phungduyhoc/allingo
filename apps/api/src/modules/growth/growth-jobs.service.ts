@@ -36,7 +36,14 @@ export class GrowthJobsService implements OnModuleInit, OnApplicationBootstrap, 
   onModuleInit(): void {
     this.jobs.register('notify', JOB_NAMES.NOTIFICATION_DISPATCH, () => this.notify.dispatchDue());
     // S12: gửi mời beta theo đợt (hạn mức/ngày giờ VN) + cảnh báo SLA hỗ trợ
-    this.jobs.register('notify', JOB_NAMES.BETA_INVITES_SEND, (p) => this.beta.sendDue({ limit: typeof p?.limit === 'number' ? p.limit : undefined }));
+    // B6/S147: payload có thể chọn lô (`invite_ids`, `batch`); thiếu → mọi lời mời đang xếp hàng
+    this.jobs.register('notify', JOB_NAMES.BETA_INVITES_SEND, (p) =>
+      this.beta.sendDue({
+        limit: typeof p?.limit === 'number' ? p.limit : undefined,
+        inviteIds: Array.isArray(p?.invite_ids) ? (p.invite_ids as unknown[]).filter((x): x is string => typeof x === 'string') : undefined,
+        batch: typeof p?.batch === 'string' && p.batch ? p.batch : undefined,
+      }),
+    );
     this.jobs.register('maintenance', JOB_NAMES.SLA_CHECK, () => this.slaCheck());
   }
 

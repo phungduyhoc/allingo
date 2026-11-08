@@ -156,18 +156,22 @@ describe('S10 – sink phễu PostHog', () => {
 });
 
 describe('S10 – URL trong mẫu thông báo khớp route web', () => {
-  const WEB_ROUTES = [/^\/pricing$/, /^\/account\/orders\/[\w-]+$/, /^\/account\/referral$/, /^\/(toeic|ielts|jlpt|hsk)\/(practice|dashboard|today|plan|stats|vocab|errors)(\?.*)?$/, /^\/badges$/, /^\/admin\/billing\/dead-letters$/];
-  it('mọi mẫu (14 mã) render URL thuộc danh sách route web; theo chương trình, thiếu program → toeic', () => {
+  // S12 (gộp vào danh sách chung – B6/S149): /support/tickets/{id}, /beta?code=, /support | /attempts/{id}/review?focus= (S148)
+  const WEB_ROUTES = [/^\/pricing$/, /^\/account\/orders\/[\w-]+$/, /^\/account\/referral$/, /^\/(toeic|ielts|jlpt|hsk)\/(practice|dashboard|today|plan|stats|vocab|errors)(\?.*)?$/, /^\/badges$/, /^\/admin\/billing\/dead-letters$/, /^\/support(\/tickets\/[\w-]+)?$/, /^\/beta\?code=[\w-]+$/, /^\/attempts\/[\w-]+\/review\?focus=[\w-]+$/];
+  it('mọi mẫu (17 mã, gồm 3 mã S12) render URL thuộc danh sách route web; theo chương trình, thiếu program → toeic', () => {
     const links = { appUrl: 'https://allingo.vn', manageUrl: 'https://allingo.vn/m', unsubscribeUrl: null };
-    expect(Object.keys(NOTIFICATION_TEMPLATES)).toHaveLength(14);
+    expect(Object.keys(NOTIFICATION_TEMPLATES)).toHaveLength(17);
     for (const def of Object.values(NOTIFICATION_TEMPLATES)) {
-      const r = renderNotification(def, 'vi', { order_id: 'o-1', proposal_id: 'p-1', program: 'toeic', streak: 3, minutes: 10 }, links);
+      const r = renderNotification(def, 'vi', { order_id: 'o-1', proposal_id: 'p-1', program: 'toeic', streak: 3, minutes: 10, ticket_id: 't-1', code: 'ALG-ABCD-2345' }, links);
       expect(WEB_ROUTES.some((re) => re.test(r.url))).toBe(true);
       expect(['/practice', '/today', '/stats', '/plan']).not.toContain(r.url.split('?')[0]);
     }
     expect(renderNotification(NOTIFICATION_TEMPLATES['learning.weekly_summary'], 'en', {}, links).url).toBe('/toeic/stats');
     expect(renderNotification(NOTIFICATION_TEMPLATES['learning.study_reminder'], 'vi', { program: 'ielts' }, links).url).toBe('/ielts/today');
     expect(renderNotification(NOTIFICATION_TEMPLATES['learning.plan_adjust_ready'], 'vi', { proposal_id: 'abc' }, links).url).toBe('/toeic/plan?proposal=abc');
+    // B6/S148: báo lỗi câu đã xử lý → xem lại đúng câu (attempt đã nộp có câu này) hoặc /support; không tự trỏ /notifications
+    expect(renderNotification(NOTIFICATION_TEMPLATES['content.report_resolved'], 'vi', { attempt_id: 'a-1', question_version_id: 'qv-1', fixed: true }, links).url).toBe('/attempts/a-1/review?focus=qv-1');
+    expect(renderNotification(NOTIFICATION_TEMPLATES['content.report_resolved'], 'vi', { attempt_id: null, fixed: false }, links).url).toBe('/support');
     // 3 mẫu S9 + tóm tắt tuần có đủ vi/en cho mọi kênh
     for (const code of ['learning.streak_at_risk', 'learning.badge_awarded', 'learning.plan_adjust_ready', 'learning.weekly_summary'] as const) {
       const def = NOTIFICATION_TEMPLATES[code];

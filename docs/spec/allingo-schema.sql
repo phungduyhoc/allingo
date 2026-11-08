@@ -1363,6 +1363,12 @@ CREATE TABLE ops.outbox (                                -- domain events (ADR-0
   payload        jsonb NOT NULL,
   created_at     timestamptz NOT NULL DEFAULT now(),
   published_at   timestamptz,
+  -- v1.1 – B7/S26 (migration 0010, ADR-0036): giao theo consumer, thử lại có backoff, dead-letter (ops.jobs_deadletter queue = 'outbox')
+  attempts          smallint NOT NULL DEFAULT 0,          -- số lần giao lỗi; tới OUTBOX_MAX_ATTEMPTS → dead-letter
+  next_attempt_at   timestamptz,                         -- chưa tới hạn → relay bỏ qua (backoff mũ / lease khi đang giao)
+  last_error        text,                                -- "<consumer>: <message>" gần nhất (không PII)
+  pending_consumers text[],                              -- consumer còn phải giao (NULL = tất cả); consumer đã xong không chạy lại
+  dead_lettered_at  timestamptz,                         -- đã chuyển dead-letter – chờ admin replay
   PRIMARY KEY (id, created_at)
 ) PARTITION BY RANGE (created_at);
 CREATE INDEX ix_outbox_unpublished ON ops.outbox(created_at) WHERE published_at IS NULL;

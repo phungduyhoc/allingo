@@ -7,6 +7,7 @@ import type { AuthUser } from '../../shared/auth/auth.guard.js';
 import { RedisService } from '../../shared/cache/redis.module.js';
 import { DbService } from '../../shared/db/db.module.js';
 import { AuditService } from '../../shared/events/audit.service.js';
+import { OUTBOX_DLQ_QUEUE, OutboxService, type OutboxDeliveryResult } from '../../shared/events/outbox.service.js';
 import { decodeCursor, encodeCursor } from '../../shared/http/cursor.js';
 import { Conflict, NotFound, ValidationFailed } from '../../shared/http/errors.js';
 import { JobsService } from '../../shared/queue/jobs.service.js';
@@ -30,6 +31,7 @@ export function deadLetterJobName(r: Pick<DeadLetterRow, 'jobName' | 'jobId' | '
 /**
  * Admin hệ thống (S12): trạng thái hàng đợi/dead-letter/partition/cờ/SLA/outbox, dead-letter mọi hàng đợi + replay, tìm audit log.
  * Replay: xoá job thất bại cũ còn trong BullMQ (cùng jobId) rồi thêm lại; Redis/BullMQ không sẵn → chạy inline qua JobsService.
+ * B7/S26: dead-letter `queue = outbox` → OutboxService.replayDeadLetter (giao lại đúng consumer lỗi, inline).
  */
 @Injectable()
 export class AdminOpsService {
@@ -45,6 +47,7 @@ export class AdminOpsService {
     private readonly reports: ContentReportsService,
     private readonly support: SupportService,
     private readonly audit: AuditService,
+    private readonly outbox: OutboxService,
   ) {}
 
   async systemStatus() {
@@ -64,7 +67,8 @@ export class AdminOpsService {
     const [dl] = (await this.dbs.db.execute(sql`select count(*)::int as total, count(*) filter (where failed_at > now() - interval '24 hours')::int as last_24h, count(*) filter (where replayed_at is null and coalesce(payload->>'resolved_at', '') = '')::int as unreplayed from ops.jobs_deadletter`)) as unknown as Array<{ total: number; last_24h: number; unreplayed: number }>;
     const byQueue = (await this.dbs.db.execute(sql`select queue, count(*)::int as n from ops.jobs_deadletter where replayed_at is null group by queue`)) as unknown as Array<{ queue: string; n: number }>;
     const coverage = await partitionCoverage(this.dbs.db, 2);
-    const [ob] = (await this.dbs.db.execute(sql`select count(*)::int as n, extract(epoch from now() - min(created_at))::float8 as oldest from ops.outbox where published_at is null`)) as unknown as Array<{ n: number; oldest: number | null }>;
+    // B7/S26: chờ giao (không tính dead-letter), đang thử lại, dead-letter
+    const ob = await this.outbox.backlog();
     return {
       redis_healthy: this.redis.isHealthy,
       queues,
@@ -72,7 +76,7 @@ export class AdminOpsService {
       partitions: coverage.map((c) => ({ table: c.table, months_ahead: c.monthsAhead, missing: c.missing })),
       flags: await this.flags.list(),
       sla: { content_reports_overdue: await this.reports.overdueCount(), support_tickets_overdue: await this.support.overdueCount() },
-      outbox: { unpublished: ob?.n ?? 0, oldest_unpublished_sec: ob?.oldest === null || ob?.oldest === undefined ? null : Math.round(Number(ob.oldest)) },
+      outbox: ob,
     };
   }
 
@@ -99,6 +103,8 @@ export class AdminOpsService {
     if (!row) throw new NotFound('dead_letter', id);
     const name = deadLetterJobName(row);
     if (!name) throw new Conflict('Cannot determine job name for this dead-letter', { reason: 'no_handler' });
+    // B7/S26: dead-letter của outbox → mở lại sự kiện và giao ngay các consumer còn lỗi (idempotent theo consumer)
+    if (row.queue === OUTBOX_DLQ_QUEUE) return this.replayOutbox(actor, row, name);
     const queue = row.queue as QueueName;
     if (!(QUEUES as readonly string[]).includes(queue)) throw new Conflict('Unknown queue', { reason: 'no_handler', queue });
     const payload = { ...((row.payload ?? {}) as Record<string, unknown>) };
@@ -137,6 +143,16 @@ export class AdminOpsService {
     const [after] = await this.dbs.db.update(opsJobsDeadletter).set({ replayedAt: new Date(), replayCount: row.replayCount + 1, jobName: name }).where(eq(opsJobsDeadletter.id, id)).returning();
     await this.audit.log({ action: 'job.dead_letter_replayed', actorUserId: actor.id, actorRole: actor.roles.join(','), entityType: 'dead_letter', entityId: id, after: { queue, job: name, mode, error: error ? 'failed' : null, replay_count: after!.replayCount } });
     return { ...this.dlDto(after!), mode, result: (result as Record<string, unknown> | null) ?? null, error };
+  }
+
+  private async replayOutbox(actor: AuthUser, row: DeadLetterRow, name: string) {
+    const result: OutboxDeliveryResult = await this.outbox.replayDeadLetter(row).catch((err: Error) => {
+      throw new Conflict('Dead-letter payload is not a replayable outbox event', { reason: 'no_handler', detail: err.message.slice(0, 200) });
+    });
+    const error = result.failed.length ? result.failed.map((f) => `${f.consumer}: ${f.error}`).join(' | ').slice(0, 500) : null;
+    const [after] = await this.dbs.db.update(opsJobsDeadletter).set({ replayedAt: new Date(), replayCount: row.replayCount + 1, jobName: name }).where(eq(opsJobsDeadletter.id, row.id)).returning();
+    await this.audit.log({ action: 'job.dead_letter_replayed', actorUserId: actor.id, actorRole: actor.roles.join(','), entityType: 'dead_letter', entityId: row.id, after: { queue: row.queue, job: name, mode: 'inline', status: result.status, delivered: result.delivered.length, failed: result.failed.length, replay_count: after!.replayCount } });
+    return { ...this.dlDto(after!), mode: 'inline' as const, result: { status: result.status, delivered: result.delivered, failed: result.failed.map((f) => f.consumer), attempts: result.attempts }, error };
   }
 
   async auditLogs(q: { actor?: string; action?: string; entity_type?: string; entity_id?: string; from?: string; to?: string; cursor?: string; limit: number }) {

@@ -20,11 +20,19 @@ Liên quan: ADR-0035, `docs/analytics/events.md`, `docs/gates/beta-weekly-*.md`,
 
 1. Xem danh sách chờ: `GET /v1/admin/beta/waitlist?program=toeic&status=waiting` (email đã che).
 2. Chọn người (giữ thứ tự chọn = thứ tự gửi): `POST /v1/admin/beta/invites {"waitlist_entry_ids": [...], "batch": "dot-1"}` → `queued`.
-3. Gửi: job `beta.invites_send` tự chạy mỗi ngày lúc `BETA_INVITE_SEND_HOUR_VN` (09:00 giờ VN), tối đa `daily_invite_limit`/ngày;
-   chạy tay: `POST /v1/admin/beta/invites/send {"limit": 50}`. Lỗi SMTP → trả về `queued` (thử lại lần sau), 3 lần → `failed`.
-4. Theo dõi: `GET /v1/admin/beta/invites?status=sent` (`today.remaining`), tỉ lệ đổi mã trong báo cáo tuần.
-5. Thu hồi mã chưa dùng: `POST /v1/admin/beta/invites/{id}/revoke`.
-6. Mã chỉ có trong email (DB lưu sha256). Người dùng báo mất mã → thu hồi rồi mời lại (mã mới).
+3. **Trước khi gửi – kiểm tra SMTP (B6/S153).** Dev/local: chạy `pnpm docker:up` để có Mailpit (SMTP `localhost:1025`, hộp thư
+   xem tại http://localhost:8025) – `.env` mặc định `SMTP_HOST=localhost`, `SMTP_PORT=1025`. Staging/production: `SMTP_*` (hoặc nhà
+   cung cấp email) đã cấu hình trong Key Vault và gửi thử thành công (`POST /v1/admin/notifications/test` kênh email tới hộp thư nội
+   bộ). Không có SMTP → mỗi lần gửi lỗi, lời mời quay về `queued` và tốn một lượt thử (`send_attempts`; 3 lần → `failed`, phải mời
+   lại) – vì vậy không bấm "Gửi ngay" khi chưa có SMTP.
+4. Gửi: job `beta.invites_send` tự chạy mỗi ngày lúc `BETA_INVITE_SEND_HOUR_VN` (09:00 giờ VN), tối đa `daily_invite_limit`/ngày;
+   chạy tay: `POST /v1/admin/beta/invites/send {"limit": 50}` (mọi lời mời đang xếp hàng, cũ trước). Chỉ gửi một lô (B6/S147):
+   `{"batch": "dot-1"}` (lời mời đang chờ của đợt) hoặc `{"invite_ids": ["…", "…"]}` (đúng các lời mời đã chọn, theo thứ tự truyền
+   vào; trang admin: tab Lời mời → tích chọn → "Gửi đã chọn"); hạn mức ngày luôn được tôn trọng, `result.skipped` = lời mời được chọn
+   nhưng không còn `queued`. Lỗi SMTP → trả về `queued` (thử lại lần sau), 3 lần → `failed`.
+5. Theo dõi: `GET /v1/admin/beta/invites?status=sent` (`today.remaining`), tỉ lệ đổi mã trong báo cáo tuần.
+6. Thu hồi mã chưa dùng: `POST /v1/admin/beta/invites/{id}/revoke`.
+7. Mã chỉ có trong email (DB lưu sha256). Người dùng báo mất mã → thu hồi rồi mời lại (mã mới).
 
 Kế hoạch S12: đợt 1 (50) → theo dõi 3 ngày (lỗi chặn học = 0, SLO đạt) → đợt 2–6 (≤ 50/ngày) tới 300 người.
 
@@ -32,7 +40,7 @@ Kế hoạch S12: đợt 1 (50) → theo dõi 3 ngày (lỗi chặn học = 0, S
 
 | Kênh | Nguồn | Nơi xử lý | SLA |
 | --- | --- | --- | --- |
-| Góp ý in-app (`ops.feedback`) | Nút "Góp ý" (ảnh màn hình + `trace_id`) | `GET /v1/admin/feedback` → tra trace trong Tempo/Loki theo `trace_id` | phân loại trong 1 ngày làm việc |
+| Góp ý in-app (`ops.feedback`) | Nút "Góp ý" (ảnh màn hình + `trace_id`); cả trên `/beta` cho người chưa có mã (chỉ chữ – B6/S150) | `GET /v1/admin/feedback` → tra trace trong Tempo/Loki theo `trace_id` | phân loại trong 1 ngày làm việc |
 | Báo lỗi câu (`ops.content_reports`) | Nút "Báo lỗi câu hỏi" | CMS → "Nội dung › Báo lỗi câu hỏi" (đồng bộ 30 s) hoặc `GET /v1/admin/content/reports` | **48 giờ** |
 | Ticket (`ops.support_tickets`) | Trang Hỗ trợ (kể cả người chưa vào được app) | `GET /v1/admin/support/tickets?overdue=true` | **phản hồi đầu 24 giờ** |
 

@@ -5,7 +5,7 @@ import { QUEUES, type QueueName } from '@allingo/schemas';
 import { DbService } from '../db/db.module.js';
 import { QueueService } from '../queue/queue.module.js';
 import { RedisService } from '../cache/redis.module.js';
-import { DB_METRICS, QUEUE_METRICS, metrics } from './metrics.js';
+import { DB_METRICS, OUTBOX_METRICS, QUEUE_METRICS, metrics } from './metrics.js';
 
 const QUEUE_STATES = ['waiting', 'active', 'delayed', 'failed', 'prioritized', 'waiting-children'] as const;
 
@@ -68,8 +68,20 @@ export class OpsMetricsService implements OnModuleInit, OnModuleDestroy {
     const rows = (await this.dbs.db.execute(sql`
       SELECT queue, count(*)::int AS n FROM ops.jobs_deadletter WHERE failed_at > now() - interval '24 hours' GROUP BY queue
     `)) as unknown as Array<{ queue: string; n: number }>;
-    for (const name of QUEUES) QUEUE_METRICS.deadletter.set({ queue: name }, 0);
+    // B7/S26: dead-letter của outbox (queue `outbox`) cùng gauge → alert DeadLetterJobs
+    for (const name of [...QUEUES, 'outbox']) QUEUE_METRICS.deadletter.set({ queue: name }, 0);
     for (const r of rows) QUEUE_METRICS.deadletter.set({ queue: r.queue }, r.n);
+    const [ob] = (await this.dbs.db.execute(sql`
+      SELECT count(*) FILTER (WHERE dead_lettered_at IS NULL AND attempts = 0)::int AS pending,
+             count(*) FILTER (WHERE dead_lettered_at IS NULL AND attempts > 0)::int AS retrying,
+             count(*) FILTER (WHERE dead_lettered_at IS NOT NULL)::int AS dead,
+             coalesce(extract(epoch FROM now() - min(created_at) FILTER (WHERE dead_lettered_at IS NULL)), 0)::float8 AS oldest
+      FROM ops.outbox WHERE published_at IS NULL
+    `)) as unknown as Array<{ pending: number; retrying: number; dead: number; oldest: number }>;
+    OUTBOX_METRICS.backlog.set({ state: 'pending' }, ob?.pending ?? 0);
+    OUTBOX_METRICS.backlog.set({ state: 'retrying' }, ob?.retrying ?? 0);
+    OUTBOX_METRICS.backlog.set({ state: 'dead_letter' }, ob?.dead ?? 0);
+    OUTBOX_METRICS.oldestPending.set({}, Number(ob?.oldest ?? 0));
   }
 }
 

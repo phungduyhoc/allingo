@@ -1,11 +1,14 @@
-import type { S12NotificationTemplateCode } from '@allingo/schemas';
+import type { NotificationTemplateCode } from '@allingo/schemas';
 import type { TemplateDef } from './templates.js';
+
+/** Mã mẫu S12 – thuộc NOTIFICATION_TEMPLATE_CODES chung (B6/S149) */
+type S12TemplateCode = Extract<NotificationTemplateCode, 'beta.invite' | 'support.reply' | 'content.report_resolved'>;
 
 /**
  * Mẫu S12 (beta kín & hỗ trợ). `beta.invite` gửi cho người trong danh sách chờ (chưa có tài khoản) – render bằng cùng renderer,
  * gửi thẳng qua MailerService (không ghi ops.notifications vì chưa có user_id). Mã mời chỉ có trong email, không lưu.
  */
-export const S12_TEMPLATES: Record<S12NotificationTemplateCode, TemplateDef> = {
+export const S12_TEMPLATES: Record<S12TemplateCode, TemplateDef> = {
   'beta.invite': {
     code: 'beta.invite',
     category: 'system',
@@ -60,7 +63,8 @@ export const S12_TEMPLATES: Record<S12NotificationTemplateCode, TemplateDef> = {
     channels: ['inapp'],
     transactional: false,
     quietHours: 'skip',
-    url: '/notifications',
+    // B6/S148: về trang xem lại đúng câu đã báo (attempt đã nộp gần nhất có câu này); không có attempt → trung tâm hỗ trợ
+    url: '{{#if attempt_id}}/attempts/{{attempt_id}}/review?focus={{question_version_id}}{{else}}/support{{/if}}',
     locales: {
       vi: {
         subject: 'Cảm ơn bạn đã báo lỗi câu hỏi',

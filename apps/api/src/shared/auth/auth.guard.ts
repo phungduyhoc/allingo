@@ -7,6 +7,7 @@ import { AuditService } from '../events/audit.service.js';
 import { Forbidden, MfaRequired, Unauthorized } from '../http/errors.js';
 import { getLogger } from '../telemetry/logger.js';
 import { JwtService, type AccessClaims } from './jwt.service.js';
+import { MfaEnrollmentLookup } from './mfa-enrollment.lookup.js';
 import { SessionRevocationService } from './session-revocation.service.js';
 
 export const ACCESS_COOKIE = 'allingo_at';
@@ -77,7 +78,8 @@ export function extractToken(req: FastifyRequest): string | null {
 /**
  * Guard toàn cục: cookie httpOnly (web) hoặc Bearer (mobile) → req.user; @Public() bỏ qua; @Roles() kiểm tra vai trò.
  * S12: (1) token impersonate (`scope = read_only`) chỉ GET/HEAD, cấm /admin/*, mọi request ghi audit `impersonation.request`;
- * (2) admin/superadmin gọi endpoint có @Roles phải có phiên đã xác minh TOTP (claim `mfa`) khi adminMfaRequired → 403 `mfa_required`.
+ * (2) admin/superadmin gọi endpoint có @Roles phải có phiên đã xác minh TOTP (claim `mfa`) khi adminMfaRequired → 403 `mfa_required`
+ *     kèm `details.enrolled` (B7/S144 – tra nhẹ có cache, MfaEnrollmentLookup).
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -88,6 +90,7 @@ export class AuthGuard implements CanActivate {
     private readonly revocation: SessionRevocationService,
     private readonly audit: AuditService,
     @Inject(ENV) private readonly env: Env,
+    private readonly mfaEnrollment: MfaEnrollmentLookup,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -108,7 +111,11 @@ export class AuthGuard implements CanActivate {
     }
     if (roles?.length && adminMfaRequired(this.env) && !req.user.mfa && req.user.roles.some((r) => (MFA_ROLES as readonly string[]).includes(r))) {
       const exempt = this.reflector.getAllAndOverride<boolean>(MFA_EXEMPT, [ctx.getHandler(), ctx.getClass()]);
-      if (!exempt) throw new MfaRequired({ reason: 'step_up_required' });
+      if (!exempt) {
+        // B7/S144: `details.enrolled` (OpenAPI) – web chọn ngay hộp nhập mã hay lối vào đăng ký TOTP, không gọi thêm /me/mfa
+        const enrolled = await this.mfaEnrollment.isEnrolled(req.user.id).catch(() => null);
+        throw new MfaRequired({ reason: 'step_up_required', ...(enrolled === null ? {} : { enrolled }) });
+      }
     }
     return true;
   }

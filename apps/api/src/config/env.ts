@@ -105,6 +105,12 @@ export const envSchema = z.object({
   POLICY_VERSION: z.string().default('2026-11'),
   PURGE_DELAY_MINUTES: z.coerce.number().int().default(72 * 60),
   PURGE_SCAN_INTERVAL_SECONDS: z.coerce.number().int().default(600),
+  /** B7/S26 – outbox: thử lại consumer lỗi theo backoff mũ (base·2^(n−1), trần MAX) tới OUTBOX_MAX_ATTEMPTS lần → dead-letter */
+  OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(50).default(10),
+  OUTBOX_RETRY_BASE_SECONDS: z.coerce.number().int().min(0).max(3600).default(10),
+  OUTBOX_RETRY_MAX_SECONDS: z.coerce.number().int().min(1).max(86_400).default(3600),
+  /** Thời gian giữ chỗ (lease) một sự kiện đang giao – relay khác (replica worker) không nhận trùng; quá hạn → nhận lại */
+  OUTBOX_LEASE_SECONDS: z.coerce.number().int().min(5).max(3600).default(300),
 
   SMTP_HOST: z.string().default('localhost'),
   SMTP_PORT: z.coerce.number().int().default(1025),

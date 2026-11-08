@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, gte, inArray, isNotNull, lt, sql, type SQL } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import { BETA_GATE_FLAG, BETA_TESTER_ROLE, DOMAIN_EVENTS, type AdminBetaInviteCreate, type BetaRedeemResult, type BetaStatus, type WaitlistInput } from '@allingo/schemas';
+import { BETA_GATE_FLAG, BETA_TESTER_ROLE, DOMAIN_EVENTS, type AdminBetaInviteCreate, type BetaInviteSendSummary, type BetaRedeemResult, type BetaStatus, type WaitlistInput } from '@allingo/schemas';
 import { ENV, type Env } from '../../../config/env.js';
 import type { AuthUser } from '../../../shared/auth/auth.guard.js';
 import { RedisService } from '../../../shared/cache/redis.module.js';
@@ -216,17 +216,28 @@ export class BetaService {
   /**
    * Job beta.invites_send: hết hạn mã quá hạn, rồi gửi lời mời `queued` theo thứ tự xếp hàng tới khi đủ hạn mức hôm nay
    * (giờ VN). Mỗi lời mời: sinh mã → lưu sha256 + sent → gửi email; lỗi gửi → trả về `queued` (hoặc `failed` sau 3 lần).
+   * B6/S147: `inviteIds` (giữ thứ tự truyền vào) và/hoặc `batch` → chỉ gửi lô đã chọn; không truyền → mọi lời mời đang xếp hàng.
+   * `skipped` = lời mời được chọn theo id nhưng không còn `queued` (đã gửi/thu hồi/không tồn tại).
    */
-  async sendDue(opts: { limit?: number; now?: Date } = {}): Promise<{ sent: number; failed: number; expired: number; remaining_today: number }> {
+  async sendDue(opts: { limit?: number; now?: Date; inviteIds?: readonly string[]; batch?: string } = {}): Promise<BetaInviteSendSummary> {
     const now = opts.now ?? this.now();
     const expired = await this.expireDue(now);
     const { cfg } = await this.config();
     let budget = remainingInvites(cfg.daily_invite_limit, await this.sentSince(vnDayStart(now)), opts.limit);
+    const ids = opts.inviteIds?.length ? [...new Set(opts.inviteIds)] : null;
+    let skipped = 0;
+    if (ids) {
+      const queued = await this.dbs.db.select({ id: opsBetaInvites.id }).from(opsBetaInvites).where(and(inArray(opsBetaInvites.id, ids), eq(opsBetaInvites.status, 'queued'), opts.batch ? eq(opsBetaInvites.batch, opts.batch) : undefined));
+      skipped = ids.length - queued.length;
+    }
+    // Thứ tự gửi: theo `invite_ids` (vị trí trong mảng) → theo thời điểm xếp hàng
+    const order: SQL[] = ids ? [sql`array_position(ARRAY[${sql.join(ids.map((id) => sql`${id}`), sql`, `)}]::uuid[], ${opsBetaInvites.id})`] : [];
+    const where = and(eq(opsBetaInvites.status, 'queued'), ids ? inArray(opsBetaInvites.id, ids) : undefined, opts.batch ? eq(opsBetaInvites.batch, opts.batch) : undefined);
     let sent = 0;
     let failed = 0;
     while (budget > 0) {
       const claimed = await this.dbs.db.transaction(async (tx) => {
-        const [row] = await tx.select().from(opsBetaInvites).where(eq(opsBetaInvites.status, 'queued')).orderBy(asc(opsBetaInvites.createdAt), asc(opsBetaInvites.id)).limit(1).for('update', { skipLocked: true });
+        const [row] = await tx.select().from(opsBetaInvites).where(where).orderBy(...order, asc(opsBetaInvites.createdAt), asc(opsBetaInvites.id)).limit(1).for('update', { skipLocked: true });
         if (!row) return null;
         const code = generateInviteCode();
         const expiresAt = new Date(now.getTime() + cfg.invite_ttl_days * 86_400_000);
@@ -247,8 +258,8 @@ export class BetaService {
         await this.dbs.db.update(opsBetaInvites).set({ status: attempts >= MAX_SEND_ATTEMPTS ? 'failed' : 'queued', codeHash: null, sentAt: null, expiresAt: null, lastError: (r.error ?? 'send failed').slice(0, 300) }).where(eq(opsBetaInvites.id, claimed.row.id));
       }
     }
-    if (sent || failed || expired) this.logger.info({ sent, failed, expired }, 'beta.invites_send');
-    return { sent, failed, expired, remaining_today: remainingInvites(cfg.daily_invite_limit, await this.sentSince(vnDayStart(now))) };
+    if (sent || failed || expired || skipped) this.logger.info({ sent, failed, expired, skipped, selected: ids ? ids.length : null, batch: opts.batch ?? null }, 'beta.invites_send');
+    return { sent, failed, expired, remaining_today: remainingInvites(cfg.daily_invite_limit, await this.sentSince(vnDayStart(now))), skipped };
   }
 
   private async sendInviteEmail(row: InviteRow, code: string, expiresAt: Date, cfg: BetaConfig): Promise<{ delivered: boolean; error?: string }> {

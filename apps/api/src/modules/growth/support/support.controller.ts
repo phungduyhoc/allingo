@@ -26,6 +26,8 @@ export class SupportController {
     private readonly surveys: SurveysService,
   ) {}
 
+  /** B6/S150: miễn beta gate – người chưa có quyền beta (đang ở /beta) vẫn gửi góp ý được (ảnh màn hình vẫn qua presign có gate) */
+  @BetaExempt()
   @Post('feedback')
   @HttpCode(201)
   @RateLimit('feedback')

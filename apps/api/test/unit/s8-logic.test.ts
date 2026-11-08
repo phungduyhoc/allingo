@@ -230,7 +230,7 @@ describe('S8 thông báo: chính sách giao, giờ yên lặng, mẫu i18n, toke
   });
 
   it('mọi mẫu dựng được vi + en (HTML + plain-text + push + in-app), không còn biến chưa thay; link huỷ đăng ký chỉ email không giao dịch', () => {
-    const data = { order_id: 'o-1', plan_name: { vi: 'TOEIC Pro – Tháng', en: 'TOEIC Pro – Monthly' }, total: 199_000, credits_granted: 5000, bonus_credits: 500, invoice_no: '00000001', series: '1C26MAL', lookup_code: 'ABC', lookup_url: 'https://x.example', period_end: '2026-11-09T10:00:00Z', days_before: 3, trial_days: 7, credits: 200, stage: 'started', is_referrer: true, minutes: 15, streak: 4, attempts: 3, xp: 120, op: 'issue', attempts_n: 6, error_code: 'mock_unavailable' };
+    const data = { order_id: 'o-1', plan_name: { vi: 'TOEIC Pro – Tháng', en: 'TOEIC Pro – Monthly' }, total: 199_000, credits_granted: 5000, bonus_credits: 500, invoice_no: '00000001', series: '1C26MAL', lookup_code: 'ABC', lookup_url: 'https://x.example', period_end: '2026-11-09T10:00:00Z', days_before: 3, trial_days: 7, credits: 200, stage: 'started', is_referrer: true, minutes: 15, streak: 4, attempts: 3, xp: 120, op: 'issue', attempts_n: 6, error_code: 'mock_unavailable', subject: 'Hỏi gói Pro', message: 'Đã kiểm tra', ticket_id: 't-1', code: 'ALG-ABCD-2345', program_name: 'TOEIC', expires_at: '2026-11-20T10:00:00Z', fixed: true, report_id: 'r-1' };
     const links = { appUrl: 'https://app.allingo.vn', manageUrl: 'https://app.allingo.vn/notifications/manage?token=t', unsubscribeUrl: 'https://api.allingo.vn/v1/notifications/unsubscribe?token=u' };
     expect(Object.keys(NOTIFICATION_TEMPLATES).sort()).toEqual([...NOTIFICATION_TEMPLATE_CODES].sort());
     for (const def of Object.values(NOTIFICATION_TEMPLATES)) {

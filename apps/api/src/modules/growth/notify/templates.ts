@@ -1,4 +1,4 @@
-import type { DeliveryChannel, NotificationTemplateCode, S12NotificationTemplateCode } from '@allingo/schemas';
+import type { DeliveryChannel, NotificationTemplateCode } from '@allingo/schemas';
 import { S12_TEMPLATES } from './s12-templates.js';
 
 /**
@@ -20,7 +20,7 @@ export interface LocaleTemplate {
 }
 
 export interface TemplateDef {
-  code: NotificationTemplateCode | S12NotificationTemplateCode;
+  code: NotificationTemplateCode;
   category: TemplateCategory;
   /** Kênh mặc định khi không chỉ định */
   channels: DeliveryChannel[];
@@ -33,7 +33,8 @@ export interface TemplateDef {
   locales: { vi: LocaleTemplate; en: LocaleTemplate };
 }
 
-const T: Record<NotificationTemplateCode, TemplateDef> = {
+/** Mẫu Sprint 8–11; mẫu S12 (beta/hỗ trợ/báo lỗi câu) ở s12-templates.ts – gộp vào cùng bảng (B6/S149) */
+const BASE: Record<Exclude<NotificationTemplateCode, keyof typeof S12_TEMPLATES>, TemplateDef> = {
   'billing.order_paid': {
     code: 'billing.order_paid',
     category: 'billing',
@@ -372,10 +373,12 @@ const T: Record<NotificationTemplateCode, TemplateDef> = {
   },
 };
 
+const T: Record<NotificationTemplateCode, TemplateDef> = { ...BASE, ...S12_TEMPLATES };
+
 export const NOTIFICATION_TEMPLATES: Readonly<Record<NotificationTemplateCode, TemplateDef>> = T;
 
 export function templateFor(code: string): TemplateDef | null {
-  return (T as Record<string, TemplateDef>)[code] ?? (S12_TEMPLATES as Record<string, TemplateDef>)[code] ?? null;
+  return (T as Record<string, TemplateDef>)[code] ?? null;
 }
 
 /** Layout email (HTML) – CSS inline tối giản, nút, footer (quản lý thông báo + huỷ đăng ký với email không giao dịch) */

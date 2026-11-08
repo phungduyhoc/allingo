@@ -76,7 +76,8 @@ describe('S12 admin & ops (integration)', () => {
     it('chưa step-up → 403 mfa_required; enroll → confirm (mã khôi phục) → endpoint admin chạy; refresh giữ claim mfa', async () => {
       const blocked = await admin.call('GET', '/admin/flags');
       expect(blocked.status).toBe(403);
-      expect(blocked.body.error).toMatchObject({ code: 'mfa_required', details: { reason: 'step_up_required', enroll_path: '/auth/mfa/totp/enroll', verify_path: '/auth/mfa/verify' } });
+      // B7/S144: details.enrolled như OpenAPI (chưa đăng ký TOTP → false)
+      expect(blocked.body.error).toMatchObject({ code: 'mfa_required', details: { reason: 'step_up_required', enrolled: false, enroll_path: '/auth/mfa/totp/enroll', verify_path: '/auth/mfa/verify' } });
       expect((await admin.call('GET', '/me/mfa')).body).toEqual({ required: true, enrolled: false, pending_enrollment: false, session_verified: false, recovery_codes_remaining: 0 });
       // người học không đăng ký được
       const learner = await register();
@@ -108,7 +109,8 @@ describe('S12 admin & ops (integration)', () => {
         const [{ email }] = (await dbs.db.execute(sql`select email from iam.users where id = ${adminId}`)) as unknown as [{ email: string }];
         return login(email);
       })();
-      expect((await s2.call('GET', '/admin/flags')).body.error.code).toBe('mfa_required');
+      // B7/S144: đã đăng ký TOTP (cache được xoá khi xác nhận) → enrolled true → web hỏi mã ngay, không gọi thêm /me/mfa
+      expect((await s2.call('GET', '/admin/flags')).body.error).toMatchObject({ code: 'mfa_required', details: { enrolled: true } });
       const c = code(1);
       expect((await s2.call('POST', '/auth/mfa/verify', { code: c })).status).toBe(200);
       expect((await s2.call('GET', '/admin/flags')).status).toBe(200);

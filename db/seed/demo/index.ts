@@ -49,6 +49,11 @@ export const DEMO_USERS = [
   },
   { email: 'teacher@allingo.dev', displayName: 'Cô Hương', roles: ['learner', 'teacher'] as const, plan: null },
   { email: 'admin@allingo.dev', displayName: 'Admin', roles: ['learner', 'admin', 'editor'] as const, plan: null },
+  /**
+   * B6/S151: superadmin cho dev/demo/E2E – cấp/thu hồi vai trò `admin` qua API (`POST /admin/users/{id}/roles`, chỉ superadmin).
+   * Cùng mật khẩu demo; seed demo bị chặn ở production (scripts/seed.ts) nên tài khoản này không bao giờ có trên production.
+   */
+  { email: 'superadmin@allingo.dev', displayName: 'Superadmin (dev)', roles: ['learner', 'superadmin'] as const, plan: null },
   {
     email: 'org_admin@allingo.dev',
     displayName: 'Trung tâm ABC',
@@ -58,6 +63,8 @@ export const DEMO_USERS = [
 ] as const;
 
 export async function seedDemo(db: Db, opts: { webPublicUrl?: string } = {}): Promise<void> {
+  // B6/S151: tài khoản demo (kể cả superadmin@allingo.dev) không bao giờ được tạo trên production – chặn cả khi gọi trực tiếp
+  if ((process.env.APP_ENV ?? 'development') === 'production') throw new Error('seedDemo is not allowed when APP_ENV=production');
   const webUrl = opts.webPublicUrl ?? process.env.WEB_PUBLIC_URL ?? 'http://localhost:3000';
   const passwordHash = await argon2.hash(DEMO_PASSWORD, {
     type: argon2.argon2id,

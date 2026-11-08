@@ -111,6 +111,35 @@ describe('S12 beta & support (integration)', () => {
       const list = await admin.call('GET', '/admin/beta/invites?status=queued');
       expect(list.body.today).toMatchObject({ remaining: 0 });
     });
+
+    it('B6/S147: gửi theo lô – invite_ids (đúng thứ tự, bỏ qua lời mời không còn queued) và batch; tôn trọng limit', async () => {
+      const b1 = `it-sel-${uniq()}`;
+      const mails = [0, 1, 2].map(() => `s12-sel-${uniq()}@example.com`);
+      const other = `s12-sel-other-${uniq()}@example.com`;
+      expect((await admin.call('POST', '/admin/beta/invites', { emails: mails, program: 'toeic', batch: b1 })).body).toMatchObject({ queued: 3 });
+      expect((await admin.call('POST', '/admin/beta/invites', { emails: [other], program: 'toeic', batch: `it-other-${uniq()}` })).body).toMatchObject({ queued: 1 });
+      const rows = (await dbs.db.execute(sql`select id, email from ops.beta_invites where email in (${sql.join([...mails, other].map((e) => sql`${e}`), sql`, `)})`)) as unknown as Array<{ id: string; email: string }>;
+      const id = (e: string) => rows.find((r) => r.email === e)!.id;
+      const [{ n }] = (await dbs.db.execute(sql`select count(*)::int as n from ops.beta_invites where sent_at >= date_trunc('day', now() at time zone 'Asia/Ho_Chi_Minh') at time zone 'Asia/Ho_Chi_Minh'`)) as unknown as [{ n: number }];
+      expect((await setGate(false, { config: { daily_invite_limit: n + 10 } })).status).toBe(200);
+      expect((await admin.call('POST', `/admin/beta/invites/${id(mails[1]!)}/revoke`)).status).toBe(200);
+      // invite_ids: [mails2, (đã thu hồi), mails0] + limit 1 → chỉ gửi mails2 (thứ tự truyền vào), 1 bỏ qua
+      const r = await admin.call('POST', '/admin/beta/invites/send', { invite_ids: [id(mails[2]!), id(mails[1]!), id(mails[0]!)], limit: 1 });
+      expect(r.status).toBe(202);
+      expect(r.body).toMatchObject({ mode: 'inline', result: { sent: 1, failed: 0, skipped: 1 } });
+      expect(mailer.lastTo(mails[2]!)).toBeDefined();
+      expect(mailer.lastTo(mails[0]!)).toBeUndefined();
+      // batch: chỉ lời mời đang chờ của đợt b1 (mails0); lời mời của đợt khác giữ queued
+      const r2 = await admin.call('POST', '/admin/beta/invites/send', { batch: b1 });
+      expect(r2.body.result).toMatchObject({ sent: 1, skipped: 0 });
+      expect(mailer.lastTo(mails[0]!)).toBeDefined();
+      expect(mailer.lastTo(other)).toBeUndefined();
+      const st = (await dbs.db.execute(sql`select status from ops.beta_invites where id = ${id(other)}`)) as unknown as Array<{ status: string }>;
+      expect(st[0]!.status).toBe('queued');
+      expect((await admin.call('POST', '/admin/beta/invites/send', { invite_ids: ['not-a-uuid'] })).status).toBe(400);
+      expect((await admin.call('POST', '/admin/beta/invites/send', { batch: '' })).status).toBe(400);
+      await admin.call('POST', `/admin/beta/invites/${id(other)}/revoke`);
+    });
   });
 
   describe('beta gate & đổi mã', () => {
@@ -132,6 +161,10 @@ describe('S12 beta & support (integration)', () => {
       const t = await userA.api.call('POST', '/support/tickets', { subject: 'Không đổi được mã mời', message: 'Mình nhập mã nhưng báo lỗi', category: 'account' });
       expect(t.status).toBe(201);
       ticketId = t.body.id;
+      // B6/S150: góp ý miễn beta gate (người bị chặn gửi từ trang /beta); tải ảnh vẫn qua gate
+      const fb = await userA.api.call('POST', '/feedback', { category: 'bug', message: 'Không vào được app sau khi đăng ký', page_url: '/beta' });
+      expect(fb.status).toBe(201);
+      expect((await userA.api.call('POST', '/uploads/presign', { kind: 'image', mime_type: 'image/png', size_bytes: 1024 })).status).toBe(403);
       expect((await admin.call('GET', '/me/stats?program=toeic')).status).toBe(200);
       // khách (guest) cũng bị chặn
       const guest = client(app);
@@ -207,6 +240,22 @@ describe('S12 beta & support (integration)', () => {
       expect(rows.map((r) => r.kind)).toEqual(['beta_onboarding', 'nps_d7']);
       expect(rows[0]!.goal).toBe('job');
     });
+
+    it('B6/S146: không phải beta tester (đăng ký 8 ngày) và nhân sự (admin, kể cả có vai trò tester) → không có NPS', async () => {
+      await setGate(false, { config: { daily_invite_limit: 0 } });
+      const plain = await register();
+      await dbs.db.execute(sql`update iam.users set created_at = now() - interval '8 days' where id = ${plain.id}`);
+      expect((await plain.api.call('GET', '/me/surveys/pending')).body.data).toEqual([]);
+      expect((await plain.api.call('POST', '/me/surveys/nps', { score: 8 })).body.error?.details?.reason).toBe('not_due');
+      const adminId = (await admin.call('GET', '/me')).body.id as string;
+      await dbs.db.execute(sql`insert into iam.user_roles (user_id, role_code) values (${adminId}, 'beta_tester') on conflict do nothing`);
+      try {
+        expect((await admin.call('GET', '/me/surveys/pending')).body.data).toEqual([]);
+      } finally {
+        await dbs.db.execute(sql`delete from iam.user_roles where user_id = ${adminId} and role_code = 'beta_tester'`);
+      }
+      await setGate(true, { config: { daily_invite_limit: 0 } });
+    });
   });
 
   describe('góp ý in-app', () => {
@@ -259,6 +308,9 @@ describe('S12 beta & support (integration)', () => {
       expect(r.json()).toMatchObject({ status: 'fixed', resolution_note: 'Đã sửa đáp án ở v2', overdue: false });
       // listener chạy bất đồng bộ sau commit (local event) – chờ tối đa 5 s
       await expect.poll(async () => (await dbs.db.execute(sql`select channel::text as channel, status from ops.notifications where user_id = ${userA.id} and template_code = 'content.report_resolved'`)) as unknown as Array<{ channel: string; status: string }>, { timeout: 5000 }).toEqual([{ channel: 'inapp', status: 'sent' }]);
+      // B6/S148: người báo chưa làm câu này trong bài đã nộp → liên kết về trung tâm hỗ trợ (không tự trỏ /notifications)
+      const [n1] = (await dbs.db.execute(sql`select payload->>'url' as url from ops.notifications where user_id = ${userA.id} and template_code = 'content.report_resolved'`)) as unknown as Array<{ url: string }>;
+      expect(n1!.url).toBe('/support');
       const b = await userB.api.call('POST', '/content-reports', { question_version_id: qvId, reason: 'unclear' });
       await dbs.db.execute(sql`update ops.content_reports set sla_due_at = now() - interval '1 hour' where id = ${b.body.id}`);
       const overdue = await admin.call('GET', '/admin/content/reports?overdue=true&limit=100');
@@ -272,6 +324,23 @@ describe('S12 beta & support (integration)', () => {
       const patched = await teacher.call('PATCH', `/admin/content/reports/${b.body.id}`, { status: 'rejected', resolution_note: 'Câu rõ nghĩa' });
       expect(patched.status).toBe(200);
       expect(patched.body).toMatchObject({ status: 'rejected', overdue: false });
+    });
+
+    it('B6/S148: báo lỗi câu trong bài đã nộp → thông báo trỏ /attempts/{id}/review?focus=<question_version_id>', async () => {
+      const sets = await userB.api.call('GET', '/programs/toeic/test-sets?kind=mini');
+      const part5 = sets.body.data.find((t: { code: string }) => t.code === 'toeic-mini-part5-01');
+      const att = await userB.api.call('POST', '/attempts', { program: 'toeic', mode: 'practice', test_set_id: part5.id }, { 'idempotency-key': `s148-${uniq()}` });
+      expect(att.status).toBe(201);
+      const q0 = att.body.questions[0] as { question_id: string; question_version_id: string };
+      expect((await userB.api.call('PUT', `/attempts/${att.body.id}/answers`, { answers: [{ question_id: q0.question_id, answer: { type: 'mcq_single', selected: 'A' }, time_spent_ms: 3000 }] })).status).toBe(204);
+      expect((await userB.api.call('POST', `/attempts/${att.body.id}/submit`)).status).toBe(200);
+      const rep = await userB.api.call('POST', '/content-reports', { question_version_id: q0.question_version_id, reason: 'typo' });
+      expect(rep.status).toBe(201);
+      const r = await admin.call('PATCH', `/admin/content/reports/${rep.body.id}`, { status: 'fixed', resolution_note: 'Đã sửa chính tả' });
+      expect(r.status).toBe(200);
+      await expect
+        .poll(async () => ((await dbs.db.execute(sql`select payload->>'url' as url from ops.notifications where user_id = ${userB.id} and template_code = 'content.report_resolved' and payload->>'report_id' = ${rep.body.id}`)) as unknown as Array<{ url: string }>)[0]?.url ?? null, { timeout: 5000 })
+        .toBe(`/attempts/${att.body.id}/review?focus=${q0.question_version_id}`);
     });
   });
 

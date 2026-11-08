@@ -10,6 +10,7 @@ import {
   jsonb,
   numeric,
   primaryKey,
+  smallint,
   text,
   timestamp,
   uuid,
@@ -151,6 +152,12 @@ export const opsOutbox = ops.table(
     payload: jsonb().notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
     publishedAt: timestamp('published_at', { withTimezone: true, mode: 'date' }),
+    // B7/S26 (migration 0010): giao theo consumer, thử lại có backoff, dead-letter
+    attempts: smallint().default(0).notNull(),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true, mode: 'date' }),
+    lastError: text('last_error'),
+    pendingConsumers: text('pending_consumers').array(),
+    deadLetteredAt: timestamp('dead_lettered_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
     primaryKey({ columns: [table.id, table.createdAt], name: 'outbox_pkey' }),

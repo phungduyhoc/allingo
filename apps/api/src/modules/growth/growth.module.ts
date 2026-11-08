@@ -17,6 +17,7 @@ import { ReferralListener } from './referral/referral.listener.js';
 import { ReferralService } from './referral/referral.service.js';
 import { CatalogModule } from '../catalog/index.js';
 import { SpeechModule } from '../speech/index.js';
+import { TestEngineModule } from '../test-engine/index.js';
 import { AdminGrowthController } from './admin-growth.controller.js';
 import { BetaController } from './beta/beta.controller.js';
 import { BetaGateGuard } from './beta/beta-gate.guard.js';
@@ -45,7 +46,7 @@ export function createPushSender(env: Env): PushSender | null {
  * theo giờ người học + nhắc chuỗi 20:00 (job notify.study_reminder). Xem README.md.
  */
 @Module({
-  imports: [IamModule, BillingModule, LearningModule, CatalogModule, SpeechModule],
+  imports: [IamModule, BillingModule, LearningModule, CatalogModule, SpeechModule, TestEngineModule],
   controllers: [MeNotificationsController, PushPublicController, AdminNotificationsController, NotificationLinksController, ReferralController, BetaController, SupportController, AdminGrowthController],
   providers: [NotificationsService, NotificationService, BillingNotificationsListener, ReferralService, ReferralListener, GrowthJobsService, LearningNotificationsListener, StudyRemindersService, BetaService, BetaGateGuard, FeedbackService, SupportService, SurveysService, S12NotificationsListener, { provide: PUSH_SENDER, inject: [ENV], useFactory: createPushSender }],
   exports: [NotificationsService, NotificationService, ReferralService, StudyRemindersService, PUSH_SENDER, BetaService, BetaGateGuard, FeedbackService, SupportService, SurveysService],

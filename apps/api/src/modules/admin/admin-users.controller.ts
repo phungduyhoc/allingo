@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Post, Req } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { adminImpersonateInputSchema, adminImpersonationSchema, adminUserLockInputSchema } from '@allingo/schemas';
+import { adminImpersonateInputSchema, adminImpersonationSchema, adminUserDeletionResultSchema, adminUserDetailSchema, adminUserLockInputSchema, adminUserLockResultSchema, adminUsersPageSchema, adminUserUnlockResultSchema } from '@allingo/schemas';
 import { CurrentUser, Roles, type AuthUser } from '../../shared/auth/auth.guard.js';
 import { ApiZod, ZodBody, ZodParams, ZodQuery, ZodValidationPipe } from '../../shared/http/zod.js';
 import { getLogger } from '../../shared/telemetry/logger.js';
@@ -20,7 +20,6 @@ const searchQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 const unlockInput = z.object({ reason: z.string().max(500).optional() });
-const anyObj = z.record(z.string(), z.unknown());
 
 function meta(req: FastifyRequest) {
   return { ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null };
@@ -47,13 +46,13 @@ export class AdminUsersController {
   ) {}
 
   @Get()
-  @ApiZod({ query: searchQuery, responses: { 200: anyObj } })
+  @ApiZod({ query: searchQuery, responses: { 200: adminUsersPageSchema } })
   search(@CurrentUser() user: AuthUser, @ZodQuery(searchQuery) q: z.infer<typeof searchQuery>, @Req() req: FastifyRequest) {
     return this.admin.search(user, q, meta(req));
   }
 
   @Get(':userId')
-  @ApiZod({ responses: { 200: anyObj, 404: 'empty' } })
+  @ApiZod({ responses: { 200: adminUserDetailSchema, 404: 'empty' } })
   async detail(@ZodParams(userParam) p: z.infer<typeof userParam>) {
     const profile = await this.admin.profile(p.userId);
     const safe = async <T>(what: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
@@ -77,21 +76,21 @@ export class AdminUsersController {
 
   @Post(':userId/lock')
   @HttpCode(200)
-  @ApiZod({ body: adminUserLockInputSchema, responses: { 200: anyObj, 403: 'empty', 404: 'empty', 409: 'empty' } })
+  @ApiZod({ body: adminUserLockInputSchema, responses: { 200: adminUserLockResultSchema, 403: 'empty', 404: 'empty', 409: 'empty' } })
   lock(@CurrentUser() user: AuthUser, @ZodParams(userParam) p: z.infer<typeof userParam>, @ZodBody(adminUserLockInputSchema) body: z.infer<typeof adminUserLockInputSchema>, @Req() req: FastifyRequest) {
     return this.admin.lock(user, p.userId, body.reason, meta(req));
   }
 
   @Post(':userId/unlock')
   @HttpCode(200)
-  @ApiZod({ body: unlockInput, responses: { 200: anyObj, 404: 'empty', 409: 'empty' } })
+  @ApiZod({ body: unlockInput, responses: { 200: adminUserUnlockResultSchema, 404: 'empty', 409: 'empty' } })
   unlock(@CurrentUser() user: AuthUser, @ZodParams(userParam) p: z.infer<typeof userParam>, @Body(new ZodValidationPipe(unlockInput)) body: z.infer<typeof unlockInput>, @Req() req: FastifyRequest) {
     return this.admin.unlock(user, p.userId, body.reason, meta(req));
   }
 
   @Post(':userId/deletion')
   @HttpCode(202)
-  @ApiZod({ body: adminUserLockInputSchema, responses: { 202: anyObj, 403: 'empty', 404: 'empty', 409: 'empty' } })
+  @ApiZod({ body: adminUserLockInputSchema, responses: { 202: adminUserDeletionResultSchema, 403: 'empty', 404: 'empty', 409: 'empty' } })
   deletion(@CurrentUser() user: AuthUser, @ZodParams(userParam) p: z.infer<typeof userParam>, @ZodBody(adminUserLockInputSchema) body: z.infer<typeof adminUserLockInputSchema>, @Req() req: FastifyRequest) {
     return this.admin.requestDeletion(user, p.userId, body.reason, meta(req));
   }

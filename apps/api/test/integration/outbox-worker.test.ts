@@ -4,7 +4,6 @@ import { desc, eq, isNull } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import { DbService } from '../../src/shared/db/db.module.js';
 import { OutboxService } from '../../src/shared/events/outbox.service.js';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { bootTestApp } from './setup.js';
 
 describe('outbox relay (integration)', () => {
@@ -19,9 +18,11 @@ describe('outbox relay (integration)', () => {
   it('ghi sự kiện trong transaction và relay đánh dấu published', async () => {
     const dbs = app.get(DbService);
     const outbox = app.get(OutboxService);
-    const emitter = app.get(EventEmitter2);
     const received: string[] = [];
-    emitter.on('outbox.test.happened', (ev: { payload: { k: string } }) => received.push(ev.payload.k));
+    // B7/S26: consumer lập trình đăng ký qua OutboxService.subscribe (relay không còn phát `outbox.*` qua EventEmitter2)
+    const off = outbox.subscribe('test.happened', 'test.receiver', (ev) => {
+      received.push((ev.payload as { k: string }).k);
+    });
     await dbs.db.transaction(async (tx) => {
       await outbox.write(tx, { aggregateType: 'test', eventType: 'test.happened', payload: { k: 'v1' } });
     });
@@ -46,5 +47,6 @@ describe('outbox relay (integration)', () => {
     expect(unpublished).toHaveLength(0);
     const [last] = await dbs.db.select().from(schema.opsOutbox).where(eq(schema.opsOutbox.eventType, 'test.happened')).orderBy(desc(schema.opsOutbox.id)).limit(1);
     expect(last?.publishedAt).toBeTruthy();
+    off();
   });
 });

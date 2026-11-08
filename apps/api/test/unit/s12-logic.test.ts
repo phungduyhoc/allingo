@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BETA_DEFAULTS, scorePartOf, scoreScaleOf } from '@allingo/schemas';
+import { BETA_DEFAULTS, isStaffRoles, scorePartOf, scoreScaleOf } from '@allingo/schemas';
 import { base32Decode, base32Encode, hotp, totp, verifyTotp, otpauthUrl, newRecoveryCode, normalizeRecoveryCode } from '../../src/modules/iam/mfa/totp.js';
 import { checkPasswordPolicy } from '../../src/modules/iam/password/password-policy.js';
 import { maskEmail, maskPhone } from '../../src/modules/iam/admin-users.service.js';
@@ -134,14 +134,26 @@ describe('S12 – beta gate & mời', () => {
   it('NPS ngày 7 hiển thị [7, 14), ngày 14 hiển thị [14, 28); onboarding beta khi chưa trả lời', () => {
     const base = new Date('2026-11-01T00:00:00Z');
     const at = (d: number) => new Date(base.getTime() + d * 86_400_000);
-    const kinds = (d: number, answered: string[] = [], tester = true) => pendingSurveys({ base, now: at(d), answered: new Set(answered as never), betaTester: tester }).map((x) => x.kind);
+    const kinds = (d: number, answered: string[] = [], tester = true, staff = false) => pendingSurveys({ base, now: at(d), answered: new Set(answered as never), betaTester: tester, staff }).map((x) => x.kind);
     expect(kinds(0)).toEqual(['beta_onboarding']);
     expect(kinds(6.9, ['beta_onboarding'])).toEqual([]);
     expect(kinds(7, ['beta_onboarding'])).toEqual(['nps_d7']);
     expect(kinds(13.9, ['beta_onboarding', 'nps_d7'])).toEqual([]);
     expect(kinds(14, ['beta_onboarding', 'nps_d7'])).toEqual(['nps_d14']);
     expect(kinds(28, ['beta_onboarding'])).toEqual([]);
-    expect(kinds(8, [], false)).toEqual(['nps_d7']);
+    // B6/S146: không phải beta tester → không NPS/onboarding; nhân sự (kể cả có vai trò tester) → không khảo sát
+    expect(kinds(8, [], false)).toEqual([]);
+    expect(kinds(15, ['beta_onboarding'], false)).toEqual([]);
+    expect(kinds(8, [], true, true)).toEqual([]);
+  });
+
+  it('STAFF_ROLES: admin/editor/teacher/support là nhân sự; learner/org_admin/beta_tester thì không', () => {
+    expect(isStaffRoles(['learner', 'admin'])).toBe(true);
+    expect(isStaffRoles(['editor'])).toBe(true);
+    expect(isStaffRoles(['teacher', 'beta_tester'])).toBe(true);
+    expect(isStaffRoles(['support'])).toBe(true);
+    expect(isStaffRoles(['learner', 'beta_tester', 'org_admin'])).toBe(false);
+    expect(isStaffRoles([])).toBe(false);
   });
 });
 

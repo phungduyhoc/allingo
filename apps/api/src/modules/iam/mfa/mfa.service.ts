@@ -8,6 +8,7 @@ import { schema } from '@allingo/db';
 import { MFA_TOTP } from '@allingo/schemas';
 import { ENV, type Env } from '../../../config/env.js';
 import { adminMfaRequired, MFA_ROLES, type AuthUser } from '../../../shared/auth/auth.guard.js';
+import { MfaEnrollmentLookup } from '../../../shared/auth/mfa-enrollment.lookup.js';
 import { RedisService } from '../../../shared/cache/redis.module.js';
 import { CLOCK, type Clock } from '../../../shared/clock/clock.module.js';
 import { DbService } from '../../../shared/db/db.module.js';
@@ -41,6 +42,7 @@ export class MfaService {
     private readonly sessions: SessionsService,
     private readonly users: UsersService,
     private readonly audit: AuditService,
+    private readonly enrollment: MfaEnrollmentLookup,
   ) {
     this.key = createHash('sha256').update(env.MFA_ENCRYPTION_KEY || `${env.AUTH_SECRET}:mfa-totp-v1`).digest();
   }
@@ -116,6 +118,7 @@ export class MfaService {
     const codes = Array.from({ length: MFA_TOTP.recovery_codes }, () => newRecoveryCode());
     await this.dbs.db.update(iamMfaFactors).set({ confirmedAt: new Date(this.clock.now()), lastUsedStep: r.step, recoveryCodes: codes.map((c) => ({ hash: hashCode(c), used_at: null })) }).where(eq(iamMfaFactors.id, f.id));
     await this.clearFailures(user.id);
+    await this.enrollment.invalidate(user.id);
     await this.audit.log({ action: 'mfa.enrolled', actorUserId: user.id, actorRole: user.roles.join(','), entityType: 'user', entityId: user.id, after: { kind: 'totp', recovery_codes: codes.length } });
     const tokens = await this.stepUp(user);
     return { ...tokens, recovery_codes: codes };

@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import { BETA_TESTER_ROLE, DOMAIN_EVENTS, NPS_SCHEDULE, type BetaSurveyInput, type SurveyKind } from '@allingo/schemas';
+import { BETA_TESTER_ROLE, DOMAIN_EVENTS, isStaffRoles, NPS_SCHEDULE, type BetaSurveyInput, type SurveyKind } from '@allingo/schemas';
 import type { AuthUser } from '../../../shared/auth/auth.guard.js';
 import { CLOCK, type Clock } from '../../../shared/clock/clock.module.js';
 import { DbService } from '../../../shared/db/db.module.js';
@@ -21,12 +21,14 @@ export interface PendingSurvey {
 }
 
 /**
- * Khảo sát NPS ngày 7 và 14 (thuần): mốc = ngày đổi mã beta (hoặc đăng ký). nps_d7 hiển thị [7, 14), nps_d14 [14, 28);
- * đã trả lời → không hiển thị. Onboarding beta: tester chưa trả lời.
+ * Khảo sát NPS ngày 7 và 14 (thuần): mốc = ngày đổi mã beta (tester được cấp vai trò không qua mã: ngày đăng ký). nps_d7 hiển thị
+ * [7, 14), nps_d14 [14, 28); đã trả lời → không hiển thị. Onboarding beta: tester chưa trả lời.
+ * B6/S146: chỉ beta tester nhận khảo sát; tài khoản nhân sự (`STAFF_ROLES` – admin, editor, teacher…) không nhận dù có vai trò tester.
  */
-export function pendingSurveys(input: { base: Date; now: Date; answered: ReadonlySet<SurveyKind>; betaTester: boolean }): PendingSurvey[] {
+export function pendingSurveys(input: { base: Date; now: Date; answered: ReadonlySet<SurveyKind>; betaTester: boolean; staff?: boolean }): PendingSurvey[] {
   const out: PendingSurvey[] = [];
-  if (input.betaTester && !input.answered.has('beta_onboarding')) out.push({ kind: 'beta_onboarding', due_at: input.base.toISOString(), expires_at: null });
+  if (!input.betaTester || input.staff) return out;
+  if (!input.answered.has('beta_onboarding')) out.push({ kind: 'beta_onboarding', due_at: input.base.toISOString(), expires_at: null });
   const days = (input.now.getTime() - input.base.getTime()) / DAY;
   for (const kind of ['nps_d7', 'nps_d14'] as const) {
     const s = NPS_SCHEDULE[kind];
@@ -71,9 +73,13 @@ export class SurveysService {
     const u = await this.users.findById(user.id);
     if (!u) throw new NotFound('user', user.id);
     const redeemedAt = await this.beta.redeemedAt(user.id);
-    const tester = !!redeemedAt || user.roles.includes(BETA_TESTER_ROLE);
+    // Vai trò trong DB (JWT có thể chưa làm mới sau khi đổi mã/cấp vai trò) ∪ vai trò trong token
+    const roles = new Set([...user.roles, ...(await this.users.getRoles(user.id))]);
+    const tester = !!redeemedAt || roles.has(BETA_TESTER_ROLE);
+    const staff = isStaffRoles([...roles]);
+    if (!tester || staff) return { data: [] };
     const answered = await this.answered(user.id);
-    return { data: pendingSurveys({ base: redeemedAt ?? u.createdAt, now, answered: new Set(answered.keys()), betaTester: tester }) };
+    return { data: pendingSurveys({ base: redeemedAt ?? u.createdAt, now, answered: new Set(answered.keys()), betaTester: tester, staff }) };
   }
 
   async submitNps(user: AuthUser, input: { score: number; comment?: string; survey?: 'nps_d7' | 'nps_d14' }) {

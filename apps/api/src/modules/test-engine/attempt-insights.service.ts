@@ -167,6 +167,26 @@ export class AttemptInsightsService implements OnModuleInit {
   }
 
   /**
+   * B6/S148: attempt đã nộp/chấm gần nhất của người dùng có câu trả lời theo `question_version_id` – đích "xem lại câu"
+   * (`/attempts/{id}/review?focus=<qv>`) cho thông báo báo lỗi câu đã xử lý. Không có → null (thông báo trỏ /support).
+   */
+  async latestReviewableAttemptFor(userId: string, questionVersionId: string): Promise<string | null> {
+    const [row] = await this.dbs.db
+      .select({ id: learnAttempts.id })
+      .from(learnAttempts)
+      .where(
+        and(
+          eq(learnAttempts.userId, userId),
+          sql`${learnAttempts.status} in ('submitted', 'graded')`,
+          sql`exists (select 1 from ${learnAttemptAnswers} aa where aa.attempt_id = ${learnAttempts.id} and aa.question_version_id = ${questionVersionId})`,
+        ),
+      )
+      .orderBy(desc(sql`coalesce(${learnAttempts.submittedAt}, ${learnAttempts.startedAt})`))
+      .limit(1);
+    return row?.id ?? null;
+  }
+
+  /**
    * ≤ `limit` câu làm sai gần nhất (attempt đã chấm, 30 ngày) – trích đề ≤ 160 ký tự, đáp án chọn/đúng (đã nộp nên được phép),
    * không passage/transcript; bỏ TOEIC Part 1/2 (chữ là nội dung nghe).
    */
