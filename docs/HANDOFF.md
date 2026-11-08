@@ -1,6 +1,6 @@
-# HANDOFF — Sprint 1 → Sprint 11 (08/11/2026)
+# HANDOFF — Sprint 1 → Sprint 12 (08/11/2026)
 
-Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1–11 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A39), `docs/SPEC-ISSUES.md` (S1–S29), ADR 0001–0025. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
+Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1–12 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A39), `docs/SPEC-ISSUES.md` (S1–S29), ADR 0001–0025. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
 
 Repo chưa push (theo yêu cầu: làm tiếp trên phiên, push sau). Mọi kiểm tra dưới đây chạy trong phiên cloud: Postgres 16 + pgvector, Valkey/Redis cục bộ, không Docker, không Meilisearch/MinIO/Azure/khoá AI thật (A1, A25).
 
@@ -144,6 +144,21 @@ Web Sprint 7–8: bảng giá thật, checkout, kết quả thanh toán (polling
 | 5 | Restore PITR về 10′ trước < 60′; runbook ghi thời gian thật | ĐẠT (cục bộ) | RTO kỹ thuật 3,2 s, RPO 0 trên PG cục bộ; quy trình có người ước 15–25′; Azure đo trên staging |
 | 6 | Kill-switch `ff.ai.explain` → UI ẩn, API 503 i18n < 60 s | ĐẠT phía API | Pub/sub tới các replica; UI ở giao diện Sprint 11 |
 | 7 | lint/typecheck/test xanh, CI có security jobs, diff xanh | ĐẠT | 905 test (không tính web); gitleaks, audit high, Semgrep, Trivy, ZAP nightly, migration guard |
+
+### Sprint 12 — Beta kín, admin & vận hành, phân tích, GATE-2
+
+Phiên không có người dùng/SMTP/PostHog/Sentry thật: cơ chế đã xây đủ, KPI chỉ có từ seed `beta-demo` (giả lập). Báo cáo GATE-2: `docs/gates/GATE-2-report.md` (kết luận **chưa đủ điều kiện**).
+
+| # | Tiêu chí | Kết quả | Ghi chú |
+| --- | --- | --- | --- |
+| 1 | 300 lời mời theo đợt; không mã → không vào app; tester nhận Pro trial + credit | ĐẠT (cơ chế) | Gate `ff.growth.beta_gate` (403 `beta_required`), mời theo lô 50/ngày, mã dùng một lần → trial 60 ngày + 2.000 credit; chưa gửi email thật |
+| 2 | Góp ý kèm trace_id + ảnh; báo lỗi câu vào CMS; ticket trả lời từ admin, người dùng nhận email/in-app | ĐẠT (API + CMS) | Content reports đồng bộ hai chiều API ↔ CMS; ticket SLA 24 giờ, credit bù; giao diện ở giao diện Sprint 12 |
+| 3 | Admin khoá tài khoản → thu hồi phiên ≤ 60 s; impersonate chỉ đọc có audit; DLQ replay | ĐẠT | Integration test |
+| 4 | `pnpm report:beta` đủ KPI, khớp PostHog/DB ±2 % | ĐẠT một phần | Chạy ra số từ dữ liệu giả lập (`docs/gates/beta-weekly-2026-W45.md`); đối chiếu PostHog cần key thật |
+| 5 | 2 tuần beta: SLO, crash-free ≥ 99,5 %, không lỗi chặn học > 48 giờ; i18n 0 chuỗi cứng; a11y luồng thi | CHƯA | Cần beta thật; lint i18n + axe làm ở giao diện Sprint 11 |
+| 6 | GATE-2 report số liệu thật, đề xuất GĐ2, checklist; tag `v0.9.0-beta`; CI xanh | CHƯA | Báo cáo bản kỹ thuật đã có; tag sau khi CI GitHub xanh |
+
+Bổ sung bảo mật: MFA TOTP step-up cho admin (RFC 6238), mật khẩu ≥ 12 ký tự + danh sách mật khẩu lộ, `InternalTokenGuard` hằng thời gian, OpenAPI đủ path params, override GHSA.
 
 ## 2. Đã làm
 
