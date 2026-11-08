@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AI_OUTPUT_SCHEMAS, AI_PROMPT_META, AI_TASK_CODES, explainMcqOutputSchema, guardClassifyOutputSchema } from '../src/index.js';
 
 describe('AI output schemas', () => {
-  it('đủ 14 task_code khớp AI_TASK_CODES', () => {
+  it('đủ 15 task_code khớp AI_TASK_CODES', () => {
     expect(Object.keys(AI_OUTPUT_SCHEMAS).sort()).toEqual([...AI_TASK_CODES].sort());
     expect(Object.keys(AI_PROMPT_META).sort()).toEqual([...AI_TASK_CODES].sort());
   });

@@ -106,6 +106,8 @@ export const AI_TASK_CODES = [
   'segment_translate',
   'plan_adjust',
   'guard_classify',
+  /** B2: AI soạn nháp cả đề – một nhóm passage (Part 3/4/6/7) + các câu của nhóm */
+  'generate_item_set',
 ] as const;
 export type AiTaskCode = (typeof AI_TASK_CODES)[number];
 
@@ -213,6 +215,12 @@ export const JOB_NAMES = {
   BETA_INVITES_SEND: 'beta.invites_send',
   /** S12 – cảnh báo SLA (báo lỗi câu 48 giờ, ticket phản hồi đầu 24 giờ) */
   SLA_CHECK: 'ops.sla_check',
+  /** B2 – AI soạn nháp cả đề theo blueprint (generate_questions / generate_item_set → draft source=ai → check → dedup → test set nháp) */
+  CONTENT_DRAFT_TEST: 'content.draft_test',
+  /** B2 – nhập câu hỏi từ Excel: dry-run (kiểm tra từng dòng + trùng) hoặc ghi sau khi xác nhận */
+  CONTENT_IMPORT: 'content.import',
+  /** B2 – lọc trùng bằng embedding (fallback pg_trgm) cho câu vừa tạo/sửa (API, CMS, nhập) – jobId = question_version_id */
+  CONTENT_DEDUP: 'content.dedup',
 } as const;
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
 

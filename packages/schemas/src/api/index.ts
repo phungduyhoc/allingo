@@ -12,3 +12,4 @@ export * from './learning-plan.js';
 export * from './learning-s10.js';
 export * from './s12.js';
 export * from './s12-admin.js';
+export * from './content-tools.js';

@@ -103,6 +103,17 @@ export const attemptDraftStateSchema = z.object({
 });
 export type AttemptDraftState = z.infer<typeof attemptDraftStateSchema>;
 
+/** B5/S24: một văn bản của passage nhiều đoạn (catalog.passage_parts) */
+export const passagePartPublicSchema = z.object({
+  id: uuidSchema,
+  sort_order: z.number().int(),
+  title: z.string().nullable(),
+  body: z.string(),
+  media_url: z.string().nullable().optional(),
+  media_asset_id: uuidSchema.nullable().optional(),
+});
+export type PassagePartPublic = z.infer<typeof passagePartPublicSchema>;
+
 export const questionPublicSchema = z.object({
   question_id: uuidSchema,
   question_version_id: uuidSchema,
@@ -122,7 +133,20 @@ export const questionPublicSchema = z.object({
    * `media_asset_id` (v1.1) để khớp URL gia hạn từ GET /attempts/{id}/media.
    */
   passage: z
-    .object({ id: uuidSchema, kind: z.string(), title: z.string().nullable(), body: z.string().nullable(), media_url: z.string().nullable(), media_asset_id: uuidSchema.nullable().optional(), media_expires_at: z.string().nullable().optional() })
+    .object({
+      id: uuidSchema,
+      kind: z.string(),
+      title: z.string().nullable(),
+      body: z.string().nullable(),
+      media_url: z.string().nullable(),
+      media_asset_id: uuidSchema.nullable().optional(),
+      media_expires_at: z.string().nullable().optional(),
+      /**
+       * B5/S24: văn bản của passage nhiều đoạn (TOEIC Part 7 bộ đôi/bộ ba) theo `sort_order` – giao diện hiện tab từng văn bản.
+       * Thiếu/rỗng → passage một văn bản (`body`), như trước (tương thích ngược). `body` vẫn là bản gộp `[Tiêu đề]\n…` (dự phòng).
+       */
+      parts: z.array(passagePartPublicSchema).optional(),
+    })
     .nullable(),
 });
 export type QuestionPublic = z.infer<typeof questionPublicSchema>;

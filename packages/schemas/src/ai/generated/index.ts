@@ -9,6 +9,7 @@ export * from './grade_speaking_ielts.js';
 export * from './grade_speaking_toeic.js';
 export * from './upgrade_phrasing.js';
 export * from './generate_questions.js';
+export * from './generate_item_set.js';
 export * from './check_question.js';
 export * from './segment_translate.js';
 export * from './plan_adjust.js';
@@ -25,6 +26,7 @@ import { gradeSpeakingIeltsOutputSchema } from './grade_speaking_ielts.js';
 import { gradeSpeakingToeicOutputSchema } from './grade_speaking_toeic.js';
 import { upgradePhrasingOutputSchema } from './upgrade_phrasing.js';
 import { generateQuestionsOutputSchema } from './generate_questions.js';
+import { generateItemSetOutputSchema } from './generate_item_set.js';
 import { checkQuestionOutputSchema } from './check_question.js';
 import { segmentTranslateOutputSchema } from './segment_translate.js';
 import { planAdjustOutputSchema } from './plan_adjust.js';
@@ -42,6 +44,7 @@ export const AI_OUTPUT_SCHEMAS = {
   grade_speaking_toeic: gradeSpeakingToeicOutputSchema,
   upgrade_phrasing: upgradePhrasingOutputSchema,
   generate_questions: generateQuestionsOutputSchema,
+  generate_item_set: generateItemSetOutputSchema,
   check_question: checkQuestionOutputSchema,
   segment_translate: segmentTranslateOutputSchema,
   plan_adjust: planAdjustOutputSchema,
@@ -196,6 +199,20 @@ export const AI_PROMPT_META = {
       "temperature": 0.8,
       "top_p": 0.95,
       "max_tokens": 6000
+    }
+  },
+  "generate_item_set": {
+    "credits_cost": 0,
+    "program": null,
+    "cache_key": null,
+    "model_policy": {
+      "primary": "google:gemini-pro",
+      "fallbacks": [
+        "anthropic:claude-sonnet"
+      ],
+      "temperature": 0.8,
+      "top_p": 0.95,
+      "max_tokens": 8000
     }
   },
   "check_question": {
