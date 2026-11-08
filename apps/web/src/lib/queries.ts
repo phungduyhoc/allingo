@@ -287,6 +287,8 @@ export function useRegister() {
   const qc = useQueryClient();
   return useMutation<User, Error, Parameters<typeof register>[0]>({
     mutationFn: register,
+    // Form tự hiện lỗi (429 khoá đăng nhập/giới hạn tốc độ) tại chỗ – không phát toast chung
+    meta: { inlineErrors: true },
     onSuccess: (user) => {
       qc.clear();
       qc.setQueryData(queryKeys.me, user);
@@ -298,6 +300,8 @@ export function useLogin() {
   const qc = useQueryClient();
   return useMutation<User, Error, Parameters<typeof login>[0]>({
     mutationFn: login,
+    // Form tự hiện lỗi (429 khoá đăng nhập/giới hạn tốc độ) tại chỗ – không phát toast chung
+    meta: { inlineErrors: true },
     onSuccess: (user) => {
       qc.clear();
       qc.setQueryData(queryKeys.me, user);
@@ -310,6 +314,8 @@ export function useSignInWith<TInput>(fn: (input: TInput) => Promise<User>) {
   const qc = useQueryClient();
   return useMutation<User, Error, TInput>({
     mutationFn: fn,
+    // Form tự hiện lỗi (429 khoá đăng nhập/giới hạn tốc độ) tại chỗ – không phát toast chung
+    meta: { inlineErrors: true },
     onSuccess: (user) => {
       qc.clear();
       qc.setQueryData(queryKeys.me, user);

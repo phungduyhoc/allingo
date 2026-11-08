@@ -9,9 +9,15 @@ import { CardSkeleton } from '@/components/states';
 import { pct } from './progress';
 import { PROGRAM, useToday } from './queries';
 import { TaskIcon } from './task-ui';
+import { useFlag } from '@/features/flags/flags-provider';
 
 /** Thẻ "Hôm nay" trên dashboard: streak, tiến độ việc hôm nay, việc kế tiếp; chưa có lộ trình → mời onboarding */
+/** S11: kill-switch ff.learning.study_plan tắt → không hiện thẻ (không gọi /me/plan/today) */
 export function TodayCard() {
+  return useFlag('ff.learning.study_plan') ? <TodayCardInner /> : null;
+}
+
+function TodayCardInner() {
   const t = useTranslations('today');
   const tc = useTranslations('common');
   const L = useLocalized();

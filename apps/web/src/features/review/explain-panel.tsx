@@ -5,9 +5,11 @@ import { Lock, RotateCcw, Sparkles, TriangleAlert } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Skeleton } from '@allingo/ui';
 import { aiErrorToApiError, streamPreview } from '@/lib/ai-stream';
-import { getErrorCode } from '@/lib/errors';
 import type { Explanation } from '@/lib/types';
 import { CreditsNotice, QuotaExceededNotice } from '@/features/quota/quota-ui';
+import { useFlag } from '@/features/flags/flags-provider';
+import { FeatureDisabledNotice } from '@/features/flags/feature-disabled-notice';
+import { useErrorMessage } from '@/lib/use-error-message';
 import { ExplainFeedback } from './explain-feedback';
 import { explanationKey } from './feedback-memory';
 import { EXPLAIN_PREVIEW_FIELDS, useExplain } from './use-explain';
@@ -29,7 +31,9 @@ export interface ExplainPanelProps {
  */
 export function ExplainPanel({ questionVersionId, chosenOption, attemptId, initial, examLocked = false, onExamLocked }: ExplainPanelProps) {
   const t = useTranslations('review');
-  const te = useTranslations('errors');
+  const errorMessage = useErrorMessage();
+  // S11: kill-switch ff.ai.explain tắt → ẩn nút (giải thích đã hiện vẫn giữ); server vẫn trả 503 nếu gọi
+  const enabled = useFlag('ff.ai.explain');
   const { state, run, resolveTaskId } = useExplain(initial);
   const input = React.useMemo(() => ({ question_version_id: questionVersionId, chosen_option: chosenOption, attempt_id: attemptId }), [attemptId, chosenOption, questionVersionId]);
   const start = () => void run(input);
@@ -49,7 +53,10 @@ export function ExplainPanel({ questionVersionId, chosenOption, attemptId, initi
     );
   }
 
-  if (state.status === 'idle') {
+  // S11: lần trước bị kill-switch (503) mà cờ đã bật lại → cho bấm lại như chưa giải thích
+  const killedBefore = state.status === 'error' && state.error?.code === 'feature_disabled';
+  if (state.status === 'idle' || (killedBefore && enabled)) {
+    if (!enabled) return null;
     return (
       <Button variant="gold" size="sm" onClick={start} data-testid="explain-button">
         <Sparkles aria-hidden />
@@ -62,12 +69,13 @@ export function ExplainPanel({ questionVersionId, chosenOption, attemptId, initi
     const err = aiErrorToApiError(state.error);
     if (state.error.code === 'quota_exceeded') return <QuotaExceededNotice error={err} testId="explain-quota" />;
     if (state.error.code === 'insufficient_credits') return <CreditsNotice error={err} />;
+    if (state.error.code === 'feature_disabled' || !enabled) return <FeatureDisabledNotice flag="ff.ai.explain" />;
     return (
       <Alert variant="destructive" data-testid="explain-error" data-code={state.error.code}>
         <TriangleAlert aria-hidden />
         <AlertTitle>{t('explainErrorTitle')}</AlertTitle>
         <AlertDescription>
-          {te(`codes.${getErrorCode(err)}`)}
+          {errorMessage(err)}
           <div className="mt-2">
             <Button variant="outline" size="sm" onClick={start} data-testid="explain-retry">
               <RotateCcw aria-hidden />

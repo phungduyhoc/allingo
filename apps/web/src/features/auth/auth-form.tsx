@@ -8,6 +8,8 @@ import { Alert, AlertDescription, Button, Card, CardContent, CardDescription, Ca
 import { Link, useRouter } from '@/i18n/navigation';
 import { useLogin, useRegister } from '@/lib/queries';
 import { getErrorCode, getFieldErrors, isApiError } from '@/lib/errors';
+import { useErrorMessage } from '@/lib/use-error-message';
+import { PASSWORD_MIN_LENGTH, passwordPolicyIssue } from '@/lib/password-policy';
 import { getGuestToken } from '@/lib/auth';
 import { useClientValue } from '@/lib/use-mounted';
 import { env } from '@/env';
@@ -18,9 +20,10 @@ import { FunnelTracker } from '@/features/consent/funnel-tracker';
 
 type Mode = 'login' | 'signup';
 
+
 export function AuthForm({ mode }: { mode: Mode }) {
   const t = useTranslations('auth');
-  const te = useTranslations('errors');
+  const errorMessage = useErrorMessage();
   const locale = useLocale();
   const router = useRouter();
   const login = useLogin();
@@ -39,7 +42,8 @@ export function AuthForm({ mode }: { mode: Mode }) {
     () =>
       z.object({
         email: z.email({ message: t('validation.email') }),
-        password: z.string().min(mode === 'signup' ? 8 : 1, { message: t('validation.password') }),
+        // S12 (API): đăng ký cần ≥ PASSWORD_MIN_LENGTH (12) ký tự + không phổ biến/lộ – server kiểm tra lại (issues[].code)
+        password: mode === 'signup' ? z.string().min(PASSWORD_MIN_LENGTH, { message: t('validation.passwordMin', { min: PASSWORD_MIN_LENGTH }) }) : z.string().min(1, { message: t('validation.password') }),
         display_name: mode === 'signup' ? z.string().trim().min(1, { message: t('validation.displayName') }).max(80, { message: t('validation.displayName') }) : z.string().optional(),
       }),
     [mode, t],
@@ -80,10 +84,17 @@ export function AuthForm({ mode }: { mode: Mode }) {
     const onError = (err: unknown) => {
       const code = getErrorCode(err);
       const fields = getFieldErrors(err);
+      // S12: chính sách mật khẩu của API → thông điệp i18n theo mã (password_too_short | password_breached | password_weak)
+      const policy = passwordPolicyIssue(err);
+      if (policy) {
+        setFieldErrors({ ...fields, password: t(`passwordPolicy.${policy.code}`, { min: policy.minLength }) });
+        return;
+      }
       if (Object.keys(fields).length) setFieldErrors(fields);
       if (mode === 'login' && isApiError(err) && err.status === 401) setFormError(t('errors.invalidCredentials'));
       else if (mode === 'signup' && code === 'conflict') setFormError(t('errors.emailTaken'));
-      else setFormError(te(`codes.${code}`));
+      // S11: 429 khoá đăng nhập (`login_locked`) / giới hạn tốc độ → thông điệp riêng kèm thời gian chờ
+      else setFormError(errorMessage(err));
     };
     const onSuccess = () => afterSignIn();
     if (mode === 'login') login.mutate({ email: parsed.data.email, password: parsed.data.password }, { onSuccess, onError });
@@ -148,7 +159,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
                 {fieldErrors.password}
               </p>
             ) : mode === 'signup' ? (
-              <p className="text-xs text-muted-foreground">{t('passwordHint')}</p>
+              <p className="text-xs text-muted-foreground">{t('passwordPolicyHint', { min: PASSWORD_MIN_LENGTH })}</p>
             ) : null}
           </div>
           {mode === 'signup' ? (

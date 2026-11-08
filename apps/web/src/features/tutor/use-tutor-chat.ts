@@ -6,7 +6,7 @@ import { tutorReplySchema } from '@allingo/schemas';
 import { aiErrorToApiError, toAiStreamError, type AiStreamError } from '@/lib/ai-stream';
 import { handleExamLockedError } from '@/lib/exam-lock';
 import { createThread, getThread, listOlderMessages, sendThreadMessage } from '@/lib/learning-api';
-import { notifyQuotaExceeded } from '@/lib/quota';
+import { notifyApiError } from '@/lib/api-error-events';
 import { queryKeys } from '@/lib/queries';
 import { chatReducer, initialChat, tutorSseToAction, type Turns } from './chat-state';
 
@@ -102,7 +102,8 @@ export function useTutorChat() {
     dispatch({ type: 'fail', error: e });
     const apiErr = aiErrorToApiError(e);
     handleExamLockedError(apiErr);
-    if (e.status === 429) notifyQuotaExceeded(apiErr);
+    // 429 hạn mức/giới hạn tốc độ → toast chung; S11: 503 kill-switch ff.ai.tutor → toast + tắt cờ (ẩn lối vào gia sư)
+    if (e.status === 429 || e.status === 503) notifyApiError(apiErr);
   };
 
   const send = React.useCallback(

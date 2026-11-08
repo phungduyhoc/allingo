@@ -2,23 +2,29 @@
 
 import * as React from 'react';
 import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ApiError } from '@allingo/api-client';
-import { notifyQuotaExceeded } from './quota';
+// S11: Zod không thử eval (CSP không có 'unsafe-eval') – phải nạp trước mọi lần parse
+import './zod-csp';
+import { notifyApiError, shouldRetryQuery } from './api-error-events';
+
+/** `meta.inlineErrors` – màn tự hiện lỗi giới hạn tốc độ tại chỗ (form đăng nhập/OTP) → không phát toast chung */
+type Meta = Record<string, unknown> | undefined;
+const onError = (error: unknown, meta: Meta) => {
+  if (meta?.inlineErrors) return;
+  notifyApiError(error);
+};
 
 function makeQueryClient(): QueryClient {
   return new QueryClient({
-    // 429 quota_exceeded ở bất kỳ query/mutation nào → toast chung (QuotaToastListener) với thời điểm reset + CTA nâng cấp
-    queryCache: new QueryCache({ onError: notifyQuotaExceeded }),
-    mutationCache: new MutationCache({ onError: notifyQuotaExceeded }),
+    // Lỗi chung ở bất kỳ query/mutation nào → một toast (layout gốc): 429 quota_exceeded (QuotaToastListener – reset + CTA), S11:
+    // 429 rate_limited (thời gian chờ), 503 feature_disabled (kill-switch → làm mới cờ ngay)
+    queryCache: new QueryCache({ onError: (error, query) => onError(error, query.meta) }),
+    mutationCache: new MutationCache({ onError: (error, _v, _c, mutation) => onError(error, mutation.meta) }),
     defaultOptions: {
       queries: {
         staleTime: 30_000,
         refetchOnWindowFocus: false,
-        retry: (failureCount, error) => {
-          // Không retry lỗi nghiệp vụ (401/402/403/404/429); retry 2 lần cho lỗi mạng/5xx
-          if (error instanceof ApiError && [401, 402, 403, 404, 429].includes(error.status)) return false;
-          return failureCount < 2;
-        },
+        // Không retry lỗi nghiệp vụ (401/402/403/404), 429, kill-switch 503; retry 2 lần cho lỗi mạng/5xx khác – không vòng lặp
+        retry: shouldRetryQuery,
       },
       mutations: { retry: 0 },
     },

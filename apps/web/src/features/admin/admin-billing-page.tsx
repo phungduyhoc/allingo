@@ -7,7 +7,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { BILLING_JOBS, type BillingJob } from '@allingo/schemas';
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, Spinner, Switch, Tabs, TabsList, TabsTrigger } from '@allingo/ui';
-import { useRouter } from '@/i18n/navigation';
+import { FLAGS_QUERY_KEY } from '@/features/flags/flags-provider';
 import { adminKeys, getBillingSummary, getInvoiceReconciliation, runBillingJob, setFlag, type JobRunResult } from '@/lib/admin-api';
 import { billingKeys, getPaymentProviders } from '@/lib/billing-api';
 import { formatVnd } from '@/lib/billing';
@@ -33,7 +33,7 @@ export type AdminTab = (typeof ADMIN_TABS)[number];
 export function AdminBillingPage({ tab }: { tab: string | null }) {
   const t = useTranslations('admin');
   const me = useMe();
-  const router = useRouter();
+  const locale = useLocale();
   const [active, setActive] = React.useState<AdminTab>(() => ((ADMIN_TABS as readonly string[]).includes(tab ?? '') ? (tab as AdminTab) : 'overview'));
   const [creditUser, setCreditUser] = React.useState('');
 
@@ -48,7 +48,9 @@ export function AdminBillingPage({ tab }: { tab: string | null }) {
   }
   const go = (next: AdminTab) => {
     setActive(next);
-    router.replace(next === 'overview' ? '/admin/billing' : `/admin/billing/${next}`, { scroll: false });
+    // S11: chỉ đổi URL (History API – Next đồng bộ usePathname) thay vì router.replace: mỗi trang giờ render động (CSP nonce) nên
+    // phản hồi RSC về muộn hơn và DỰNG LẠI trang (đổi tham số [[...tab]]) → mất bộ lọc/hộp thoại người dùng đang thao tác
+    window.history.replaceState(null, '', `/${locale}${next === 'overview' ? '/admin/billing' : `/admin/billing/${next}`}`);
   };
 
   return (
@@ -230,6 +232,8 @@ function JobsTab() {
     mutationFn: (enabled: boolean) => setFlag('ff.billing.checkout', { enabled }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: billingKeys.providers });
+      // S11: cờ công khai (GET /flags) của chính trang này cập nhật ngay
+      void qc.invalidateQueries({ queryKey: FLAGS_QUERY_KEY });
       toast.success(t('flagSaved'));
     },
     onError: (err) => toast.error(te(`codes.${getErrorCode(err)}`)),

@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { attemptAiDiagnosisSchema } from '@allingo/schemas';
 import { postJsonOrStream } from '@/lib/api';
 import { aiErrorToApiError, aiStreamReducer, consumeAiResponse, initialAiStream, toAiStreamError, type AiStreamAction, type AiStreamState } from '@/lib/ai-stream';
-import { notifyQuotaExceeded } from '@/lib/quota';
+import { notifyApiError } from '@/lib/api-error-events';
 import { aiDiagnosisKey, queryKeys, useAttemptAiDiagnosis } from '@/lib/queries';
 import type { AttemptAiDiagnosis } from '@/lib/types';
 
@@ -57,7 +57,7 @@ export function useAiDiagnosis(attemptId: string): AiDiagnosisController {
         const e = toAiStreamError(err);
         if (!e || ac.signal.aborted) return;
         dispatch({ type: 'error', error: e });
-        if (e.status === 429) notifyQuotaExceeded(aiErrorToApiError(e));
+        if (e.status === 429 || e.status === 503) notifyApiError(aiErrorToApiError(e));
       }
     })();
   }, [attemptId, qc]);

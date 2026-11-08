@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Button, Card, CardContent } from '@allingo/ui';
 import { useExamLock } from '@/lib/exam-lock';
 import { ExamLockBanner } from '@/features/exam-lock/exam-lock-banner';
+import { useFlag } from '@/features/flags/flags-provider';
 import { useTutor } from './tutor-provider';
 
 /** Thẻ "Hỏi gia sư AI" ở Dashboard (hội thoại tự do + mở lại hội thoại cũ). Exam Mode → ẩn nút, hiện banner tiếp tục bài thi. */
@@ -12,6 +13,9 @@ export function DashboardTutorCard() {
   const t = useTranslations('tutor');
   const { openTutor } = useTutor();
   const lock = useExamLock();
+  // S11: kill-switch ff.ai.tutor tắt → ẩn thẻ
+  const enabled = useFlag('ff.ai.tutor');
+  if (!enabled) return null;
   return (
     <section aria-labelledby="tutor-card-title">
       <Card

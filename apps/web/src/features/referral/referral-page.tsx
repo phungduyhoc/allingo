@@ -53,7 +53,8 @@ export function ReferralPage() {
   if (me.data?.is_guest) {
     return (
       <div className="space-y-6" data-testid="referral-page" data-state="guest">
-        <PageHeader title={t('title')} description={t('subtitle')} />
+        {/* S11: khách chưa có cấu hình thưởng → không dùng câu có tham số {referrer}/{referee} (FORMATTING_ERROR) */}
+        <PageHeader title={t('title')} />
         <EmptyState
           title={t('guestTitle')}
           description={t('guestDesc')}

@@ -29,6 +29,7 @@ import { getErrorCode } from '@/lib/errors';
 import type { Enrollment, Locale, User } from '@/lib/types';
 import { CardSkeleton, ErrorState } from '@/components/states';
 import { PageHeader } from '@/components/page-header';
+import { FeatureGate } from '@/features/flags/flags-provider';
 
 const LOCALES: Locale[] = ['vi', 'en', 'ja', 'ko', 'th'];
 const PROGRAM = 'toeic';
@@ -107,10 +108,13 @@ export function SettingsPage() {
               <CreditCard aria-hidden />
               {tb('settingsBilling')}
             </Link>
-            <Link href="/referral" className={buttonVariants({ variant: 'outline' })} data-testid="settings-referral-link">
-              <Gift aria-hidden />
-              {tb('settingsReferral')}
-            </Link>
+            {/* S11: kill-switch ff.growth.referral */}
+            <FeatureGate flag="ff.growth.referral">
+              <Link href="/referral" className={buttonVariants({ variant: 'outline' })} data-testid="settings-referral-link">
+                <Gift aria-hidden />
+                {tb('settingsReferral')}
+              </Link>
+            </FeatureGate>
             {isAdmin(me.data) ? (
               <Link href="/admin/billing" className={buttonVariants({ variant: 'outline' })} data-testid="settings-admin-link">
                 <ShieldCheck aria-hidden />

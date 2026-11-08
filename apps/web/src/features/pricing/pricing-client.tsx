@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { FEATURE_GATES, GATE_KEYS, PROGRAM_CODES, type GateKey, type ProgramCode, type PromotionValidateResult } from '@allingo/schemas';
 import { Alert, AlertDescription, Badge, Button, buttonVariants, cn, Input, Label, Spinner, Tabs, TabsList, TabsTrigger } from '@allingo/ui';
 import { Link } from '@/i18n/navigation';
+import { useFlag } from '@/features/flags/flags-provider';
 import { billingKeys, getPaymentProviders, getPlans, redeemPromotion, validatePromotion } from '@/lib/billing-api';
 import { TRIAL_PROMO_CODE, formatVnd, groupPlans, monthlyEquivalent, priceView, promotionReasonOf, type Plan } from '@/lib/billing';
 import { getErrorCode } from '@/lib/errors';
@@ -47,7 +48,9 @@ export function PricingClient() {
   const activePeriod = periods.includes(period) ? period : (periods[0] ?? 'monthly');
   const pro = groups?.[activePeriod] ?? null;
   const paidPlans = groups ? [groups.monthly, groups.yearly, groups.lifetime, groups.combo, ...groups.creditPacks].filter((p): p is Plan => !!p?.price) : [];
-  const checkoutOpen = providers.data ? providers.data.checkout_enabled && providers.data.providers.length > 0 : true;
+  // S11: kill-switch ff.billing.checkout (GET /flags) – tắt → ẩn nút mua ngay cả khi /payments/providers còn bản cũ
+  const checkoutFlag = useFlag('ff.billing.checkout');
+  const checkoutOpen = checkoutFlag && (providers.data ? providers.data.checkout_enabled && providers.data.providers.length > 0 : true);
 
   // Xem trước mã: server tính giá cho từng gói (mã chỉ áp một gói/đơn, không cộng dồn)
   const priceIds = paidPlans.map((p) => p.price!.id);

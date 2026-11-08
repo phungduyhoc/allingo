@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { explanationSchema } from '@allingo/schemas';
 import { postJsonOrStream } from '@/lib/api';
 import { aiErrorToApiError, aiStreamReducer, consumeAiResponse, initialAiStream, toAiStreamError, type AiStreamState } from '@/lib/ai-stream';
-import { notifyQuotaExceeded } from '@/lib/quota';
+import { notifyApiError } from '@/lib/api-error-events';
 import { queryKeys } from '@/lib/queries';
 import type { ExplainInput, Explanation } from '@/lib/types';
 
@@ -44,7 +44,8 @@ export function useExplain(initial?: Explanation | null) {
         const e = toAiStreamError(err);
         if (!e || ac.signal.aborted) return;
         dispatch({ type: 'error', error: e });
-        if (e.status === 429) notifyQuotaExceeded(aiErrorToApiError(e));
+        // 429 hạn mức/giới hạn tốc độ → toast chung; S11: 503 kill-switch → toast + tắt cờ ff.ai.explain ngay (ẩn nút)
+        if (e.status === 429 || e.status === 503) notifyApiError(aiErrorToApiError(e));
       } finally {
         if (generated && !ac.signal.aborted) void qc.invalidateQueries({ queryKey: queryKeys.entitlements });
       }

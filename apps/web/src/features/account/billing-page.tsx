@@ -40,6 +40,7 @@ import { queryKeys, useMe } from '@/lib/queries';
 import { PageHeader } from '@/components/page-header';
 import { CardSkeleton, EmptyState, ErrorState } from '@/components/states';
 import { OrderStatusBadge } from './order-status-badge';
+import { FeatureGate } from '@/features/flags/flags-provider';
 
 const TABS = ['plan', 'orders', 'credits'] as const;
 type Tab = (typeof TABS)[number];
@@ -94,6 +95,8 @@ export function BillingPage() {
         <TabsContent value="orders">{tab === 'orders' ? <OrdersTab /> : null}</TabsContent>
         <TabsContent value="credits">{tab === 'credits' ? <CreditsTab /> : null}</TabsContent>
       </Tabs>
+      {/* S11: kill-switch ff.growth.referral tắt → ẩn lời mời giới thiệu */}
+      <FeatureGate flag="ff.growth.referral">
       <Card>
         <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5">
           <div className="flex items-center gap-3">
@@ -108,6 +111,7 @@ export function BillingPage() {
           </Link>
         </CardContent>
       </Card>
+      </FeatureGate>
     </div>
   );
 }

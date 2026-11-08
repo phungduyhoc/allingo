@@ -34,7 +34,15 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     if (isPending && fetchStatus === 'idle') void refetch();
   }, [isPending, fetchStatus, refetch]);
 
-  if (me.isPending) {
+  // S11 (hiệu năng): /me xong → dựng cả AppShell + trang trong transition (React chia nhỏ ~5 ms/lần, không khoá luồng chính
+  // hàng trăm ms như lần dựng đồng bộ do useSyncExternalStore của TanStack); spinner giữ tới khi cây mới commit
+  const ready = !!me.data;
+  const [revealed, setRevealed] = React.useState(false);
+  React.useEffect(() => {
+    if (ready && !revealed) React.startTransition(() => setRevealed(true));
+  }, [ready, revealed]);
+
+  if (me.isPending || (ready && !revealed)) {
     return (
       <div className="flex min-h-dvh items-center justify-center" aria-busy>
         <Spinner label={t('loading')} className="text-navy dark:text-accent" />

@@ -5,6 +5,7 @@ import { Bot, Check, ListChecks, Lock, Quote, RotateCcw, Sparkles, TriangleAlert
 import { useFormatter, useTranslations } from 'next-intl';
 import { Alert, AlertDescription, Badge, Button, buttonVariants, Card, CardContent, CardDescription, CardHeader, CardTitle, cn, Skeleton } from '@allingo/ui';
 import { Link } from '@/i18n/navigation';
+import { useFlag } from '@/features/flags/flags-provider';
 import { aiErrorToApiError, streamPreview } from '@/lib/ai-stream';
 import { getErrorCode } from '@/lib/errors';
 import { needsUpgrade } from '@/lib/quota';
@@ -40,6 +41,8 @@ export function AiDiagnosisCard({ attemptId }: { attemptId: string }) {
   const te = useTranslations('errors');
   const fmt = useFormatter();
   const ctl = useAiDiagnosis(attemptId);
+  // S11: kill-switch ff.ai.diagnose tắt → ẩn thẻ (phân tích đã tạo trước đó vẫn hiện, không cho tạo mới)
+  const enabled = useFlag('ff.ai.diagnose');
   const { features, credits, isPending: entPending } = useQuota(AI_DIAGNOSE);
   const canUse = features.includes(AI_DIAGNOSE);
   const { stream, data } = ctl;
@@ -49,6 +52,7 @@ export function AiDiagnosisCard({ attemptId }: { attemptId: string }) {
 
   let body: React.ReactNode;
   let state: string;
+  if (!enabled && !data && !live) return null;
   if (data) {
     state = 'ready';
     body = <DiagnosisView data={data} />;

@@ -1,6 +1,7 @@
 'use client';
 
 import { BookA, CalendarCheck, CreditCard, Dumbbell, FileWarning, LayoutDashboard, ListChecks, LogOut, NotebookPen, Route, Settings, ShieldCheck, UserRound } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { useTranslations } from 'next-intl';
 import { Badge, Button, buttonVariants, cn } from '@allingo/ui';
 import { Link, usePathname, useRouter } from '@/i18n/navigation';
@@ -10,24 +11,32 @@ import { ThemeToggle } from './theme-toggle';
 import { LocaleSwitcher } from './locale-switcher';
 import { TutorProvider } from '@/features/tutor/tutor-provider';
 import { InstallBanner } from '@/features/pwa/install-banner';
-import { NotificationBell } from '@/features/notifications/notification-bell';
+import { Deferred } from './deferred';
 import { SubscriptionBanner } from '@/features/billing/subscription-banner';
 import { isAdmin } from '@/features/admin/is-admin';
+import { useFlag } from '@/features/flags/flags-provider';
+import type { FlagKey } from '@/lib/flags';
 
 /**
  * S9: "Hôm nay" + "Lộ trình" lên đầu; Cài đặt chuyển thành nút biểu tượng trên header. S10: thêm "Từ vựng" + "Sổ lỗi" (8 mục):
  * desktop chỉ biểu tượng tới 2xl (nhãn cho trình đọc màn hình), thanh dưới mobile 8 cột dùng nhãn ngắn `nav.short.*`.
  */
-const NAV = [
-  { href: '/toeic/today', key: 'today', icon: CalendarCheck },
-  { href: '/toeic/plan', key: 'plan', icon: Route },
+const NotificationBell = dynamic(() => import('@/features/notifications/notification-bell').then((m) => m.NotificationBell), {
+  ssr: false,
+  loading: () => <span className="inline-block size-10" aria-hidden />,
+});
+
+const NAV: ReadonlyArray<{ href: string; key: string; icon: typeof CalendarCheck; flag?: FlagKey }> = [
+  // S11: kill-switch ff.learning.study_plan tắt → ẩn "Hôm nay" + "Lộ trình"
+  { href: '/toeic/today', key: 'today', icon: CalendarCheck, flag: 'ff.learning.study_plan' },
+  { href: '/toeic/plan', key: 'plan', icon: Route, flag: 'ff.learning.study_plan' },
   { href: '/toeic/dashboard', key: 'dashboard', icon: LayoutDashboard },
   { href: '/toeic/test-sets', key: 'testSets', icon: ListChecks },
   { href: '/toeic/practice', key: 'practice', icon: Dumbbell },
   { href: '/toeic/vocab', key: 'vocab', icon: BookA },
   { href: '/toeic/errors', key: 'errors', icon: FileWarning },
   { href: '/notes', key: 'notes', icon: NotebookPen },
-] as const;
+];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const t = useTranslations('nav');
@@ -38,6 +47,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const me = useMe();
   const logout = useLogout();
   const user = me.data;
+  const planOn = useFlag('ff.learning.study_plan');
+  const nav = NAV.filter((n) => !n.flag || (n.flag === 'ff.learning.study_plan' && planOn));
 
   return (
     <TutorProvider>
@@ -52,8 +63,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
             <div className="flex items-center gap-6">
               <Logo href="/toeic/dashboard" />
-              <nav aria-label="app" className="hidden items-center gap-1 md:flex">
-                {NAV.map(({ href, key, icon: Icon }) => {
+              <nav aria-label={t('aria.app')} className="hidden items-center gap-1 md:flex">
+                {nav.map(({ href, key, icon: Icon }) => {
                   const active = pathname.startsWith(href);
                   return (
                     <Link
@@ -100,7 +111,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <CreditCard aria-hidden />
                 </Link>
               ) : null}
-              {user ? <NotificationBell /> : null}
+              {/* S11: chuông (tải /me/notifications + mã bảng) dựng khi trình duyệt rảnh; khung giữ chỗ cùng kích thước (không CLS) */}
+              {user ? (
+                <Deferred fallback={<span className="inline-block size-10" aria-hidden />}>
+                  <NotificationBell />
+                </Deferred>
+              ) : null}
               <Link
                 href="/settings"
                 aria-label={t('settings')}
@@ -158,11 +174,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Điều hướng dưới cho mobile */}
         <nav
-          aria-label="app-mobile"
+          aria-label={t('aria.appMobile')}
           className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 backdrop-blur md:hidden"
         >
-          <ul className="grid grid-cols-8">
-            {NAV.map(({ href, key, icon: Icon }) => {
+          <ul className={cn('grid', nav.length === 8 ? 'grid-cols-8' : 'grid-cols-6')}>
+            {nav.map(({ href, key, icon: Icon }) => {
               const active = pathname.startsWith(href);
               return (
                 <li key={href}>

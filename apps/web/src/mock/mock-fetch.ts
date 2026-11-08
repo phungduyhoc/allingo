@@ -27,6 +27,7 @@ import {
 } from '@allingo/schemas';
 import { SCALE_INFO, TOEIC_PART_SKILL, diagnoseAttempt, toeicLr, toeicLrEstimate } from '@allingo/scoring';
 import { env } from '@/env';
+import { FLAG_DEFAULTS, PUBLIC_FLAG_KEYS } from '@/lib/flags';
 import { MOCK_PROGRAMS, MOCK_SUBSKILL_OF_TAG, MOCK_TEST_SETS, type MockQuestion, type MockTestSet } from './fixtures';
 import { loadState, saveState, type MockAttemptRecord, type MockState, type MockUserRecord } from './state';
 import { latestNoteFor, learningToolRoutes } from './learning-tools';
@@ -111,6 +112,35 @@ const PROMPT_VERSION = { explain_mcq: '00000000-0000-4000-8000-00000000e301', di
 const PRO_DEMO = { email: 'learner_pro@allingo.dev', password: 'Allingo@2026', display_name: 'Minh (Pro)' };
 /** Admin demo như seed API – vào /admin/billing (S7/S8) */
 const ADMIN_DEMO = { email: 'admin@allingo.dev', password: 'Allingo@2026', display_name: 'Admin Allingo' };
+
+/** S12: bản rút gọn `checkPasswordPolicy` của API (apps/api/src/modules/iam/password/password-policy.ts) cho đăng ký ở mock */
+const MOCK_PASSWORD_MIN = 12;
+const MOCK_COMMON_BASES = new Set(['password', 'passw0rd', 'qwerty', 'qwertyuiop', 'iloveyou', 'admin', 'welcome', 'letmein', 'allingo', 'matkhau', 'abc123', '123456', '12345678', '123456789', '1234567890', '123456789012']);
+function mockPasswordIssue(password: string, context: Array<string | undefined>): 'password_too_short' | 'password_breached' | 'password_weak' | null {
+  if ([...password].length < MOCK_PASSWORD_MIN) return 'password_too_short';
+  const lower = password.trim().toLowerCase();
+  const base = /^(.*?)([0-9!@#$%^&*._\-+=?~]{0,6})$/.exec(lower)?.[1] ?? lower;
+  if (MOCK_COMMON_BASES.has(lower) || MOCK_COMMON_BASES.has(base)) return 'password_breached';
+  if (new Set(lower).size <= 2) return 'password_weak';
+  for (const c of context) {
+    const token = (c ?? '').toLowerCase().split('@')[0]!.replace(/\s+/g, '');
+    if (token.length >= 4 && lower.includes(token) && lower.length - token.length < 6) return 'password_weak';
+  }
+  return null;
+}
+
+/**
+ * S11: cờ mặc định của "máy chủ" giả = FLAG_FALLBACKS của API, riêng `ff.ai.diagnose` bật (seed API để false nhưng chẩn đoán AI
+ * Pro của S5 vẫn chạy – SPEC-ISSUES S51) để kịch bản E2E mock của S5 giữ nguyên.
+ */
+const MOCK_FLAG_DEFAULTS: Record<string, boolean> = { ...FLAG_DEFAULTS, 'ff.ai.diagnose': true };
+/** Route có `@KillSwitch(flag)` ở API (S11) */
+const KILL_SWITCHES: Array<[string, RegExp, string]> = [
+  ['POST', /^\/ai\/explain$/, 'ff.ai.explain'],
+  ['POST', /^\/ai\/threads$/, 'ff.ai.tutor'],
+  ['POST', /^\/ai\/threads\/[^/]+\/messages$/, 'ff.ai.tutor'],
+];
+const killSwitchFor = (method: string, path: string) => KILL_SWITCHES.find(([m, re]) => m === method && re.test(path))?.[2] ?? null;
 
 /**
  * Kịch bản lỗi AI cho dev/E2E: đặt `window.__ALLINGO_MOCK_AI_FAIL__ = 'ai_failed' | 'ai_timeout'` → lượt AI kế tiếp phát
@@ -536,6 +566,9 @@ export function createMockFetch(): typeof fetch {
     route('POST', '/auth/register', ({ body, headers }) => {
       const b = body as { email?: string; password?: string; display_name?: string; guest_token?: string; ui_locale?: string; referral_code?: string; attribution?: Record<string, unknown> };
       if (!b.email || !b.password || !b.display_name) return error(400, 'validation_failed', 'Missing fields', { fields: { email: 'required' } });
+      // S12 (API): chính sách mật khẩu – ≥ 12 ký tự, không phổ biến/lộ, không quá dễ đoán
+      const pwIssue = mockPasswordIssue(b.password, [b.email, b.display_name]);
+      if (pwIssue) return error(400, 'validation_failed', 'Password does not meet the policy', { issues: [{ path: 'password', code: pwIssue, message: pwIssue }], min_length: MOCK_PASSWORD_MIN });
       if (Object.values(state.users).some((u) => u.email?.toLowerCase() === b.email!.toLowerCase())) return error(409, 'conflict', 'Email already registered');
       const guest = b.guest_token ? Object.values(state.users).find((u) => u.guest_token === b.guest_token) : undefined;
       const user = makeUser({
@@ -1129,6 +1162,21 @@ export function createMockFetch(): typeof fetch {
     };
   };
 
+  // ------------------------------------------------------------------- S11: feature flag công khai + kill-switch
+  const mockFlagOn = (key: string) => state.flags[key]?.enabled ?? MOCK_FLAG_DEFAULTS[key] ?? false;
+  const flagRoutes: Route[] = [
+    route('GET', '/flags', () =>
+      json(200, { flags: Object.fromEntries(PUBLIC_FLAG_KEYS.map((k) => [k, mockFlagOn(k)])), ttl_sec: 30, evaluated_at: nowIso() }, { 'Cache-Control': 'private, max-age=30' }),
+    ),
+    route('GET', '/admin/flags', () => {
+      const u = currentUser();
+      if (!u?.roles.includes('admin')) return error(u ? 403 : 401, u ? 'forbidden' : 'unauthorized', 'Admin only');
+      const keys = [...new Set([...PUBLIC_FLAG_KEYS, ...Object.keys(state.flags)])].sort();
+      return json(200, { data: keys.map((key) => ({ key, enabled: mockFlagOn(key), rules: {}, updated_at: nowIso(), public: (PUBLIC_FLAG_KEYS as readonly string[]).includes(key) })) });
+    }),
+  ];
+  routes.unshift(...flagRoutes);
+
   const mockFetch: typeof fetch = async (input, init) => {
     // Giả lập mất mạng như fetch thật (Playwright context.setOffline → navigator.onLine = false)
     if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new TypeError('Failed to fetch');
@@ -1154,6 +1202,11 @@ export function createMockFetch(): typeof fetch {
       }
     }
     await sleep(LATENCY_MS);
+    // S11: kill-switch như `@KillSwitch` của API (sau xác thực, trước rate limit) → 503 feature_disabled + Retry-After
+    const killed = killSwitchFor(method, path);
+    if (killed && !mockFlagOn(killed)) {
+      return json(503, { error: { code: 'feature_disabled', message: 'Feature is disabled', details: { flag: killed, message_key: 'errors.feature_disabled', retry_after_sec: 60 }, trace_id: `mock-${uuid().slice(0, 8)}` } }, { 'Retry-After': '60' });
+    }
     for (const r of routes) {
       if (r.method !== method) continue;
       const m = r.pattern.exec(path);
@@ -1169,6 +1222,11 @@ export function createMockFetch(): typeof fetch {
     const w = window as unknown as { __ALLINGO_MOCK__?: Record<string, unknown> };
     w.__ALLINGO_MOCK__ = {
       ...(w.__ALLINGO_MOCK__ ?? {}),
+      // S11 E2E: bật/tắt cờ như admin `PUT /admin/flags/{key}` (không cần phiên admin trong "máy chủ" giả)
+      setFlag: (key: string, enabled: boolean) => {
+        state.flags[key] = { enabled };
+        persist();
+      },
       request: async (method: string, path: string, body?: unknown) => {
         const res = await mockFetch(`${env.apiUrl}${path}`, { method, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': uuid() }, body: body === undefined ? undefined : JSON.stringify(body) });
         const text = await res.text();

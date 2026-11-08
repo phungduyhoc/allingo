@@ -67,6 +67,11 @@
       "vocab": "Từ vựng",
       "errors": "Sổ lỗi",
       "notes": "Ghi chú"
+    },
+    "aria": {
+      "app": "Điều hướng chính",
+      "appMobile": "Điều hướng nhanh",
+      "account": "Tài khoản và ngôn ngữ"
     }
   },
   "landing": {
@@ -141,7 +146,8 @@
       "password": "Mật khẩu cần ít nhất 8 ký tự",
       "displayName": "Nhập tên hiển thị (1–80 ký tự)",
       "acceptTerms": "Bạn cần đồng ý Điều khoản và Chính sách bảo mật",
-      "otp": "Nhập đủ 6 chữ số"
+      "otp": "Nhập đủ 6 chữ số",
+      "passwordMin": "Mật khẩu cần ít nhất {min} ký tự"
     },
     "errors": {
       "invalidCredentials": "Email hoặc mật khẩu không đúng",
@@ -175,7 +181,13 @@
     "linkRequiredTitle": "Email này đã có tài khoản",
     "linkRequiredDesc": "Nhập mật khẩu của tài khoản để liên kết đăng nhập Google.",
     "linkSubmit": "Liên kết và đăng nhập",
-    "googleFailed": "Không đăng nhập được bằng Google. Thử lại hoặc dùng email."
+    "googleFailed": "Không đăng nhập được bằng Google. Thử lại hoặc dùng email.",
+    "passwordPolicy": {
+      "password_too_short": "Mật khẩu cần ít nhất {min} ký tự.",
+      "password_breached": "Mật khẩu này quá phổ biến hoặc đã xuất hiện trong các vụ lộ dữ liệu – hãy chọn mật khẩu khác.",
+      "password_weak": "Mật khẩu quá dễ đoán (lặp ký tự, dãy liên tiếp hoặc chứa email/tên) – hãy chọn mật khẩu khác."
+    },
+    "passwordPolicyHint": "Ít nhất {min} ký tự, tránh mật khẩu phổ biến hoặc chứa email/tên của bạn."
   },
   "dashboard": {
     "title": "Bảng điều khiển TOEIC",
@@ -393,7 +405,8 @@
     "listeningQuestionCount": "{count, plural, other {# câu Listening}}",
     "questionTimerLabel": "{seconds, plural, other {Còn # giây cho câu này}}",
     "questionTimeUp": "Hết giờ câu này",
-    "questionTimerLeft": "{seconds} giây"
+    "questionTimerLeft": "{seconds} giây",
+    "partTabAria": "{short} {answered}/{total} – {title}, đã trả lời {answered} trên {total} câu"
   },
   "result": {
     "title": "Kết quả",
@@ -635,7 +648,22 @@
       "ai_timeout": "AI phản hồi quá lâu. Lượt dùng đã được hoàn lại – thử lại nhé."
     },
     "upgrade": "Nâng cấp Pro",
-    "relogin": "Đăng nhập lại"
+    "relogin": "Đăng nhập lại",
+    "feature_disabled": "Tính năng này đang tạm tắt. Vui lòng thử lại sau ít phút.",
+    "featureDisabled": {
+      "title": "Tính năng tạm tắt"
+    },
+    "rateLimit": {
+      "title": "Bạn thao tác quá nhanh",
+      "titleGlobal": "Có quá nhiều yêu cầu từ mạng của bạn",
+      "titleLoginLocked": "Đăng nhập tạm bị khoá",
+      "message": "Bạn thao tác quá nhanh. {wait}",
+      "loginLocked": "Bạn đã nhập sai mật khẩu nhiều lần nên đăng nhập bằng email này tạm bị khoá. {wait}",
+      "waitSeconds": "Thử lại sau {seconds, plural, =1 {1 giây} other {# giây}}.",
+      "waitMinutes": "Thử lại sau {minutes, plural, =1 {1 phút} other {# phút}}.",
+      "waitUnknown": "Vui lòng chờ một lát rồi thử lại.",
+      "ready": "Bạn có thể thử lại."
+    }
   },
   "offline": {
     "title": "Bạn đang ngoại tuyến",
@@ -1709,7 +1737,8 @@
     "planKinds": "Loại gói áp dụng",
     "newUsersOnly": "Chỉ người dùng mới",
     "standalone": "Đổi trực tiếp (không cần mua)",
-    "save": "Lưu"
+    "save": "Lưu",
+    "promoCredits": "{count, plural, other {# credit}}"
   },
   "onboarding": {
     "title": "Lập lộ trình của bạn",

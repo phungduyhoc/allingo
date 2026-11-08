@@ -36,6 +36,8 @@ import { Link, useRouter } from '@/i18n/navigation';
 import { Markdown } from '@/components/markdown';
 import { aiErrorToApiError } from '@/lib/ai-stream';
 import { getErrorCode } from '@/lib/errors';
+import { useFlag } from '@/features/flags/flags-provider';
+import { FeatureDisabledNotice } from '@/features/flags/feature-disabled-notice';
 import { useExamLock } from '@/lib/exam-lock';
 import { listThreads } from '@/lib/learning-api';
 import { useAiFeedback } from '@/lib/queries';
@@ -336,6 +338,8 @@ function ChatBody({
   const te = useTranslations('errors');
   const tq = useTranslations('quota');
   const { state, send, retry, loadOlder } = chat;
+  // S11: kill-switch ff.ai.tutor tắt khi panel đang mở → thông báo + khoá ô nhập (server trả 503)
+  const tutorOn = useFlag('ff.ai.tutor');
   const [draft, setDraft] = React.useState('');
   const [loadingOlder, setLoadingOlder] = React.useState(false);
   const listRef = React.useRef<HTMLDivElement | null>(null);
@@ -360,7 +364,7 @@ function ChatBody({
   }, [state.messages.length, lastText]);
 
   const submit = (text: string) => {
-    if (!text.trim() || live || locked || tooLong || threadLimit.reached) return;
+    if (!text.trim() || live || locked || tooLong || threadLimit.reached || !tutorOn) return;
     stick.current = true;
     void send(text);
     setDraft('');
@@ -435,8 +439,11 @@ function ChatBody({
           />
         ))}
 
+        {!tutorOn ? <FeatureDisabledNotice flag="ff.ai.tutor" /> : null}
+
         {/* Lỗi không gắn với bong bóng trả lời: tải hội thoại, HTTP trước stream (hạn mức / credit / khác), mạng */}
-        {state.status === 'error' &&
+        {tutorOn &&
+        state.status === 'error' &&
         error &&
         !threadLimit.reached &&
         error.code !== 'exam_mode_locked' &&
@@ -549,7 +556,7 @@ function ChatBody({
                   placeholder={free ? t('placeholderFree') : t('placeholder')}
                   aria-invalid={tooLong || undefined}
                   aria-describedby="tutor-input-hint"
-                  disabled={threadLimit.reached}
+                  disabled={threadLimit.reached || !tutorOn}
                   className="max-h-40 min-h-11 resize-none text-sm"
                   data-testid="tutor-input"
                 />
@@ -558,7 +565,7 @@ function ChatBody({
                 type="submit"
                 variant="navy"
                 size="icon"
-                disabled={!draft.trim() || live || tooLong || threadLimit.reached}
+                disabled={!draft.trim() || live || tooLong || threadLimit.reached || !tutorOn}
                 aria-label={t('send')}
                 data-testid="tutor-send"
               >

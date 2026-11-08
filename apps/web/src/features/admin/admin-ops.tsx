@@ -175,6 +175,7 @@ export function ReconciliationsTab() {
             {source === 'csv' ? (
               <div className="space-y-1.5">
                 <Label htmlFor="recon-csv">{t('csv')}</Label>
+                {/* i18n-ignore – tiêu đề cột CSV đối soát (định dạng kỹ thuật, không dịch) */}
                 <Textarea id="recon-csv" value={csv} onChange={(e) => setCsv(e.target.value)} rows={6} className="font-mono text-xs" placeholder="provider_txn_id,merchant_ref,amount,currency,status,paid_at" data-testid="recon-csv" />
                 <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-primary">
                   <Upload className="size-4" aria-hidden />

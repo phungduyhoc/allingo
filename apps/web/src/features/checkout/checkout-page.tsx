@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { useFlag } from '@/features/flags/flags-provider';
 import { ArrowLeft, Building2, CreditCard, Lock, QrCode, Smartphone, Tag, TriangleAlert, User as UserIcon, X } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
@@ -69,6 +70,9 @@ export function CheckoutPage() {
   const me = useMe();
   const plans = useQuery({ queryKey: billingKeys.plans(), queryFn: () => getPlans(), staleTime: 5 * 60_000 });
   const providers = useQuery({ queryKey: billingKeys.providers, queryFn: getPaymentProviders, staleTime: 30_000 });
+  // S11: kill-switch ff.billing.checkout (GET /flags – làm mới 30 s) cộng với `checkout_enabled` của /payments/providers
+  const checkoutFlag = useFlag('ff.billing.checkout');
+  const checkoutEnabled = checkoutFlag && !!providers.data?.checkout_enabled;
   const plan = plans.data ? findPlanByPrice(plans.data, priceId) : null;
 
   const [promoInput, setPromoInput] = React.useState(() => search.get('promo')?.toUpperCase() ?? '');
@@ -228,7 +232,7 @@ export function CheckoutPage() {
           </AlertDescription>
         </Alert>
       ) : null}
-      {providers.data && !providers.data.checkout_enabled ? (
+      {(providers.data && !providers.data.checkout_enabled) || !checkoutFlag ? (
         <Alert variant="gold" data-testid="checkout-disabled">
           <TriangleAlert aria-hidden />
           <AlertDescription>{tb('checkoutDisabled')}</AlertDescription>
@@ -244,7 +248,7 @@ export function CheckoutPage() {
               <CardDescription>{t('providerDesc')}</CardDescription>
             </CardHeader>
             <CardContent>
-              {available.length === 0 || !providers.data?.checkout_enabled ? (
+              {available.length === 0 || !checkoutEnabled ? (
                 <p className="text-sm text-muted-foreground">{t('noProviders')}</p>
               ) : (
                 <div role="radiogroup" aria-label={t('providerTitle')} className="grid gap-2 sm:grid-cols-2">
@@ -424,7 +428,7 @@ export function CheckoutPage() {
                 variant="gold"
                 size="lg"
                 className="w-full"
-                disabled={submit.isPending || !!me.data?.is_guest || !providers.data?.checkout_enabled || available.length === 0}
+                disabled={submit.isPending || !!me.data?.is_guest || !checkoutEnabled || available.length === 0}
                 data-testid="checkout-submit"
               >
                 {submit.isPending ? <Spinner aria-hidden /> : <Lock aria-hidden />}

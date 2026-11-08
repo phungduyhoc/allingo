@@ -136,7 +136,7 @@ export function PromotionsTab() {
               <span className="text-xs" data-testid="promo-stats">
                 {t('promoStats', { reserved: p.stats.reserved, redeemed: p.stats.redeemed, released: p.stats.released })}
                 <br />
-                {formatVnd(p.stats.discount_total, locale)} · {p.stats.credits_total} credit
+                {formatVnd(p.stats.discount_total, locale)} · {t('promoCredits', { count: p.stats.credits_total })}
               </span>
             ),
           },

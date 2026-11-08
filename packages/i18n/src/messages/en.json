@@ -67,6 +67,11 @@
       "vocab": "Vocab",
       "errors": "Errors",
       "notes": "Notes"
+    },
+    "aria": {
+      "app": "Main navigation",
+      "appMobile": "Quick navigation",
+      "account": "Account and language"
     }
   },
   "landing": {
@@ -141,7 +146,8 @@
       "password": "Password needs at least 8 characters",
       "displayName": "Enter a display name (1–80 characters)",
       "acceptTerms": "Please accept the Terms and Privacy Policy",
-      "otp": "Enter all 6 digits"
+      "otp": "Enter all 6 digits",
+      "passwordMin": "Password must be at least {min} characters"
     },
     "errors": {
       "invalidCredentials": "Email or password is incorrect",
@@ -175,7 +181,13 @@
     "linkRequiredTitle": "This email already has an account",
     "linkRequiredDesc": "Enter that account's password to link Google sign-in.",
     "linkSubmit": "Link and sign in",
-    "googleFailed": "Google sign-in failed. Try again or use email."
+    "googleFailed": "Google sign-in failed. Try again or use email.",
+    "passwordPolicy": {
+      "password_too_short": "Password must be at least {min} characters.",
+      "password_breached": "This password is too common or has appeared in a data breach – please choose another one.",
+      "password_weak": "This password is too easy to guess (repeated characters, sequences or your email/name) – please choose another one."
+    },
+    "passwordPolicyHint": "At least {min} characters; avoid common passwords or your email/name."
   },
   "dashboard": {
     "title": "TOEIC dashboard",
@@ -393,7 +405,8 @@
     "listeningQuestionCount": "{count, plural, =1 {1 Listening question} other {# Listening questions}}",
     "questionTimerLabel": "{seconds, plural, =1 {1 second left for this question} other {# seconds left for this question}}",
     "questionTimeUp": "Time is up for this question",
-    "questionTimerLeft": "{seconds}s"
+    "questionTimerLeft": "{seconds}s",
+    "partTabAria": "{short} {answered}/{total} – {title}, {answered} of {total} answered"
   },
   "result": {
     "title": "Result",
@@ -635,7 +648,22 @@
       "ai_timeout": "The AI took too long to respond. Your usage was refunded – please try again."
     },
     "upgrade": "Upgrade to Pro",
-    "relogin": "Log in again"
+    "relogin": "Log in again",
+    "feature_disabled": "This feature is temporarily turned off. Please try again in a few minutes.",
+    "featureDisabled": {
+      "title": "Feature temporarily off"
+    },
+    "rateLimit": {
+      "title": "You're going a bit too fast",
+      "titleGlobal": "Too many requests from your network",
+      "titleLoginLocked": "Sign-in temporarily locked",
+      "message": "You're going a bit too fast. {wait}",
+      "loginLocked": "Too many wrong passwords – sign-in for this email is temporarily locked. {wait}",
+      "waitSeconds": "Try again in {seconds, plural, =1 {1 second} other {# seconds}}.",
+      "waitMinutes": "Try again in {minutes, plural, =1 {1 minute} other {# minutes}}.",
+      "waitUnknown": "Please wait a moment and try again.",
+      "ready": "You can try again now."
+    }
   },
   "offline": {
     "title": "You are offline",
@@ -1709,7 +1737,8 @@
     "planKinds": "Plan kinds",
     "newUsersOnly": "New users only",
     "standalone": "Redeem directly (no purchase)",
-    "save": "Save"
+    "save": "Save",
+    "promoCredits": "{count, plural, =1 {1 credit} other {# credits}}"
   },
   "onboarding": {
     "title": "Build your study plan",

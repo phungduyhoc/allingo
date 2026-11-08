@@ -18,6 +18,7 @@ import { formatAnswer } from '@/lib/format-answer';
 import { ExplainPanel } from './explain-panel';
 import { NoteEditor } from '@/features/notes/note-editor';
 import { useOptionalTutor } from '@/features/tutor/tutor-provider';
+import { useFlag } from '@/features/flags/flags-provider';
 import { Transcript } from './transcript';
 import { parseTranscript } from './transcript-format';
 
@@ -109,6 +110,8 @@ export function ReviewItemCard({
   const t = useTranslations('review');
   const tt = useTranslations('tutor');
   const tutor = useOptionalTutor();
+  // S11: kill-switch ff.ai.tutor tắt → ẩn "Hỏi gia sư"
+  const tutorOn = useFlag('ff.ai.tutor');
   const ts = useTranslations('sections');
   const ta = useTranslations('attempt');
   const content = asPublicContent(item.question.content);
@@ -273,7 +276,7 @@ export function ReviewItemCard({
           onExamLocked={onExamLocked}
         />
         {/* S6: hỏi gia sư về câu này (ngữ cảnh câu + bài làm) – ẩn khi Exam Mode */}
-        {tutor && !examLocked ? (
+        {tutor && tutorOn && !examLocked ? (
           <Button
             variant="outline"
             size="sm"
