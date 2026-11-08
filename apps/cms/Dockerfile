@@ -49,6 +49,7 @@ COPY db/package.json db/
 COPY packages/api-client/package.json packages/api-client/
 COPY packages/config/package.json packages/config/
 COPY packages/fsrs/package.json packages/fsrs/
+COPY packages/planner/package.json packages/planner/
 COPY packages/i18n/package.json packages/i18n/
 COPY packages/schemas/package.json packages/schemas/
 COPY packages/scoring/package.json packages/scoring/

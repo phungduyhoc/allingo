@@ -47,6 +47,7 @@ COPY db/package.json db/
 COPY packages/api-client/package.json packages/api-client/
 COPY packages/config/package.json packages/config/
 COPY packages/fsrs/package.json packages/fsrs/
+COPY packages/planner/package.json packages/planner/
 COPY packages/i18n/package.json packages/i18n/
 COPY packages/schemas/package.json packages/schemas/
 COPY packages/scoring/package.json packages/scoring/
@@ -56,10 +57,11 @@ RUN --mount=type=cache,id=allingo-pnpm-store,target=/pnpm/store \
 
 # ---------- build ------------------------------------------------------------
 FROM deps AS build
-# Nguồn của api và các workspace package nó import từ dist (schemas, fsrs, scoring, db) + config tsconfig
+# Nguồn của api và các workspace package nó import từ dist (schemas, fsrs, planner, scoring, db) + config tsconfig
 COPY packages/config packages/config
 COPY packages/schemas packages/schemas
 COPY packages/fsrs packages/fsrs
+COPY packages/planner packages/planner
 COPY packages/scoring packages/scoring
 COPY db db
 COPY apps/api apps/api
