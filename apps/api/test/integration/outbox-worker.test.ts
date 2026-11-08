@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import { DbService } from '../../src/shared/db/db.module.js';
 import { OutboxService } from '../../src/shared/events/outbox.service.js';
@@ -43,8 +43,13 @@ describe('outbox relay (integration)', () => {
     expect(n).toBeGreaterThan(0);
     expect(received).toContain('v1');
     expect(received).not.toContain('rolled-back');
-    const unpublished = await dbs.db.select().from(schema.opsOutbox).where(isNull(schema.opsOutbox.publishedAt));
-    expect(unpublished).toHaveLength(0);
+    // B7: dòng đang chờ thử lại (attempts > 0) hoặc đã dead-letter là trạng thái hợp lệ (vd. sự kiện cố ý lỗi của
+    // b7-outbox-retry chạy trước trên DB dùng chung) → chỉ kiểm dòng chưa từng giao lỗi đều đã được relay
+    const unpublished = await dbs.db
+      .select()
+      .from(schema.opsOutbox)
+      .where(and(isNull(schema.opsOutbox.publishedAt), isNull(schema.opsOutbox.deadLetteredAt), eq(schema.opsOutbox.attempts, 0)));
+    expect(unpublished.map((r) => r.eventType)).toEqual([]);
     const [last] = await dbs.db.select().from(schema.opsOutbox).where(eq(schema.opsOutbox.eventType, 'test.happened')).orderBy(desc(schema.opsOutbox.id)).limit(1);
     expect(last?.publishedAt).toBeTruthy();
     off();
