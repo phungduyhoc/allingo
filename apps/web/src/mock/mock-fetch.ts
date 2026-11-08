@@ -32,6 +32,8 @@ import { loadState, saveState, type MockAttemptRecord, type MockState, type Mock
 import { latestNoteFor, learningToolRoutes } from './learning-tools';
 import { billingRoutes } from './billing';
 import { growthRoutes, referralHooks } from './growth';
+import { learningPlanMock } from './learning-plan';
+import { MOCK_DIAGNOSTIC_QUESTIONS, MOCK_DIAGNOSTIC_SET } from './diagnostic-fixtures';
 
 /**
  * fetch giả lập cho dev/e2e khi NEXT_PUBLIC_API_MOCK=1. Bám hợp đồng docs/spec/allingo-openapi.yaml + Zod
@@ -41,7 +43,6 @@ import { growthRoutes, referralHooks } from './growth';
 
 const LATENCY_MS = 120;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const today = () => new Date().toISOString().slice(0, 10);
 const nowIso = () => new Date().toISOString();
 const uuid = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
 
@@ -156,8 +157,10 @@ export function createMockFetch(): typeof fetch {
   }
   const referral = referralHooks(state, uuid, nowIso);
 
-  const findTestSet = (id: string): MockTestSet | undefined => MOCK_TEST_SETS.find((t) => t.id === id);
-  const allQuestions = (): MockQuestion[] => MOCK_TEST_SETS.flatMap((t) => t.questions);
+  const findTestSet = (id: string): MockTestSet | undefined => MOCK_TEST_SETS.find((t) => t.id === id) ?? (id === MOCK_DIAGNOSTIC_SET.id ? MOCK_DIAGNOSTIC_SET : undefined);
+  /** Câu luyện tập (đề mock) – S9: ngân hàng chẩn đoán tách riêng, chỉ dùng để tra câu theo id/phiên bản */
+  const bankQuestions = (): MockQuestion[] => MOCK_TEST_SETS.flatMap((t) => t.questions);
+  const allQuestions = (): MockQuestion[] => [...bankQuestions(), ...MOCK_DIAGNOSTIC_QUESTIONS];
   const questionsOf = (a: MockAttemptRecord): MockQuestion[] => {
     if (!a.question_ids) return findTestSet(a.test_set_id)?.questions ?? [];
     // Lượt luyện: câu từ nhiều đề → đánh số lại 1..n như snapshot question_order của API
@@ -476,6 +479,27 @@ export function createMockFetch(): typeof fetch {
     return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' } });
   };
 
+  // S9: chẩn đoán, lộ trình, hôm nay, check-in/điều chỉnh, chuỗi ngày/XP/huy hiệu
+  const learning = learningPlanMock({
+    state,
+    persist,
+    route: route,
+    json,
+    error,
+    uuid,
+    nowIso,
+    requireUser,
+    isPro,
+    publicQuestion: (q) => publicQuestion(q, 'attempt'),
+    finishAttempt: (a) => {
+      a.result = gradeAttempt(a);
+    },
+    sectionQuestions: (code) => [...new Map(bankQuestions().filter((q) => q.section_code === code).map((q) => [q.question_id, q])).values()],
+    toAttemptDto,
+    quotaExceeded,
+    consumeQuota,
+  });
+
   const routes: Route[] = [
     // --------------------------------------------------------------------- auth
     route('POST', '/auth/guest', () => {
@@ -504,6 +528,7 @@ export function createMockFetch(): typeof fetch {
         for (const a of Object.values(state.attempts)) if (a.user_id === guest.id) a.user_id = user.id;
         state.xp[user.id] = (state.xp[user.id] ?? 0) + (state.xp[guest.id] ?? 0);
         state.enrollments[user.id] = state.enrollments[guest.id] ?? [];
+        learning.merge(guest.id, user.id);
         delete state.users[guest.id];
       }
       referral.onRegistered(user, b.referral_code, headers.get('x-device-fingerprint'));
@@ -519,6 +544,7 @@ export function createMockFetch(): typeof fetch {
       if (guest) {
         for (const a of Object.values(state.attempts)) if (a.user_id === guest.id) a.user_id = user.id;
         state.xp[user.id] = (state.xp[user.id] ?? 0) + (state.xp[guest.id] ?? 0);
+        learning.merge(guest.id, user.id);
         delete state.users[guest.id];
       }
       state.sessionUserId = user.id;
@@ -543,6 +569,7 @@ export function createMockFetch(): typeof fetch {
       const guest = b.guest_token ? Object.values(state.users).find((u) => u.guest_token === b.guest_token && u.id !== user.id) : undefined;
       if (guest) {
         for (const a of Object.values(state.attempts)) if (a.user_id === guest.id) a.user_id = user.id;
+        learning.merge(guest.id, user.id);
         delete state.users[guest.id];
       }
       state.sessionUserId = user.id;
@@ -577,7 +604,6 @@ export function createMockFetch(): typeof fetch {
         .filter((a) => a.user_id === u.id && a.result && a.program === program)
         .sort((x, y) => (x.submitted_at ?? '').localeCompare(y.submitted_at ?? ''));
       const latest = graded[graded.length - 1];
-      const days = new Set(graded.map((a) => (a.submitted_at ?? '').slice(0, 10)));
       const enrollment = (state.enrollments[u.id] ?? []).find((e) => e.program === program);
       const stats: Stats = {
         program,
@@ -588,9 +614,9 @@ export function createMockFetch(): typeof fetch {
         by_section: latest?.result?.by_section ?? {},
         by_question_type: latest?.result?.by_question_type ?? {},
         weakest: [],
-        streak: { current: days.has(today()) ? Math.max(1, days.size) : 0, longest: days.size, freeze_available: false },
-        xp: { total: state.xp[u.id] ?? 0, this_week: state.xp[u.id] ?? 0 },
         minutes_this_week: graded.length * 8,
+        // S9: chuỗi theo múi giờ (đóng băng Pro), XP hôm nay/cấp, huy hiệu, tóm tắt lộ trình (thay bản S0 đếm ngày có bài nộp)
+        ...learning.statsExtras(u),
       };
       return json(200, stats);
     }),
@@ -700,16 +726,24 @@ export function createMockFetch(): typeof fetch {
     }),
 
     // --------------------------------------------------------------------- attempts
-    route('POST', '/attempts', ({ body }) => {
+    route('POST', '/attempts', ({ body, headers }) => {
       const u = requireUser();
       if (u instanceof Response) return u;
-      const b = body as { program: string; mode: AttemptMode; test_set_id?: string };
+      const b = body as { program: string; mode: AttemptMode; test_set_id?: string; section_id?: string; plan_task_id?: string };
+      // S9: lượt luyện 10 câu theo section (task lộ trình) – Idempotency-Key / plan_task_id trả lại lượt đang làm
+      if (!b.test_set_id && b.section_id) return learning.createSectionAttempt(u, b, headers.get('idempotency-key')) ?? error(404, 'not_found', 'Section not found');
       const t = b.test_set_id ? findTestSet(b.test_set_id) : undefined;
       if (!t) return error(404, 'not_found', 'Test set not found');
       if (t.locked && !isPro(u)) return error(403, 'forbidden', 'Pro plan required', { feature: 'full_test', upgrade: true });
       const feature = t.kind === 'full' ? 'full_test' : t.kind === 'part_drill' ? 'part_drill' : 'mini_test';
       const existing = Object.values(state.attempts).find((a) => a.user_id === u.id && a.test_set_id === t.id && a.status === 'in_progress');
-      if (existing) return json(201, toAttemptDto(existing));
+      if (existing) {
+        if (b.plan_task_id && !existing.plan_task_id) {
+          existing.plan_task_id = b.plan_task_id;
+          persist();
+        }
+        return json(201, toAttemptDto(existing));
+      }
       const over = quotaExceeded(u, feature);
       if (over) return over;
       consumeQuota(u, feature);
@@ -729,6 +763,7 @@ export function createMockFetch(): typeof fetch {
         ui_state: {},
         events: [],
         result: null,
+        plan_task_id: b.plan_task_id ?? null,
       };
       state.attempts[rec.id] = rec;
       persist();
@@ -747,7 +782,7 @@ export function createMockFetch(): typeof fetch {
       if (!t) return error(404, 'not_found', 'No questions');
       // Câu của Part từ mọi đề (không trùng; mock không ngẫu nhiên để E2E ổn định), từ khoá lọc theo nội dung.
       // Nhóm cùng passage (Part 3/4/6/7) lấy trọn nhóm, liền nhau; nhóm không vừa `count` thì bỏ (trừ nhóm đầu) – như API
-      const unique = [...new Map(allQuestions().filter((qq) => qq.section_code === section && (!q || JSON.stringify(qq.content).toLowerCase().includes(q))).map((qq) => [qq.question_id, qq])).values()];
+      const unique = [...new Map(bankQuestions().filter((qq) => qq.section_code === section && (!q || JSON.stringify(qq.content).toLowerCase().includes(q))).map((qq) => [qq.question_id, qq])).values()];
       const picked: MockQuestion[] = [];
       for (const qq of unique) {
         if (picked.includes(qq)) continue;
@@ -853,6 +888,8 @@ export function createMockFetch(): typeof fetch {
       a.submitted_at = nowIso();
       // S8: bài chấm đầu tiên của người được giới thiệu → referral started (thưởng 200/200)
       referral.onAttemptGraded(u.id);
+      // S9: task lộ trình tự done (plan_task_id), chuỗi ngày, huy hiệu (+ thông báo in-app)
+      learning.onAttemptGraded(a);
       persist();
       return json(200, a.result);
     }),
@@ -1007,6 +1044,9 @@ export function createMockFetch(): typeof fetch {
       if (!a.ai_diagnosis) return error(404, 'not_found', 'attempt_diagnosis not found');
       return json(200, { ...a.ai_diagnosis, attempt_id: a.id, cached: true } satisfies AttemptAiDiagnosis);
     }),
+
+    // --------------------------------------------------------------------- S9: chẩn đoán, lộ trình, check-in, huy hiệu
+    ...learning.routes,
 
     // --------------------------------------------------------------------- S7/S8: billing, khuyến mãi, admin, referral, thông báo
     // (đặt TRƯỚC learningToolRoutes: GET/PATCH /me/notification-preferences bản S8 có categories đè bản S6)

@@ -13,3 +13,4 @@ export { Switch, type SwitchProps } from './components/switch';
 export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose, Sheet, type DialogProps } from './components/dialog';
 export { Tabs, TabsList, TabsTrigger, TabsContent, type TabsProps } from './components/tabs';
 export { SplitPane, clampRatio, type SplitPaneProps } from './components/split-pane';
+export { ToggleChip, type ToggleChipProps } from './components/chip';

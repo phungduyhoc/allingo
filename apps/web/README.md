@@ -61,7 +61,15 @@ e2e/admin-billing.spec.ts     Admin (S8): học viên không vào được; admi
 e2e/listening.spec.ts          Listening (S4): "Bắt đầu nghe", phát một lần không tua/tạm dừng, chuyển câu theo audio, tải lại tiếp tục, URL 403 → gia hạn,
                                Practice tua/tốc độ/lặp, timed_drill, L&R → Reading, kết quả L/R/Tổng, Review transcript (mock: toeic-listening-mini-01,
                                toeic-lr-mini-01; API: toeic-listening-01-drill-part1, toeic-mini-lr-01)
-packages/ui/src                component dùng chung (Button, Card, Dialog/Sheet, Tabs…) + styles.css (token navy/gold)
+e2e/onboarding.spec.ts         Lộ trình (S9): người mới → thẻ mời ở dashboard → onboarding 4 bước (ngày thi quá khứ bị chặn, múi giờ mặc định trình duyệt)
+                               → chẩn đoán (tải lại tiếp tục đúng câu, không đúng/sai, mock lên mức 2) → kết quả ± khoảng, mastery, mục tiêu khả thi
+                               → tạo lộ trình 8 tuần (PRO7DAY để xem mọi tuần), tuần cuối có full test
+e2e/plan.spec.ts               Hôm nay → mở drill từ task (plan_task_id) → nộp → "Về Hôm nay" → task done + chuỗi 1 ngày + XP; đổi ngày bằng menu
+                               "Chuyển sang" + kéo thả (desktop), PATCH sang tuần khác → 400, tuần 2 khoá (Free); check-in "tuần này bận, chỉ 2 giờ"
+                               → đề xuất ready (diff) → Áp dụng → tuần tới ≤ 120 phút, đề xuất applied (áp lại → 200)
+e2e/badges.spec.ts             Huy hiệu: lưới 6 huy hiệu + tiến độ, bài luyện đầu tiên → toast "Huy hiệu mới: Bài đầu tiên" (realtime); mock dựng chuỗi
+                               6 ngày (`__ALLINGO_MOCK__.seedStreak`) → "7 ngày liên tiếp"; XP/cấp
+packages/ui/src                component dùng chung (Button, Card, Dialog/Sheet, Tabs, ToggleChip…) + styles.css (token navy/gold)
 ```
 
 ## Ghi chú kỹ thuật
@@ -218,3 +226,47 @@ packages/ui/src                component dùng chung (Button, Card, Dialog/Sheet
   `.runJob(job)` (mock bỏ ngưỡng 15′ của reconcile), `.failNextInvoice()`.
 - **Sửa lỗi**: đăng xuất đôi khi kẹt spinner (`useLogout` gọi `qc.clear()` → AuthGate gỡ AppShell trước khi callback `onSettled` của `mutate()`
   chạy) → dùng `mutateAsync().finally(...)` và AuthGate tự tải lại `/me` khi query bị xoá về trạng thái pending/idle.
+
+## Sprint 9 – chẩn đoán, lộ trình tuần, hôm nay, check-in, huy hiệu (giao diện)
+
+- **Lớp API** – `lib/plan-api.ts` (chẩn đoán, `/me/plan*`, `/plan-tasks/{id}`, check-in, đề xuất, huy hiệu, bài học, bộ từ; Zod
+  `learning-plan.ts`), hook `features/plan/queries.ts` (khoá dưới `['me','plan',program,…]` / `['me','badges',program]` để mọi
+  `invalidateQueries(['me'])` có sẵn – nộp bài, đăng nhập – cũng làm mới lộ trình). Realtime `plan.updated` (hub + provider) làm mới
+  lộ trình/hôm nay/đề xuất + thống kê; thông báo `learning.badge_awarded` → toast riêng "Huy hiệu mới: <tên>" (payload `badge_name`);
+  link thông báo `/today` → `/toeic/today`, `/plan?proposal=` → `/toeic/plan?proposal=`, `/badges` giữ nguyên (API mới trả sẵn route web).
+- **Onboarding `/onboarding`** (`features/onboarding`): 4 bước, nháp `localStorage` `allingo.onboarding.v1` (try/catch, kiểm tra như API:
+  ngày thi sau hôm nay ≤ 2 năm, 60–2100 phút/tuần, ≥ 1 ngày học, HH:MM, IANA – tên cũ của ICU như `Asia/Saigon` chuẩn hoá). Bắt đầu chẩn
+  đoán → upsert enrollment (mục tiêu, ngày thi, phút/ngày = phút/tuần ÷ ngày học) để server gợi ý mục tiêu khả thi; "Bỏ qua" → tạo lộ trình
+  ngay. Người mới được mời từ thẻ dashboard/Hôm nay (không tự chuyển hướng sau đăng ký – giữ luồng cũ của các e2e).
+- **Chẩn đoán `/toeic/diagnostic`** (`features/diagnostic`): `diagnostic-state.ts` (reducer thuần, có test: tải → câu → gửi → câu kế /
+  kết quả; 409 → GET lại câu đang chờ, giữ đáp án nếu cùng câu; lỗi giữ lựa chọn). Một câu mỗi màn, tiến độ "Câu n/dự kiến", mức 1/2,
+  không hiện đúng/sai (bỏ qua `last_correct`); có bài dở hoặc đến từ onboarding → vào thẳng câu đang chờ. Listening dùng **trình phát
+  tự do** của Practice (bài ngắn một câu/màn, không chuỗi "nghe một lần"); URL ký lỗi → GET lại bước để có URL mới. Kết quả: Tổng/L/R
+  ± khoảng (luôn ghi ước tính), mastery theo kỹ năng con (nhãn `result.subskills`), mục tiêu khả thi + lý do (`diagnostic.reason.*`);
+  có nháp onboarding → chọn giữ mục tiêu / dùng gợi ý → `POST /me/plan`.
+- **Lộ trình `/toeic/plan`** (`features/plan/plan-page.tsx`): tóm tắt (tuần n/N, tiến độ tuần/lộ trình, đếm ngược tới ngày thi, dự báo
+  theo màu, mục tiêu/gợi ý/mức hiện tại), chọn tuần (pha, biểu tượng khoá, full test), ngày + task (`task-ui.tsx`: icon theo loại, phút, trạng
+  thái, quá hạn, lý do giao bài dịch từ `evidence_code`). **Đổi ngày**: kéo thả HTML5 (desktop) + menu ⋯ → "Chuyển sang" (`<select>` –
+  bàn phím, mobile), luật `reschedule.ts` (thuần, có test: cùng tuần, không quá khứ, trước ngày thi, chỉ task pending) + cập nhật lạc quan,
+  lỗi 400 → hoàn tác + toast theo lý do. Tuần khoá (Free) → CTA `/pricing`. Tạo lại (202 → chờ `plan.updated` reason generated). Điều
+  chỉnh: đề xuất còn hiệu lực (`proposal-card.tsx` – diff trước/sau `proposal-diff.ts` có test, phút trước → sau, vi phạm dịch theo mã,
+  hết hạn, Áp dụng; 409 → trạng thái mới nhất) + ô yêu cầu bằng lời (202 pending → realtime/polling 3 s; 402 credit; 400 `refusal_code`).
+  `?proposal=` (thông báo) tô sáng + cuộn tới đề xuất.
+- **Hôm nay `/toeic/today`** + thẻ dashboard: chuỗi (sắp mất, đóng băng Pro), XP/cấp, tiến độ tuần, check-in khi đến hạn, việc hôm nay +
+  quá hạn, "Nếu chỉ có 15 phút". Bấm task (`launch.ts` thuần, có test) → `POST /attempts {mode, section_id|test_set_id, plan_task_id}`
+  (Idempotency-Key `plan-task-<id>` khi còn pending) / `/lessons/{id}?task=` / `/vocab/{id}?task=` (đánh dấu xong tại trang) / check-in /
+  S10 `POST /me/errors/drill`. Lượt mở từ task ghi `sessionStorage` `allingo.plan-launch.v1` → màn kết quả có "Về Hôm nay/Lộ trình";
+  task do server tự `done` khi bài được chấm.
+- **Check-in** (`checkin-dialog.tsx`): cảm nhận, giờ thực tế, khó khăn (≤ 500), giờ/ngày rảnh tuần tới → hiển thị đề xuất (đang tạo /
+  sẵn sàng / bị từ chối / cần làm rõ) + Áp dụng ngay trong hộp thoại.
+- **Huy hiệu `/badges`** (`features/badges`): XP + cấp (`levelForXp`), chuỗi, lưới huy hiệu (đã đạt trước, tiến độ current/target, mô tả
+  luật dịch theo dạng rule).
+- **Điều hướng**: "Hôm nay", "Lộ trình" đầu thanh; nhãn chữ từ `xl` (nhỏ hơn: biểu tượng + `title`/sr-only), Cài đặt thành nút biểu tượng
+  trên header, chip tên người dùng từ `2xl`; thanh dưới mobile 6 mục.
+- **Mock S9** – `src/mock/learning-plan.ts` + `diagnostic-fixtures.ts` (23 câu tự biên soạn, 2 mức/Part; luật 2 đúng/2 sai + ước tính +
+  mastery + gợi ý mục tiêu dùng chính `@allingo/scoring`, blueprint 13 câu), bộ sinh lộ trình đơn giản bám ADR-0032 (neo ngày thi / 8
+  tuần, nền → luyện → mô phỏng, ôn từ mỗi ngày học, điểm danh cuối tuần, full test theo nhịp Pro 2 / Free 4 tuần, lượt luyện theo Part
+  yếu), hôm nay + gợi ý 15′, PATCH theo luật API, check-in → đề xuất `pending` → `ready` sau ~1 s (+ realtime + thông báo
+  `learning.plan_adjust_ready`), câu lệnh tự nhiên (2 credit; "ignore previous instructions" → 400 `refusal_code=injection`), áp dụng,
+  chuỗi ngày theo múi giờ (đóng băng Pro), nhật ký XP, 6 huy hiệu seed như API + thông báo; `POST /attempts {section_id}` (7 section id ổn
+  định); bài học/bộ từ mẫu. Hook E2E: `__ALLINGO_MOCK__.diagnosticKey(questionId)`, `.seedStreak(days)`.

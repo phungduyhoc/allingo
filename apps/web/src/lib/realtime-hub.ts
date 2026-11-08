@@ -83,7 +83,8 @@ class RealtimeHub {
       },
       onStatus: (s) => this.setStatus(s),
     });
-    for (const event of ['order.updated', 'credits.changed', 'entitlements.changed', 'notification.new', 'attempt.graded', 'ai_task.completed']) {
+    // S9: `plan.updated` {plan_id | task_id | proposal_id, reason, status?} – lộ trình/task/đề xuất điều chỉnh thay đổi
+    for (const event of ['order.updated', 'credits.changed', 'entitlements.changed', 'notification.new', 'attempt.graded', 'ai_task.completed', 'plan.updated']) {
       this.offs.push(client.on(event, (data) => this.emit(event, data)));
     }
     this.client = client;

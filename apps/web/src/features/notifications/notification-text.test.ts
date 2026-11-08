@@ -84,7 +84,13 @@ describe('resolveNotificationHref', () => {
     expect(resolveNotificationHref('/account/orders/abc')).toBe('/account/orders/abc');
     expect(resolveNotificationHref('/vi/pricing')).toBe('/pricing');
     expect(resolveNotificationHref('/practice')).toBe('/toeic/practice');
-    expect(resolveNotificationHref('/today?x=1')).toBe('/toeic/dashboard?x=1');
+    expect(resolveNotificationHref('/today?x=1')).toBe('/toeic/today?x=1');
+    // S9: link thông báo học tập (API cũ dạng chung, API mới đã trỏ route web)
+    expect(resolveNotificationHref('/plan?proposal=abc')).toBe('/toeic/plan?proposal=abc');
+    expect(resolveNotificationHref('/toeic/plan?proposal=abc')).toBe('/toeic/plan?proposal=abc');
+    expect(resolveNotificationHref('/vi/toeic/today')).toBe('/toeic/today');
+    expect(resolveNotificationHref('/badges')).toBe('/badges');
+    expect(resolveNotificationHref('/stats')).toBe('/toeic/dashboard');
     expect(resolveNotificationHref('/admin/billing/dead-letters')).toBe('/admin/billing/dead-letters');
   });
   it('chặn URL ngoài / scheme lạ', () => {

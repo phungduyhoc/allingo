@@ -1,4 +1,5 @@
-import type { AnswerInput, AttemptAiDiagnosis, AttemptMode, AttemptResult, Enrollment, Explanation, Note, NotificationPreferences, ReconciliationRun, RefusalCode, TutorCitation, User } from '@allingo/schemas';
+import type { AnswerInput, AttemptAiDiagnosis, AttemptMode, AttemptResult, Enrollment, Explanation, Note, NotificationPreferences, PlanAdjustProposal, PlanSettings, PlanTask, ReconciliationRun, RefusalCode, TutorCitation, User } from '@allingo/schemas';
+import type { DiagnosticState } from '@allingo/scoring';
 import type { MockPromotion } from './billing-fixtures';
 
 /** Trạng thái "máy chủ" giả lập, lưu localStorage để tải lại trang vẫn giữ phiên/nháp */
@@ -140,6 +141,78 @@ export interface MockAttemptRecord {
   audio_plays?: Record<string, number>;
   /** Chẩn đoán AI đã lưu (S5 – như score_breakdown.ai_diagnosis của API) */
   ai_diagnosis?: Omit<AttemptAiDiagnosis, 'cached' | 'attempt_id'>;
+  /** S9: task lộ trình mở lượt này (tự done khi chấm) */
+  plan_task_id?: string | null;
+  /** S9: Idempotency-Key của POST /attempts (lượt luyện theo section) */
+  idempotency_key?: string | null;
+  /** S9: trạng thái bài chẩn đoán thích ứng (draft_state.adaptive) */
+  adaptive?: DiagnosticState;
+}
+
+/** S9 – lộ trình giả lập (learn.study_plans/plan_weeks/plan_tasks) */
+export interface MockPlanTaskRecord {
+  id: string;
+  week_id: string;
+  due_date: string;
+  task_type: PlanTask['task_type'];
+  title: { vi: string; en: string };
+  ref_type: 'section' | 'test_set' | 'lesson' | 'vocab_list' | null;
+  ref_id: string | null;
+  est_minutes: number;
+  status: PlanTask['status'];
+  evidence_code: string | null;
+  evidence_params: Record<string, string | number>;
+  result_ref: Record<string, unknown> | null;
+  completed_at: string | null;
+}
+
+export interface MockPlanWeekRecord {
+  id: string;
+  week_no: number;
+  start_date: string;
+  end_date: string;
+  phase: 'foundation' | 'practice' | 'simulation';
+  focus: string | null;
+  focus_skill: string | null;
+  budget_minutes: number;
+  study_dates: string[];
+  checkin_done_at: string | null;
+  adjustment: Record<string, unknown> | null;
+}
+
+export interface MockPlanRecord {
+  id: string;
+  user_id: string;
+  program: string;
+  version_no: number;
+  generated_at: string;
+  settings: PlanSettings;
+  baseline: { score: number | null; low: number | null; high: number | null; source: string } | null;
+  target_suggestion: { suggested: number; feasible: boolean | null } | null;
+  full_test_every_weeks: number;
+  minutes_per_skill: Record<string, number>;
+  weeks: MockPlanWeekRecord[];
+  tasks: MockPlanTaskRecord[];
+}
+
+/** S9 – learn.plan_adjustments giả lập */
+export interface MockProposalRecord extends Omit<PlanAdjustProposal, 'proposal_id'> {
+  id: string;
+  user_id: string;
+  plan_id: string;
+  /** Thay đổi áp vào task khi apply */
+  patch: { task_id: string; status?: PlanTask['status']; due_date?: string; est_minutes?: number }[];
+  /** pending → trạng thái cuối lúc (ms) – mô phỏng job plan.adjust */
+  resolve_at: number | null;
+  resolve_to: PlanAdjustProposal['status'] | null;
+}
+
+export interface MockStreakRecord {
+  current: number;
+  longest: number;
+  last_active_date: string | null;
+  freeze_available_at: string | null;
+  freezes_used: number;
 }
 
 export interface MockState {
@@ -187,6 +260,13 @@ export interface MockState {
   /** S8: thông báo in-app + referral */
   notifications: Record<string, MockNotificationRecord>;
   referrals: Record<string, MockReferralRecord>;
+  /** S9: lộ trình hiện hành theo user, đề xuất điều chỉnh, chuỗi ngày, nhật ký XP, huy hiệu đã đạt, mastery chẩn đoán */
+  plans: Record<string, MockPlanRecord>;
+  proposals: Record<string, MockProposalRecord>;
+  streaks: Record<string, MockStreakRecord>;
+  xpLog: Record<string, { kind: string; xp: number; at: string; ref: string | null }[]>;
+  badges: Record<string, Record<string, string>>;
+  mastery: Record<string, { subskill: string; skill: string; sections?: string[]; mastery: number; confidence: number; n_obs: number }[]>;
 }
 
 export interface MockMessageRecord {
@@ -247,6 +327,12 @@ export function emptyState(): MockState {
     flags: {},
     notifications: {},
     referrals: {},
+    plans: {},
+    proposals: {},
+    streaks: {},
+    xpLog: {},
+    badges: {},
+    mastery: {},
   };
 }
 

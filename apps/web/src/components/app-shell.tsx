@@ -1,6 +1,6 @@
 'use client';
 
-import { CreditCard, Dumbbell, LayoutDashboard, ListChecks, LogOut, NotebookPen, Settings, ShieldCheck, UserRound } from 'lucide-react';
+import { CalendarCheck, CreditCard, Dumbbell, LayoutDashboard, ListChecks, LogOut, NotebookPen, Route, Settings, ShieldCheck, UserRound } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Badge, Button, buttonVariants, cn } from '@allingo/ui';
 import { Link, usePathname, useRouter } from '@/i18n/navigation';
@@ -14,12 +14,14 @@ import { NotificationBell } from '@/features/notifications/notification-bell';
 import { SubscriptionBanner } from '@/features/billing/subscription-banner';
 import { isAdmin } from '@/features/admin/is-admin';
 
+/** S9: "Hôm nay" + "Lộ trình" lên đầu; Cài đặt chuyển thành nút biểu tượng trên header (đủ chỗ cho 6 mục ở mọi bề rộng) */
 const NAV = [
+  { href: '/toeic/today', key: 'today', icon: CalendarCheck },
+  { href: '/toeic/plan', key: 'plan', icon: Route },
   { href: '/toeic/dashboard', key: 'dashboard', icon: LayoutDashboard },
   { href: '/toeic/test-sets', key: 'testSets', icon: ListChecks },
   { href: '/toeic/practice', key: 'practice', icon: Dumbbell },
   { href: '/notes', key: 'notes', icon: NotebookPen },
-  { href: '/settings', key: 'settings', icon: Settings },
 ] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -53,6 +55,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       key={href}
                       href={href}
                       aria-current={active ? 'page' : undefined}
+                      title={t(key)}
                       className={cn(
                         buttonVariants({ variant: 'ghost', size: 'sm' }),
                         'gap-1.5',
@@ -60,7 +63,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       )}
                     >
                       <Icon aria-hidden />
-                      {t(key)}
+                      {/* md–lg: chỉ biểu tượng (nhãn cho trình đọc màn hình), từ xl hiện chữ */}
+                      <span className="sr-only xl:not-sr-only">{t(key)}</span>
                     </Link>
                   );
                 })}
@@ -92,9 +96,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </Link>
               ) : null}
               {user ? <NotificationBell /> : null}
+              <Link
+                href="/settings"
+                aria-label={t('settings')}
+                title={t('settings')}
+                className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), pathname.startsWith('/settings') && 'bg-secondary')}
+                data-testid="nav-settings"
+              >
+                <Settings aria-hidden />
+              </Link>
               {user ? (
                 <span
-                  className="hidden items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-medium sm:inline-flex"
+                  className="hidden items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-medium 2xl:inline-flex"
                   data-testid="user-chip"
                 >
                   <UserRound className="size-3.5" aria-hidden />
@@ -143,7 +156,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           aria-label="app-mobile"
           className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 backdrop-blur md:hidden"
         >
-          <ul className="grid grid-cols-5">
+          <ul className="grid grid-cols-6">
             {NAV.map(({ href, key, icon: Icon }) => {
               const active = pathname.startsWith(href);
               return (

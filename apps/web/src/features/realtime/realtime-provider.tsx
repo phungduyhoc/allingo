@@ -11,6 +11,8 @@ import { realtimeHub } from '@/lib/realtime-hub';
 import { queryKeys, useMe } from '@/lib/queries';
 import { useFeedDispatch } from '@/features/notifications/use-notifications';
 import { notificationText, resolveNotificationHref } from '@/features/notifications/notification-text';
+import { planKeys } from '@/features/plan/queries';
+import { badgeNameOf } from '@/features/badges/badge-toast';
 
 /**
  * Kết nối realtime cho vùng (app) sau AuthGate (S7/S8). Sự kiện chung → làm mới dữ liệu (server vẫn là nguồn sự thật):
@@ -23,6 +25,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
   const dispatch = useFeedDispatch();
   const t = useTranslations('notifications');
+  const tb = useTranslations('badges');
   const locale = useLocale();
   const router = useRouter();
   const userId = me.data?.id ?? null;
@@ -49,6 +52,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         void qc.invalidateQueries({ queryKey: queryKeys.entitlements });
         void qc.invalidateQueries({ queryKey: billingKeys.subscriptions });
       }),
+      // S9: lộ trình/task/đề xuất thay đổi (task tự xong khi bài được chấm, đề xuất sẵn sàng, sinh lại) → làm mới lộ trình + streak/XP
+      realtimeHub.on('plan.updated', () => {
+        void qc.invalidateQueries({ queryKey: planKeys.all });
+        void qc.invalidateQueries({ queryKey: ['me', 'stats'] });
+        void qc.invalidateQueries({ queryKey: ['me', 'badges'] });
+      }),
       realtimeHub.on('notification.new', (data) => {
         const parsed = notificationItemSchema.safeParse(data);
         if (!parsed.success) {
@@ -58,8 +67,22 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         const item = parsed.data;
         if (item.channel && item.channel !== 'inapp') return;
         dispatch({ type: 'received', item });
-        const text = notificationText(item, t, locale);
         const href = resolveNotificationHref(item.url ?? null);
+        // S9: huy hiệu mới → toast riêng có tên huy hiệu + làm mới huy hiệu/XP; đề xuất điều chỉnh sẵn sàng → làm mới đề xuất
+        if (item.template_code === 'learning.badge_awarded') {
+          void qc.invalidateQueries({ queryKey: ['me', 'badges'] });
+          void qc.invalidateQueries({ queryKey: ['me', 'stats'] });
+          const name = badgeNameOf(item, locale);
+          toast.success(name ? tb('toastTitle', { name }) : tb('toastTitleGeneric'), {
+            id: `notification-${item.id}`,
+            description: tb('toastDesc'),
+            duration: 8000,
+            action: { label: tb('toastAction'), onClick: () => router.push(href ?? '/badges') },
+          });
+          return;
+        }
+        if (item.template_code === 'learning.plan_adjust_ready') void qc.invalidateQueries({ queryKey: planKeys.all });
+        const text = notificationText(item, t, locale);
         toast(text.title, {
           id: `notification-${item.id}`,
           description: text.body ?? undefined,
@@ -69,7 +92,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       }),
     ];
     return () => offs.forEach((off) => off());
-  }, [dispatch, locale, qc, router, t]);
+  }, [dispatch, locale, qc, router, t, tb]);
 
   return <>{children}</>;
 }

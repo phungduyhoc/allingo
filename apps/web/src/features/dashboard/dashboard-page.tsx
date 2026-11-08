@@ -15,6 +15,7 @@ import { useStartTestSet } from '@/features/test-sets/use-start-test-set';
 import { QuotaLeft, ResetHint } from '@/features/quota/quota-ui';
 import { quotaOf } from '@/lib/quota';
 import { DashboardTutorCard } from '@/features/tutor/tutor-entry';
+import { TodayCard } from '@/features/plan/today-card';
 
 const TrendChart = dynamic(() => import('./trend-chart'), {
   ssr: false,
@@ -177,6 +178,8 @@ export function DashboardPage() {
         </div>
 
         <div className="space-y-6">
+          {/* Sprint 9: việc hôm nay của lộ trình (chưa có lộ trình → mời onboarding) */}
+          <TodayCard />
           {/* Sprint 6: gia sư AI (hội thoại tự do / tiếp tục thread cũ) */}
           <DashboardTutorCard />
           {/* Hạn mức */}

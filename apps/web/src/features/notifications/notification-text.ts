@@ -124,13 +124,14 @@ export function notificationText(item: NotificationItem, t: Translator, locale: 
 
 /**
  * Đường dẫn trong web từ `url` của thông báo: chỉ đường dẫn tương đối (chặn `//host`, `javascript:`), bỏ tiền tố locale,
- * ánh xạ đường dẫn chung của server sang route web (`/practice` → `/toeic/practice`; `/today`, `/stats` (S9) → dashboard).
+ * ánh xạ đường dẫn chung của server sang route web (`/practice` → `/toeic/practice`; S9: `/today` → `/toeic/today`, `/plan` →
+ * `/toeic/plan` (giữ `?proposal=`), `/badges` giữ nguyên; `/stats` → dashboard). Đường dẫn đã có `/toeic/...` (API mới) giữ nguyên.
  */
 export function resolveNotificationHref(url: string | null | undefined): string | null {
   const u = str(url);
   if (!u || !u.startsWith('/') || u.startsWith('//') || u.startsWith('/\\')) return null;
   let path = u.replace(/^\/(vi|en)(?=\/|$)/, '') || '/';
-  const ALIASES: Record<string, string> = { '/practice': '/toeic/practice', '/today': '/toeic/dashboard', '/stats': '/toeic/dashboard', '/dashboard': '/toeic/dashboard' };
+  const ALIASES: Record<string, string> = { '/practice': '/toeic/practice', '/today': '/toeic/today', '/plan': '/toeic/plan', '/stats': '/toeic/dashboard', '/dashboard': '/toeic/dashboard' };
   const [pathname, rest = ''] = path.split(/(?=[?#])/);
   if (pathname && ALIASES[pathname]) path = ALIASES[pathname] + rest;
   return path;

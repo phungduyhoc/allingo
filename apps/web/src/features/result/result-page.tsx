@@ -14,6 +14,8 @@ import { AiDiagnosisCard } from './ai-diagnosis-card';
 import { parseDiagnosis, scaleView } from './diagnosis';
 import { parseScaled, ScaledScores } from './scaled-scores';
 import { recordViewed } from '@/features/offline/viewed-store';
+import { planLaunchOf } from '@/features/plan/launch-memory';
+import { useClientValue } from '@/lib/use-mounted';
 
 const SectionChart = dynamic(() => import('./section-chart'), {
   ssr: false,
@@ -41,6 +43,8 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
   React.useEffect(() => {
     recordViewed({ id: attemptId, kind: 'result', title: null, href: `/attempts/${attemptId}/result` });
   }, [attemptId]);
+  // S9: lượt mở từ task lộ trình → nút quay về Hôm nay/Lộ trình (task tự xong khi bài được chấm)
+  const returnTo = useClientValue(() => planLaunchOf(attemptId)?.return_to ?? null, null);
 
   const sectionData = React.useMemo(() => {
     if (!result.data) return [];
@@ -106,9 +110,15 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
             >
               {t('review')}
             </Link>
-            <Link href="/toeic/dashboard" className={buttonVariants({ variant: 'outline' })}>
-              {t('backToDashboard')}
-            </Link>
+            {returnTo ? (
+              <Link href={returnTo} className={buttonVariants({ variant: 'gold' })} data-testid="result-back-to-plan">
+                {returnTo === '/toeic/today' ? t('backToToday') : t('backToPlan')}
+              </Link>
+            ) : (
+              <Link href="/toeic/dashboard" className={buttonVariants({ variant: 'outline' })}>
+                {t('backToDashboard')}
+              </Link>
+            )}
           </>
         }
       />
