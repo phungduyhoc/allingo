@@ -1,6 +1,6 @@
-# HANDOFF — Sprint 1 → Sprint 10 (08/11/2026)
+# HANDOFF — Sprint 1 → Sprint 11 (08/11/2026)
 
-Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1–10 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A39), `docs/SPEC-ISSUES.md` (S1–S29), ADR 0001–0025. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
+Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1–11 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A39), `docs/SPEC-ISSUES.md` (S1–S29), ADR 0001–0025. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
 
 Repo chưa push (theo yêu cầu: làm tiếp trên phiên, push sau). Mọi kiểm tra dưới đây chạy trong phiên cloud: Postgres 16 + pgvector, Valkey/Redis cục bộ, không Docker, không Meilisearch/MinIO/Azure/khoá AI thật (A1, A25).
 
@@ -132,6 +132,18 @@ Web Sprint 7–8: bảng giá thật, checkout, kết quả thanh toán (polling
 | 4 | Blog Payload → web ≤ 5 phút (ISR + webhook), JSON-LD, OG, sitemap | ĐẠT phía CMS | Webhook ký HMAC; phần web (ISR, sitemap) chờ giao diện Sprint 10 |
 | 5 | PostHog chỉ nhận sau đồng ý cookie; phễu 7 sự kiện | ĐẠT phía server (sink giả) | Cần key PostHog thật; consent banner ở web |
 | 6 | Lighthouse mobile landing; `api:diff`, `db:diff` | (điền khi giao diện xong) | Migration 0007, ADR-0033 |
+
+### Sprint 11 — Observability, hiệu năng, bảo mật, vận hành
+
+| # | Tiêu chí | Kết quả | Ghi chú |
+| --- | --- | --- | --- |
+| 1 | Grafana 6 dashboard có dữ liệu; tắt Redis → alert Slack < 2′, link runbook; bật lại → resolve | ĐẠT một phần | Dashboard/alert as code, 71 biểu thức chạy trên dữ liệu :4000; diễn tập alert bằng Prometheus + Alertmanager thật (webhook giả thay Slack): kill Redis → cảnh báo 88 s, resolve 111 s. Stack compose Grafana/Loki/Tempo chưa chạy (không Docker) |
+| 2 | k6 5.000 VU/30′ đạt ngưỡng; báo cáo trước/sau | CHƯA (staging) | Máy phiên ≈ 1.500 VU thời gian thực: p95 PUT /answers 50 ms, submit 116 ms, review 49 ms, lỗi 0 % (trước: timeout, 8,3 % lỗi) – `docs/perf/report-S11.md`; sửa deadlock pool (Critical) |
+| 3 | Log không email/phone/token | ĐẠT | Test redaction + log trong lượt tải |
+| 4 | ZAP baseline 0 high; 10 kịch bản pentest tay đã vá + test hồi quy; CSP không lỗi | ĐẠT phía API | ZAP cục bộ 0 High/Medium/Low; vá XSS ghi chú (High), quota race, khoá đăng nhập, CSRF; CSP nonce phía web làm ở giao diện Sprint 11; 3 bảng billing có `org_id` chưa bật RLS (Medium, S124) |
+| 5 | Restore PITR về 10′ trước < 60′; runbook ghi thời gian thật | ĐẠT (cục bộ) | RTO kỹ thuật 3,2 s, RPO 0 trên PG cục bộ; quy trình có người ước 15–25′; Azure đo trên staging |
+| 6 | Kill-switch `ff.ai.explain` → UI ẩn, API 503 i18n < 60 s | ĐẠT phía API | Pub/sub tới các replica; UI ở giao diện Sprint 11 |
+| 7 | lint/typecheck/test xanh, CI có security jobs, diff xanh | ĐẠT | 905 test (không tính web); gitleaks, audit high, Semgrep, Trivy, ZAP nightly, migration guard |
 
 ## 2. Đã làm
 
