@@ -47,6 +47,8 @@ describe('test engine sprint 4 (integration)', () => {
   };
 
   beforeAll(async () => {
+    // Thống kê câu (community_avg_time_ms) cập nhật qua job – chạy inline trong test (CI không có .env/worker)
+    process.env.JOBS_INLINE = 'true';
     process.env.STORAGE_DRIVER = '';
     process.env.STORAGE_FS_DIR = storageDir;
     process.env.SEARCH_PROVIDER = 'pg';
@@ -150,6 +152,7 @@ describe('test engine sprint 4 (integration)', () => {
   });
 
   afterAll(async () => {
+    delete process.env.JOBS_INLINE;
     await app?.close();
     fs.rmSync(storageDir, { recursive: true, force: true });
   });

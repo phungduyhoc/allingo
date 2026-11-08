@@ -37,6 +37,8 @@ describe('Sprint 10 – sửa lỗi API (integration)', () => {
   };
 
   beforeAll(async () => {
+    // Job admin chạy inline để trả 200 + kết quả (không dựa vào .env cục bộ – CI không có .env)
+    process.env.JOBS_INLINE = 'true';
     process.env.PAYMENT_PROVIDERS = 'mock';
     process.env.PAYMENT_MOCK_SECRET = 'test-mock-secret-s10';
     app = await bootTestApp();
@@ -49,6 +51,7 @@ describe('Sprint 10 – sửa lỗi API (integration)', () => {
     for (const p of plans) if (p.price) prices[p.code] = p.price.id;
   });
   afterAll(async () => {
+    delete process.env.JOBS_INLINE;
     delete process.env.PAYMENT_PROVIDERS;
     delete process.env.PAYMENT_MOCK_SECRET;
     await app?.close();
