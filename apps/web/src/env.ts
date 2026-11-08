@@ -21,6 +21,11 @@ function oneOf<T extends string>(name: string, value: string | undefined, allowe
   return v as T;
 }
 
+function rate(value: string | undefined): number {
+  const n = value ? Number(value) : 1;
+  return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 1;
+}
+
 export const env = {
   apiUrl: url('NEXT_PUBLIC_API_URL', process.env.NEXT_PUBLIC_API_URL, 'http://localhost:4000/v1'),
   appUrl: url('NEXT_PUBLIC_APP_URL', process.env.NEXT_PUBLIC_APP_URL, 'http://localhost:3000'),
@@ -29,4 +34,11 @@ export const env = {
   apiMock: oneOf('NEXT_PUBLIC_API_MOCK', process.env.NEXT_PUBLIC_API_MOCK, ['0', '1'] as const, '0') === '1',
   /** Google Identity Services client id – trống thì ẩn nút Google */
   googleClientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || null,
+  /** S11: Sentry web (không SDK – lib/telemetry/sentry.ts); trống → tắt báo lỗi + Web Vitals RUM */
+  sentryDsn: process.env.NEXT_PUBLIC_SENTRY_DSN || null,
+  sentryEnvironment: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT || (process.env.NODE_ENV === 'production' ? 'production' : 'development'),
+  sentryRelease: process.env.NEXT_PUBLIC_SENTRY_RELEASE || (process.env.NEXT_PUBLIC_GIT_SHA ? `allingo-web@${process.env.NEXT_PUBLIC_GIT_SHA}` : 'allingo-web@0.1.0'),
+  /** Tỉ lệ lấy mẫu lỗi / Web Vitals (0–1, mặc định 1) */
+  sentrySampleRate: rate(process.env.NEXT_PUBLIC_SENTRY_SAMPLE_RATE),
+  sentryVitalsSampleRate: rate(process.env.NEXT_PUBLIC_SENTRY_VITALS_SAMPLE_RATE),
 } as const;

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { NextConfig } from 'next';
 import createNextIntlPlugin from 'next-intl/plugin';
+import { staticSecurityHeaders } from './src/lib/security/csp';
 
 /**
  * S10: biến SERVER-ONLY của web (webhook revalidate CMS, URL CMS) đọc từ `.env` gốc repo khi chưa có trong môi trường (Next chỉ tự
@@ -45,7 +46,14 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ['lucide-react', 'recharts'],
   },
   turbopack: {},
+  // S11: không lộ "X-Powered-By: Next.js"
+  poweredByHeader: false,
+  // S11: source map trình duyệt cho Sentry/phân tích hiệu năng – chỉ khi build với WEB_SOURCE_MAPS=1 (CI tải lên Sentry rồi xoá *.map
+  // trước khi đóng gói; mặc định không phát hành mã nguồn)
+  productionBrowserSourceMaps: process.env.WEB_SOURCE_MAPS === '1',
   headers: async () => [
+    // S11: header bảo mật tĩnh cho mọi đường dẫn (CSP có nonce đặt ở src/proxy.ts theo request); HSTS chỉ ở production
+    { source: '/:path*', headers: staticSecurityHeaders({ production: process.env.NODE_ENV === 'production' }) },
     {
       source: '/sw.js',
       headers: [
