@@ -1,6 +1,6 @@
 'use client';
 
-import { CalendarCheck, CreditCard, Dumbbell, LayoutDashboard, ListChecks, LogOut, NotebookPen, Route, Settings, ShieldCheck, UserRound } from 'lucide-react';
+import { BookA, CalendarCheck, CreditCard, Dumbbell, FileWarning, LayoutDashboard, ListChecks, LogOut, NotebookPen, Route, Settings, ShieldCheck, UserRound } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Badge, Button, buttonVariants, cn } from '@allingo/ui';
 import { Link, usePathname, useRouter } from '@/i18n/navigation';
@@ -14,13 +14,18 @@ import { NotificationBell } from '@/features/notifications/notification-bell';
 import { SubscriptionBanner } from '@/features/billing/subscription-banner';
 import { isAdmin } from '@/features/admin/is-admin';
 
-/** S9: "Hôm nay" + "Lộ trình" lên đầu; Cài đặt chuyển thành nút biểu tượng trên header (đủ chỗ cho 6 mục ở mọi bề rộng) */
+/**
+ * S9: "Hôm nay" + "Lộ trình" lên đầu; Cài đặt chuyển thành nút biểu tượng trên header. S10: thêm "Từ vựng" + "Sổ lỗi" (8 mục):
+ * desktop chỉ biểu tượng tới 2xl (nhãn cho trình đọc màn hình), thanh dưới mobile 8 cột dùng nhãn ngắn `nav.short.*`.
+ */
 const NAV = [
   { href: '/toeic/today', key: 'today', icon: CalendarCheck },
   { href: '/toeic/plan', key: 'plan', icon: Route },
   { href: '/toeic/dashboard', key: 'dashboard', icon: LayoutDashboard },
   { href: '/toeic/test-sets', key: 'testSets', icon: ListChecks },
   { href: '/toeic/practice', key: 'practice', icon: Dumbbell },
+  { href: '/toeic/vocab', key: 'vocab', icon: BookA },
+  { href: '/toeic/errors', key: 'errors', icon: FileWarning },
   { href: '/notes', key: 'notes', icon: NotebookPen },
 ] as const;
 
@@ -63,8 +68,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       )}
                     >
                       <Icon aria-hidden />
-                      {/* md–lg: chỉ biểu tượng (nhãn cho trình đọc màn hình), từ xl hiện chữ */}
-                      <span className="sr-only xl:not-sr-only">{t(key)}</span>
+                      {/* md–xl: chỉ biểu tượng (nhãn cho trình đọc màn hình), từ 2xl hiện chữ */}
+                      <span className="sr-only 2xl:not-sr-only">{t(key)}</span>
                     </Link>
                   );
                 })}
@@ -156,7 +161,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           aria-label="app-mobile"
           className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 backdrop-blur md:hidden"
         >
-          <ul className="grid grid-cols-6">
+          <ul className="grid grid-cols-8">
             {NAV.map(({ href, key, icon: Icon }) => {
               const active = pathname.startsWith(href);
               return (
@@ -165,12 +170,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     href={href}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'flex flex-col items-center gap-1 px-0.5 py-2.5 text-center text-[11px] leading-tight font-medium',
+                      'flex flex-col items-center gap-1 px-0.5 py-2.5 text-center text-[10px] leading-tight font-medium',
                       active ? 'text-primary' : 'text-muted-foreground',
                     )}
                   >
                     <Icon className="size-5" aria-hidden />
-                    {t(key)}
+                    {t(`short.${key}`)}
                   </Link>
                 </li>
               );

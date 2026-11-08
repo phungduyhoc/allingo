@@ -1,9 +1,8 @@
 'use client';
 
-import dynamic from 'next/dynamic';
-import { ArrowRight, Flame, Sparkles, Target } from 'lucide-react';
+import { ArrowRight, BarChart3 } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { Badge, buttonVariants, Card, CardContent, CardHeader, CardTitle, cn, Progress, Skeleton } from '@allingo/ui';
+import { Badge, buttonVariants, Card, CardContent, Progress } from '@allingo/ui';
 import { Link } from '@/i18n/navigation';
 import { useEntitlements, useMe, useMyAttempts, useStats, useTestSets } from '@/lib/queries';
 import { useLocalized } from '@/lib/localized';
@@ -16,11 +15,7 @@ import { QuotaLeft, ResetHint } from '@/features/quota/quota-ui';
 import { quotaOf } from '@/lib/quota';
 import { DashboardTutorCard } from '@/features/tutor/tutor-entry';
 import { TodayCard } from '@/features/plan/today-card';
-
-const TrendChart = dynamic(() => import('./trend-chart'), {
-  ssr: false,
-  loading: () => <Skeleton className="h-44 w-full" />,
-});
+import { AccuracyCard, CommunityCard, ErrorsToReviewCard, ForecastCard, KpiGrid, ScoreCard, VocabDueCard, WeekSummaryCard } from '@/features/stats/stats-cards';
 
 const PROGRAM = 'toeic';
 const SHOWN_QUOTAS = ['mini_test', 'part_drill', 'ai_explain', 'full_test'] as const;
@@ -43,82 +38,31 @@ export function DashboardPage() {
         title={t('title')}
         description={me.data ? t('greeting', { name: me.data.display_name }) : undefined}
         actions={
-          <Link href="/toeic/test-sets" className={buttonVariants({ variant: 'outline' })}>
-            {t('allTestSets')}
-            <ArrowRight aria-hidden />
-          </Link>
+          <>
+            <Link href="/toeic/stats" className={buttonVariants({ variant: 'ghost' })} data-testid="dashboard-stats-link">
+              <BarChart3 aria-hidden />
+              {t('statsLink')}
+            </Link>
+            <Link href="/toeic/test-sets" className={buttonVariants({ variant: 'outline' })}>
+              {t('allTestSets')}
+              <ArrowRight aria-hidden />
+            </Link>
+          </>
         }
       />
 
       {/* Chỉ số chính (tiêu đề ẩn giữ thứ tự h1 → h2 → h3 của thẻ – Lighthouse a11y "heading-order") */}
       <h2 className="sr-only">{t('statsTitle')}</h2>
       {stats.isPending ? (
-        <div className="grid gap-4 sm:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
             <CardSkeleton key={i} lines={2} />
           ))}
         </div>
       ) : stats.isError ? (
         <ErrorState error={stats.error} onRetry={() => void stats.refetch()} />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Card className="sm:col-span-1">
-            <CardHeader className="flex-row items-center justify-between">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{t('estimateTitle')}</CardTitle>
-              <Target className="size-4 text-muted-foreground" aria-hidden />
-            </CardHeader>
-            <CardContent>
-              {stats.data.current_estimate !== null ? (
-                <div className="flex items-baseline gap-2">
-                  <span
-                    className="tabular text-4xl font-extrabold tracking-tight text-navy dark:text-foreground"
-                    data-testid="estimate"
-                  >
-                    {stats.data.current_estimate}
-                  </span>
-                  <Badge variant="gold">{tc('estimated')}</Badge>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">{t('estimateNone')}</p>
-              )}
-              <p className="mt-2 text-xs text-muted-foreground">
-                {stats.data.target !== null
-                  ? t('estimateTarget', { target: stats.data.target })
-                  : t('estimateNoTarget')}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex-row items-center justify-between">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{t('streakTitle')}</CardTitle>
-              <Flame
-                className={cn('size-4', stats.data.streak.current > 0 ? 'text-accent' : 'text-muted-foreground')}
-                aria-hidden
-              />
-            </CardHeader>
-            <CardContent>
-              <div className="tabular text-4xl font-extrabold tracking-tight">
-                {t('streakDays', { count: stats.data.streak.current })}
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                {t('streakLongest', { count: stats.data.streak.longest })}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex-row items-center justify-between">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{t('xpTitle')}</CardTitle>
-              <Sparkles className="size-4 text-muted-foreground" aria-hidden />
-            </CardHeader>
-            <CardContent>
-              <div className="tabular text-4xl font-extrabold tracking-tight">{fmt.number(stats.data.xp.total)}</div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                {t('xpThisWeek', { count: stats.data.xp.this_week })} ·{' '}
-                {t('minutesThisWeek', { count: stats.data.minutes_this_week })}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+        <KpiGrid stats={stats.data} />
       )}
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
@@ -160,26 +104,25 @@ export function DashboardPage() {
             )}
           </section>
 
-          {/* Xu hướng */}
-          <section aria-labelledby="trend-title" className="space-y-3">
-            <h2 id="trend-title" className="text-lg font-semibold">
-              {t('trendTitle')}
-            </h2>
-            <Card>
-              <CardContent>
-                {stats.data && stats.data.trend_30d.length >= 2 ? (
-                  <TrendChart data={stats.data.trend_30d} />
-                ) : (
-                  <p className="py-6 text-center text-sm text-muted-foreground">{t('trendEmpty')}</p>
-                )}
-              </CardContent>
-            </Card>
-          </section>
+          {/* S10: điểm theo thời gian + độ chính xác theo Part (biểu đồ tải lười) */}
+          {stats.data ? (
+            <>
+              <ScoreCard stats={stats.data} />
+              <AccuracyCard stats={stats.data} />
+            </>
+          ) : null}
         </div>
 
         <div className="space-y-6">
           {/* Sprint 9: việc hôm nay của lộ trình (chưa có lộ trình → mời onboarding) */}
           <TodayCard />
+          {/* S10: từ đến hạn, lỗi cần ôn, dự báo sơ bộ, so với cộng đồng, tóm tắt tuần */}
+          <VocabDueCard />
+          <ErrorsToReviewCard />
+          <h2 className="sr-only">{t('insightsTitle')}</h2>
+          <ForecastCard />
+          {stats.data ? <CommunityCard stats={stats.data} /> : null}
+          {stats.data ? <WeekSummaryCard stats={stats.data} /> : null}
           {/* Sprint 6: gia sư AI (hội thoại tự do / tiếp tục thread cũ) */}
           <DashboardTutorCard />
           {/* Hạn mức */}

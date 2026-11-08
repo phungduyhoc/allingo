@@ -1,21 +1,12 @@
-import { Suspense } from 'react';
-import type { Metadata } from 'next';
-import { getTranslations, setRequestLocale } from 'next-intl/server';
-import { VocabListPage } from '@/features/plan/task-content-pages';
+import { redirect } from '@/i18n/navigation';
 
-export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
-  const { locale } = await params;
-  const t = await getTranslations({ locale, namespace: 'taskContent' });
-  return { title: t('vocabTitle') };
-}
-
-export default async function Page({ params }: { params: Promise<{ locale: string; listId: string }> }) {
+/**
+ * S9 mở bộ từ của task bằng `/vocab/{id}?task=` (trang tạm). S10: trang bộ từ thật ở `/toeic/vocab/{id}` – giữ đường dẫn cũ
+ * (thông báo/đường dẫn đã lưu) bằng chuyển hướng, kèm `?task=`.
+ */
+export default async function Page({ params, searchParams }: { params: Promise<{ locale: string; listId: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { locale, listId } = await params;
-  setRequestLocale(locale);
-  // useSearchParams (?task=) cần Suspense boundary
-  return (
-    <Suspense>
-      <VocabListPage listId={listId} />
-    </Suspense>
-  );
+  const sp = await searchParams;
+  const task = typeof sp.task === 'string' ? sp.task : undefined;
+  redirect({ href: { pathname: `/toeic/vocab/${listId}`, query: task ? { task } : {} }, locale });
 }

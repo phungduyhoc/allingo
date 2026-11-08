@@ -33,6 +33,7 @@ import { latestNoteFor, learningToolRoutes } from './learning-tools';
 import { billingRoutes } from './billing';
 import { growthRoutes, referralHooks } from './growth';
 import { learningPlanMock } from './learning-plan';
+import { s10Mock } from './s10';
 import { MOCK_DIAGNOSTIC_QUESTIONS, MOCK_DIAGNOSTIC_SET } from './diagnostic-fixtures';
 
 /**
@@ -74,7 +75,7 @@ function route(method: string, path: string, handler: Handler): Route {
 }
 
 function publicUser(u: MockUserRecord): User {
-  const { password: _p, guest_token: _g, plan: _plan, plan_kind: _pk, referral_code: _rc, ...rest } = u;
+  const { password: _p, guest_token: _g, plan: _plan, plan_kind: _pk, referral_code: _rc, attribution: _attr, ...rest } = u;
   return rest;
 }
 
@@ -500,6 +501,28 @@ export function createMockFetch(): typeof fetch {
     consumeQuota,
   });
 
+  // S10: ôn thẻ FSRS, bộ từ, sổ lỗi + drill, thống kê/dự báo, phễu, đăng ký chờ (đặt trước routes S9/S6 – đè bản tạm)
+  const s10 = s10Mock<Route>({
+    state,
+    persist,
+    route,
+    json,
+    error,
+    uuid,
+    nowIso,
+    requireUser,
+    isPro,
+    quotaExceeded,
+    consumeQuota,
+    quotaLimit: (u, feature) => quotaFor(u, feature)?.limit ?? null,
+    usage: (userId, feature) => usageOf(userId, feature, quotaFor(state.users[userId]!, feature)?.period ?? 'day'),
+    resetAt: resetAtOf,
+    questionById: (id) => allQuestions().find((q) => q.question_id === id),
+    publicQuestion: (q) => publicQuestion(q, 'review'),
+    toAttemptDto,
+    openExamId: (userId) => Object.values(state.attempts).find((a) => a.user_id === userId && a.status === 'in_progress' && a.mode === 'exam')?.id ?? null,
+  });
+
   const routes: Route[] = [
     // --------------------------------------------------------------------- auth
     route('POST', '/auth/guest', () => {
@@ -511,7 +534,7 @@ export function createMockFetch(): typeof fetch {
       return json(201, { guest_token: user.guest_token, expires_at, user: publicUser(user), access_token: 'mock-access', expires_in: 900 });
     }),
     route('POST', '/auth/register', ({ body, headers }) => {
-      const b = body as { email?: string; password?: string; display_name?: string; guest_token?: string; ui_locale?: string; referral_code?: string };
+      const b = body as { email?: string; password?: string; display_name?: string; guest_token?: string; ui_locale?: string; referral_code?: string; attribution?: Record<string, unknown> };
       if (!b.email || !b.password || !b.display_name) return error(400, 'validation_failed', 'Missing fields', { fields: { email: 'required' } });
       if (Object.values(state.users).some((u) => u.email?.toLowerCase() === b.email!.toLowerCase())) return error(409, 'conflict', 'Email already registered');
       const guest = b.guest_token ? Object.values(state.users).find((u) => u.guest_token === b.guest_token) : undefined;
@@ -521,6 +544,8 @@ export function createMockFetch(): typeof fetch {
         password: b.password,
         display_name: b.display_name,
         ui_locale: (b.ui_locale as User['ui_locale']) ?? 'vi',
+        // S10: attribution lần chạm đầu (chỉ lưu khi tạo tài khoản)
+        attribution: b.attribution ?? null,
       });
       state.users[user.id] = user;
       if (guest) {
@@ -558,11 +583,11 @@ export function createMockFetch(): typeof fetch {
       return json(202, { status: 'sent', channel: b.email ? 'email' : 'zalo', retry_after: 60, expires_in: 300 });
     }),
     route('POST', '/auth/otp/verify', ({ body, headers }) => {
-      const b = body as { email?: string; otp?: string; display_name?: string; guest_token?: string; referral_code?: string };
+      const b = body as { email?: string; otp?: string; display_name?: string; guest_token?: string; referral_code?: string; attribution?: Record<string, unknown> };
       if (b.otp !== '123456') return error(401, 'unauthorized', 'Invalid OTP', { reason: 'otp_invalid', attempts_left: 4 });
       let user = Object.values(state.users).find((u) => u.email?.toLowerCase() === b.email?.toLowerCase());
       if (!user) {
-        user = makeUser({ is_guest: false, email: b.email ?? null, display_name: b.display_name ?? (b.email ?? 'user').split('@')[0]! });
+        user = makeUser({ is_guest: false, email: b.email ?? null, display_name: b.display_name ?? (b.email ?? 'user').split('@')[0]!, attribution: b.attribution ?? null });
         state.users[user.id] = user;
         referral.onRegistered(user, b.referral_code, headers.get('x-device-fingerprint'));
       }
@@ -617,6 +642,8 @@ export function createMockFetch(): typeof fetch {
         minutes_this_week: graded.length * 8,
         // S9: chuỗi theo múi giờ (đóng băng Pro), XP hôm nay/cấp, huy hiệu, tóm tắt lộ trình (thay bản S0 đếm ngày có bài nộp)
         ...learning.statsExtras(u),
+        // S10: điểm theo thời gian, độ chính xác 30 ngày vs trước, phút/tuần, từ vựng, lỗi, cộng đồng
+        ...s10.statsExtras(u, program),
       };
       return json(200, stats);
     }),
@@ -890,6 +917,8 @@ export function createMockFetch(): typeof fetch {
       referral.onAttemptGraded(u.id);
       // S9: task lộ trình tự done (plan_task_id), chuỗi ngày, huy hiệu (+ thông báo in-app)
       learning.onAttemptGraded(a);
+      // S10: câu sai → sổ lỗi (gộp theo câu)
+      s10.onAttemptGraded(a, questionsOf(a));
       persist();
       return json(200, a.result);
     }),
@@ -1044,6 +1073,9 @@ export function createMockFetch(): typeof fetch {
       if (!a.ai_diagnosis) return error(404, 'not_found', 'attempt_diagnosis not found');
       return json(200, { ...a.ai_diagnosis, attempt_id: a.id, cached: true } satisfies AttemptAiDiagnosis);
     }),
+
+    // --------------------------------------------------------------------- S10 (trước S9: đè /vocab/lists/{id}/items, /me/errors/drill tạm)
+    ...s10.routes,
 
     // --------------------------------------------------------------------- S9: chẩn đoán, lộ trình, check-in, huy hiệu
     ...learning.routes,

@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ApiError } from '@allingo/api-client';
 import type { PlanTask } from '@allingo/schemas';
 import { useRouter } from '@/i18n/navigation';
 import { queryKeys } from '@/lib/queries';
@@ -12,8 +13,8 @@ import { rememberPlanLaunch, type PlanLaunchRecord } from './launch-memory';
 import { PROGRAM, usePatchTask } from './queries';
 
 /**
- * Bấm task → mở đúng màn (S9): bài làm (POST /attempts kèm `plan_task_id`, Idempotency-Key theo task) / sổ lỗi (S10) / bài học /
- * bộ từ / hộp thoại check-in / tự đánh dấu xong. Lỗi tạo lượt (429 hạn mức, 403 cần Pro…) đi qua MutationCache → toast hạn mức chung,
+ * Bấm task → mở đúng màn (S9): bài làm (POST /attempts kèm `plan_task_id`, Idempotency-Key theo task) / drill từ sổ lỗi (S10;
+ * 404 không còn lỗi → trang Sổ lỗi) / bài học / phiên ôn bộ từ (S10) / hộp thoại check-in / tự đánh dấu xong. Lỗi tạo lượt (429 hạn mức, 403 cần Pro…) đi qua MutationCache → toast hạn mức chung,
  * và trả về `error` để hiển thị tại chỗ.
  */
 export function useLaunchTask(opts: { returnTo: PlanLaunchRecord['return_to']; onCheckin: () => void }) {
@@ -34,6 +35,10 @@ export function useLaunchTask(opts: { returnTo: PlanLaunchRecord['return_to']; o
       void qc.invalidateQueries({ queryKey: queryKeys.entitlements });
       if (task.status === 'pending') rememberPlanLaunch(attempt.id, { task_id: task.id, return_to: opts.returnTo });
       router.push(`/attempts/${attempt.id}`);
+    },
+    onError: (err, { task }) => {
+      // S10: review_errors khi không còn lỗi chưa hiểu (404) → mở Sổ lỗi (đánh dấu xong ở đó / chọn lỗi khác)
+      if (err instanceof ApiError && err.status === 404 && launchAction(task, PROGRAM).kind === 'errors_drill') router.push(`/toeic/errors?task=${encodeURIComponent(task.id)}`);
     },
   });
 

@@ -50,7 +50,24 @@
     "adminBilling": "Quản trị thanh toán",
     "referral": "Giới thiệu bạn bè",
     "today": "Hôm nay",
-    "plan": "Lộ trình"
+    "plan": "Lộ trình",
+    "vocab": "Từ vựng",
+    "errors": "Sổ lỗi",
+    "stats": "Thống kê",
+    "marketingNav": "Điều hướng trang",
+    "toeic": "TOEIC",
+    "blog": "Blog",
+    "pricing": "Bảng giá",
+    "short": {
+      "today": "Hôm nay",
+      "plan": "Lộ trình",
+      "dashboard": "Tổng quan",
+      "testSets": "Đề thi",
+      "practice": "Luyện tập",
+      "vocab": "Từ vựng",
+      "errors": "Sổ lỗi",
+      "notes": "Ghi chú"
+    }
   },
   "landing": {
     "heroTitle": "Ngoại ngữ cho tất cả",
@@ -206,7 +223,9 @@
     },
     "trendTitle": "Xu hướng 30 ngày",
     "trendEmpty": "Làm thêm đề để thấy xu hướng.",
-    "statsTitle": "Chỉ số học tập"
+    "statsTitle": "Chỉ số học tập",
+    "statsLink": "Thống kê chi tiết",
+    "insightsTitle": "Nhận định & dự báo"
   },
   "testSets": {
     "title": "Đề thi TOEIC",
@@ -708,7 +727,8 @@
       "ai_diagnose": "phân tích AI",
       "ai_tutor": "gia sư AI",
       "dictionary_ai": "từ điển AI",
-      "unknown": "tính năng này"
+      "unknown": "tính năng này",
+      "srs_new_cards": "thẻ từ mới"
     },
     "explainLeft": "{remaining, plural, =0 {Hết lượt giải thích hôm nay} other {Còn # lượt giải thích hôm nay}}",
     "fullTestLeft": "{remaining, plural, =0 {Hết lượt đề đầy đủ tháng này} other {Đề đầy đủ còn # lượt tháng này}}",
@@ -2183,5 +2203,557 @@
     "markVocabDone": "Đã ôn xong",
     "completed": "Đã đánh dấu xong việc trong lộ trình.",
     "backToday": "Về Hôm nay"
+  },
+  "vocab": {
+    "title": "Từ vựng",
+    "desc": "Bộ từ TOEIC 600 theo chủ đề – thêm cả bộ rồi ôn mỗi ngày theo lịch FSRS.",
+    "reviewAll": "Ôn tất cả thẻ đến hạn",
+    "todayTitle": "Hôm nay",
+    "dueNow": "Thẻ đến hạn",
+    "newToday": "Từ mới còn hôm nay",
+    "newUsed": "Từ mới đã học hôm nay",
+    "newLimit": "Hạn mức {limit} từ mới/ngày",
+    "newTotal": "Từ mới chưa học",
+    "listsTitle": "Bộ từ",
+    "empty": "Chưa có bộ từ nào.",
+    "progressMastered": "{count, plural, other {# đã thuộc}}",
+    "progressLearning": "{count, plural, other {# đang học}}",
+    "progressNew": "{count, plural, other {# mới}}",
+    "progressDue": "{count, plural, other {# đến hạn}}",
+    "words": "{count, plural, other {# từ}}",
+    "kindCore": "Bộ tổng hợp",
+    "free": "Miễn phí",
+    "pro": "Pro",
+    "progressLabel": "Tiến độ bộ {title}",
+    "notEnrolled": "Chưa thêm vào ôn tập.",
+    "lockedCta": "Nâng cấp để mở bộ này",
+    "next_action": {
+      "enroll": "Thêm cả bộ",
+      "review": "{count, plural, other {Ôn # thẻ}}",
+      "learn_new": "{count, plural, other {Học # từ mới}}",
+      "done": "Đã xong hôm nay"
+    },
+    "viewWords": "Xem từ",
+    "enrolled": "Đã thêm {added} từ ({existing} từ đã có trước).",
+    "enrolledPerDay": "{count, plural, other {Mỗi ngày bạn học tối đa # từ mới.}}",
+    "enrollFailed": "Không thêm được bộ từ. Thử lại sau.",
+    "listFallbackTitle": "Bộ từ",
+    "allLists": "Tất cả bộ từ",
+    "taskHint": "Việc hôm nay: ôn bộ này – xong phiên ôn là việc được đánh dấu hoàn thành.",
+    "reviewList": "Ôn bộ này",
+    "noWords": "Bộ này chưa có từ.",
+    "wordsLabel": "Danh sách từ",
+    "status": {
+      "none": "Chưa thêm",
+      "new": "Mới",
+      "learning": "Đang học",
+      "review": "Đang ôn",
+      "mastered": "Đã thuộc"
+    },
+    "speakWord": "Phát âm {word}",
+    "loadMore": "Tải thêm"
+  },
+  "flashcards": {
+    "title": "Ôn thẻ từ vựng",
+    "setupDesc": "Chọn số thẻ và cách ôn. Thẻ đến hạn ôn trước, sau đó là từ mới trong hạn mức hôm nay.",
+    "backToLists": "Về bộ từ",
+    "backToday": "Về Hôm nay",
+    "countDue": "Đến hạn ngay",
+    "countNew": "Từ mới còn hôm nay",
+    "countNewOf": "Hạn mức {limit}/ngày",
+    "unlimited": "Không giới hạn",
+    "countLater": "Đến hạn trong hôm nay",
+    "sizeLabel": "Số thẻ mỗi phiên",
+    "sizeOption": "{count, plural, other {# thẻ}}",
+    "modeLabel": "Cách ôn",
+    "mode": {
+      "flashcard": "Lật thẻ",
+      "dictation": "Nghe – gõ lại từ"
+    },
+    "modeHint": {
+      "flashcard": "Nhìn từ, nhớ nghĩa rồi lật thẻ để kiểm tra.",
+      "dictation": "Nghe phát âm + nghĩa, gõ lại từ cho đúng chính tả."
+    },
+    "start": "Bắt đầu ôn",
+    "shortcuts": "Phím tắt: Space lật thẻ · 1–4 chấm điểm · S phát âm",
+    "examLocked": "Bạn đang làm bài thi – ôn thẻ tạm khoá tới khi nộp bài.",
+    "emptyTitle": "Chưa có thẻ cần ôn",
+    "emptyDesc": "Thêm một bộ từ để bắt đầu.",
+    "emptyNext": "Thẻ kế tiếp đến hạn lúc {at}.",
+    "emptyCta": "Chọn bộ từ",
+    "summaryTitle": "Hoàn thành phiên ôn",
+    "summaryDesc": "Lịch ôn tiếp theo đã được cập nhật theo FSRS.",
+    "saving": "Đang lưu lượt ôn cuối…",
+    "summaryHeadline": "{cards, plural, other {Bạn đã ôn # thẻ}}",
+    "summaryReviews": "Lượt chấm",
+    "summaryRecall": "Nhớ được",
+    "summaryAgain": "Phải ôn lại",
+    "summaryNew": "Từ mới đã học",
+    "continue": "Ôn tiếp",
+    "end": "Kết thúc",
+    "progress": "{done}/{total} thẻ",
+    "progressLabel": "Tiến độ phiên ôn",
+    "rateTitle": "Bạn nhớ từ này thế nào?",
+    "flip": "Lật thẻ (Space)",
+    "rating": {
+      "again": "Quên",
+      "hard": "Khó",
+      "good": "Nhớ",
+      "easy": "Dễ"
+    },
+    "interval": {
+      "minute": "{count, plural, other {# phút}}",
+      "hour": "{count, plural, other {# giờ}}",
+      "day": "{count, plural, other {# ngày}}",
+      "month": "{count, plural, other {# tháng}}",
+      "year": "{count} năm"
+    },
+    "newLimitTitle": "Đã hết hạn mức từ mới hôm nay",
+    "newLimitHint": "Từ mới sẽ mở lại vào ngày mai.",
+    "newLimitUpgrade": "Nâng cấp Pro để học tới 30 từ mới mỗi ngày",
+    "failed": "{count, plural, other {# lượt ôn chưa lưu được}} (mất kết nối?).",
+    "retry": "Thử lại",
+    "moreAvailable": "Còn {due} thẻ đến hạn và {fresh} từ mới hôm nay.",
+    "nextDue": "Thẻ kế tiếp đến hạn lúc {at}.",
+    "allDone": "Bạn đã ôn hết thẻ hôm nay.",
+    "state": {
+      "new": "Từ mới",
+      "learning": "Đang học",
+      "review": "Ôn lại",
+      "relearning": "Học lại"
+    },
+    "cardType": {
+      "vocab": "Từ vựng",
+      "error": "Câu đã sai",
+      "other": "Thẻ"
+    },
+    "speak": "Phát âm (S)",
+    "dictationPrompt": "Nghe và gõ lại từ",
+    "dictationLabel": "Gõ lại từ bạn nghe",
+    "dictationCheck": "Kiểm tra",
+    "dictationResult": {
+      "correct": "Chính xác!",
+      "close": "Gần đúng – đáp án: {word}",
+      "wrong": "Chưa đúng – đáp án: {word}"
+    },
+    "collocations": "Cụm hay gặp",
+    "errorNoStem": "Câu nghe – nhớ lại đáp án đúng.",
+    "errorCorrect": "Đáp án đúng",
+    "errorNote": "Ghi chú của bạn"
+  },
+  "errorLog": {
+    "title": "Sổ lỗi",
+    "desc": "Mọi câu sai được lưu và phân loại tự động. Ôn lại đúng những câu đó để không sai lần nữa.",
+    "drill": "{count, plural, =0 {Làm lại câu sai} other {Làm lại # câu sai}}",
+    "drillSelected": "{count, plural, other {Làm lại # câu đã chọn}}",
+    "drillNone": "Không còn lỗi chưa hiểu để làm lại.",
+    "drillFailed": "Không tạo được bài làm lại. Thử lại sau.",
+    "examLocked": "Bạn đang làm bài thi – sổ lỗi tạm khoá tới khi nộp bài.",
+    "taskHint": "Việc hôm nay: ôn lỗi – làm lại câu sai hoặc đánh dấu đã hiểu.",
+    "summaryTitle": "Tổng quan sổ lỗi",
+    "totalOpen": "Chưa hiểu",
+    "totalResolved": "Đã hiểu",
+    "byKind": "Theo loại lỗi",
+    "byPart": "Theo Part",
+    "none": "Chưa có dữ liệu.",
+    "filtersTitle": "Bộ lọc",
+    "statusLabel": "Trạng thái",
+    "status": {
+      "open": "Chưa hiểu",
+      "resolved": "Đã hiểu",
+      "all": "Tất cả"
+    },
+    "kindLabel": "Loại lỗi",
+    "allKinds": "Mọi loại",
+    "partLabel": "Part",
+    "allParts": "Mọi Part",
+    "windowLabel": "Thời gian",
+    "windowDays": "{count, plural, other {# ngày qua}}",
+    "windowAll": "Mọi lúc",
+    "sortLabel": "Sắp xếp",
+    "sortNewest": "Mới sai gần đây",
+    "sortOldest": "Cũ nhất trước",
+    "listTitle": "Danh sách lỗi",
+    "clearSelection": "Bỏ chọn",
+    "selectMax": "Chọn tối đa {max} câu mỗi lượt làm lại.",
+    "empty": "Không có lỗi nào khớp bộ lọc.",
+    "emptyResolved": "Chưa có lỗi nào được đánh dấu đã hiểu.",
+    "emptyDesc": "Câu sai trong bài luyện/thi sẽ tự xuất hiện ở đây sau khi chấm.",
+    "loadMore": "Tải thêm",
+    "resolvedToast": "Đã đánh dấu đã hiểu.",
+    "cardCreatedToast": "Đã tạo thẻ ôn cho câu này.",
+    "patchFailed": "Không lưu được thay đổi.",
+    "kind": {
+      "paraphrase": "Diễn đạt lại",
+      "trap": "Bẫy",
+      "vocabulary": "Từ vựng",
+      "timeout": "Quá thời gian",
+      "grammar": "Ngữ pháp",
+      "listening_detail": "Nghe chi tiết",
+      "inference": "Suy luận",
+      "spelling": "Chính tả",
+      "tone": "Thanh điệu",
+      "pronunciation": "Phát âm",
+      "other": "Khác"
+    },
+    "select": "Chọn câu này để làm lại",
+    "autoWas": "(tự động: {kind})",
+    "occurrences": "{count, plural, other {Sai # lần}}",
+    "listeningItem": "Câu nghe {section} (không có chữ đề)",
+    "yourAnswer": "Bạn chọn",
+    "correctAnswer": "Đáp án đúng",
+    "blank": "Bỏ trống",
+    "timeSpent": "Thời gian làm: {seconds} giây",
+    "note": "Ghi chú",
+    "noteSave": "Lưu ghi chú",
+    "cancel": "Huỷ",
+    "noteAdd": "Thêm ghi chú",
+    "noteEdit": "Sửa ghi chú",
+    "resolve": "Đã hiểu",
+    "reopen": "Mở lại",
+    "cardCreated": "Đã có thẻ ôn",
+    "createCard": "Tạo thẻ ôn",
+    "changeReason": "Đổi lý do sai",
+    "reasonAuto": "Tự động: {kind}",
+    "openReview": "Xem lại câu"
+  },
+  "stats": {
+    "title": "Thống kê",
+    "desc": "Tiến bộ của bạn theo thời gian.",
+    "generatedAt": "Số liệu tính lúc {at} (làm mới khi có bài chấm mới).",
+    "backDashboard": "Về tổng quan",
+    "kpiTitle": "Chỉ số chính",
+    "insightsTitle": "Nhận định",
+    "kpiMinutes": "Phút tuần này",
+    "kpiMinutesHint": "Bài làm + ôn thẻ (ước tính)",
+    "kpiVocab": "Từ đã thuộc",
+    "kpiVocabHint": "{learning} đang học · {due} đến hạn hôm nay",
+    "kpiErrors": "Lỗi chưa hiểu",
+    "kpiErrorsHint": "{count} lỗi đã hiểu",
+    "scoreTitle": "Điểm theo thời gian",
+    "scoreEmpty": "Làm đề mini hoặc bài chẩn đoán để thấy điểm theo thời gian.",
+    "scoreOne": "Mới có một điểm ước tính ({score}). Làm thêm bài để thấy xu hướng.",
+    "seriesTotal": "Tổng",
+    "seriesListening": "Listening",
+    "seriesReading": "Reading",
+    "target": "Mục tiêu {score}",
+    "accuracyTitle": "Độ chính xác theo Part ({days} ngày gần nhất so với trước đó)",
+    "accuracyEmpty": "Chưa có câu trả lời trong 60 ngày qua.",
+    "subskillTitle": "Theo kỹ năng con",
+    "periodCurrent": "30 ngày qua",
+    "periodPrevious": "30 ngày trước",
+    "colPart": "Part",
+    "colDelta": "Thay đổi",
+    "minutesTitle": "Phút học mỗi tuần",
+    "minutesEmpty": "Chưa có thời gian học trong 8 tuần qua.",
+    "minutesLabel": "Phút học",
+    "minutesValue": "{count, plural, other {# phút}}",
+    "weekOf": "Tuần từ {date}",
+    "communityTitle": "So với người cùng mục tiêu",
+    "percentile": "Hơn {value}%",
+    "communityOk": "{size} người học ẩn danh, nhóm mục tiêu {bucket}.",
+    "communityReason": {
+      "ok": "Đủ dữ liệu.",
+      "no_estimate": "Cần có điểm ước tính (làm bài chẩn đoán hoặc đề mini) để so sánh.",
+      "cohort_too_small": "Nhóm cùng mục tiêu chưa đủ 10 người ({size}) – sẽ hiện khi đủ dữ liệu."
+    },
+    "forecastTitle": "Dự báo điểm",
+    "errorsTitle": "Lỗi cần ôn",
+    "errorsCta": "Mở sổ lỗi",
+    "errorsOpen": "lỗi chưa hiểu",
+    "errorsNone": "Không có lỗi cần ôn – tuyệt vời!",
+    "vocabTitle": "Từ đến hạn",
+    "vocabLists": "Bộ từ",
+    "vocabDue": "thẻ đến hạn",
+    "vocabNew": "từ mới",
+    "vocabStart": "Ôn ngay",
+    "vocabAdd": "Thêm bộ từ",
+    "weekTitle": "Tóm tắt tuần này",
+    "weekBody": "{minutes} phút học, {attempts} bài làm, {reviews} lượt ôn thẻ, {xp} XP.",
+    "weekDelta": "({delta} phút so với tuần trước)",
+    "weekErrors": "{count, plural, other {Còn # lỗi chưa hiểu trong sổ lỗi.}}",
+    "vocabBreakdown": "Từ vựng",
+    "errorsByKind": "Lỗi chưa hiểu theo loại",
+    "vocab": {
+      "total": "Tổng thẻ",
+      "new": "Mới",
+      "learning": "Đang học",
+      "mastered": "Đã thuộc",
+      "due_today": "Đến hạn hôm nay",
+      "reviews_7d": "Lượt ôn 7 ngày"
+    }
+  },
+  "forecast": {
+    "label": {
+      "preliminary_estimate": "Ước tính sơ bộ"
+    },
+    "recommendation": {
+      "need_data": "Làm một bài chẩn đoán hoặc đề mini để có điểm ước tính đầu tiên.",
+      "keep_going": "Bạn đang tiến bộ – giữ nhịp học hiện tại.",
+      "increase_practice": "Tốc độ hiện tại chưa đủ tới mục tiêu – tăng thời gian luyện mỗi tuần.",
+      "on_track": "Bạn đang đúng hướng để đạt mục tiêu vào ngày thi.",
+      "target_reached": "Bạn đã chạm mục tiêu – cân nhắc nâng mục tiêu.",
+      "set_target": "Đặt điểm mục tiêu và ngày thi để xem dự báo so với mục tiêu."
+    },
+    "range": "khoảng {low}–{high}",
+    "horizon": "Dự báo tới {date}",
+    "onTrack": "Đúng tiến độ mục tiêu",
+    "offTrack": "Chưa đủ để đạt {target}"
+  },
+  "consent": {
+    "label": "Đồng ý cookie",
+    "text": "Allingo dùng cookie cần thiết để bạn đăng nhập và làm bài. Với sự đồng ý của bạn, chúng tôi đo lượt truy cập ẩn danh để cải thiện sản phẩm.",
+    "policy": "Chính sách bảo mật",
+    "currentAccepted": "(Hiện tại: đã đồng ý đo lường.)",
+    "currentRejected": "(Hiện tại: chỉ cookie cần thiết.)",
+    "accept": "Đồng ý đo lường",
+    "reject": "Chỉ cookie cần thiết",
+    "settings": "Cài đặt cookie"
+  },
+  "marketing": {
+    "footer": {
+      "label": "Liên kết",
+      "toeic": "Luyện TOEIC",
+      "blog": "Blog",
+      "pricing": "Bảng giá",
+      "about": "Giới thiệu",
+      "contact": "Liên hệ",
+      "terms": "Điều khoản",
+      "privacy": "Bảo mật"
+    },
+    "etsTitle": "Tuyên bố không liên kết",
+    "etsBody": "TOEIC® là nhãn hiệu đã đăng ký của ETS (Educational Testing Service). Allingo là sản phẩm độc lập, không liên kết, không được ETS tài trợ hay chứng thực. Toàn bộ câu hỏi luyện tập do Allingo tự biên soạn theo định dạng đề công khai; điểm hiển thị là ước tính, không phải điểm chính thức.",
+    "ogTitle": "Luyện thi ngoại ngữ cùng AI – đúng định dạng, đúng lộ trình",
+    "ogKicker": "Ngoại ngữ cho tất cả",
+    "ogFooter": "TOEIC · IELTS · JLPT · HSK",
+    "pricing": {
+      "heading": "Bắt đầu miễn phí, nâng cấp khi cần",
+      "freeName": "Free",
+      "freeDesc": "Đủ để luyện mỗi ngày.",
+      "proName": "Pro",
+      "proDesc": "Cho người cần tăng tốc tới ngày thi.",
+      "popular": "Phổ biến",
+      "cta": "Xem bảng giá chi tiết",
+      "freeItems": [
+        "Bài chẩn đoán và lộ trình tuần",
+        "Luyện theo Part, đề mini trong hạn mức",
+        "Giải thích AI có giới hạn mỗi ngày",
+        "10 từ mới mỗi ngày với thẻ FSRS"
+      ],
+      "proItems": [
+        "Đề thi thử đầy đủ không giới hạn",
+        "Hạn mức AI và gia sư cao hơn",
+        "30 từ mới mỗi ngày",
+        "Phân tích AI sau mỗi bài"
+      ]
+    },
+    "toeicFormat": {
+      "title": "Định dạng TOEIC Listening & Reading",
+      "part": "Part",
+      "items": "Số câu",
+      "itemsCount": "{count, plural, other {# câu}}",
+      "note": "200 câu · khoảng 120 phút. Allingo luyện đúng cấu trúc này với câu hỏi tự biên soạn."
+    },
+    "fallback": {
+      "home": {
+        "title": "Allingo – Luyện thi ngoại ngữ cùng AI",
+        "eyebrow": "Ngoại ngữ cho tất cả",
+        "heading": "Luyện thi đúng định dạng, có AI giải thích từng câu",
+        "subheading": "Bắt đầu với bài chẩn đoán miễn phí, nhận lộ trình theo ngày thi và học mỗi ngày với giải thích AI song ngữ.",
+        "primaryCta": "Làm bài chẩn đoán",
+        "secondaryCta": "Xem bảng giá",
+        "featuresHeading": "Mọi thứ bạn cần để lên điểm",
+        "features": [
+          {
+            "icon": "file-check",
+            "title": "Đề đúng định dạng",
+            "body": "Đề full, đề mini và luyện theo Part với đồng hồ như thi thật."
+          },
+          {
+            "icon": "sparkles",
+            "title": "Giải thích AI song ngữ",
+            "body": "Hiểu vì sao đúng, vì sao sai cho từng câu."
+          },
+          {
+            "icon": "route",
+            "title": "Lộ trình đến ngày thi",
+            "body": "Chia thời gian theo điểm yếu, điều chỉnh mỗi tuần."
+          },
+          {
+            "icon": "notebook-pen",
+            "title": "Sổ lỗi",
+            "body": "Phân loại lỗi và làm lại đúng các câu sai."
+          },
+          {
+            "icon": "layers",
+            "title": "Từ vựng FSRS",
+            "body": "Ôn đúng lúc sắp quên với bộ TOEIC 600 từ."
+          },
+          {
+            "icon": "chart-line",
+            "title": "Thống kê tiến bộ",
+            "body": "Điểm theo thời gian, độ chính xác từng Part, dự báo sơ bộ."
+          }
+        ],
+        "pricingHeading": "Bắt đầu miễn phí, nâng cấp khi cần",
+        "pricingNote": "Thanh toán qua VNPay, MoMo, ZaloPay.",
+        "faqHeading": "Câu hỏi thường gặp",
+        "faq": [
+          {
+            "q": "Allingo có miễn phí không?",
+            "a": "Có. Gói Free gồm bài chẩn đoán, luyện theo Part, giải thích AI và ôn từ vựng trong hạn mức hằng ngày."
+          },
+          {
+            "q": "Điểm trên Allingo có phải điểm chính thức?",
+            "a": "Không. Điểm quy đổi và dự báo là ước tính để theo dõi tiến bộ, không thay thế kết quả kỳ thi chính thức."
+          }
+        ],
+        "ctaHeading": "Sẵn sàng bắt đầu?",
+        "ctaBody": "Khoảng 25 phút để biết bạn đang ở đâu và cần học gì.",
+        "ctaButton": "Tạo tài khoản miễn phí",
+        "seoTitle": "Allingo – Luyện thi TOEIC, IELTS, JLPT, HSK cùng AI",
+        "seoDescription": "Làm đề đúng định dạng, giải thích AI song ngữ từng câu, lộ trình đến ngày thi, sổ lỗi và ôn từ vựng FSRS."
+      },
+      "toeic": {
+        "title": "Luyện thi TOEIC Listening & Reading",
+        "eyebrow": "TOEIC Listening & Reading",
+        "heading": "Luyện TOEIC đúng định dạng, biết rõ mình sai ở đâu",
+        "subheading": "7 Part, 200 câu – luyện từng Part hoặc làm đề full ở chế độ thi thật, rồi xem giải thích từng câu.",
+        "primaryCta": "Làm bài chẩn đoán TOEIC",
+        "secondaryCta": "Đọc blog luyện thi",
+        "featuresHeading": "Luyện theo từng Part",
+        "features": [
+          {
+            "icon": "headphones",
+            "title": "Part 1–4",
+            "body": "Nghe một lần như thi thật; transcript sau khi nộp."
+          },
+          {
+            "icon": "pencil-line",
+            "title": "Part 5–6",
+            "body": "Ngữ pháp, từ loại, từ vựng theo ngữ cảnh – có giới hạn giờ."
+          },
+          {
+            "icon": "book-open",
+            "title": "Part 7",
+            "body": "Đọc hiểu đoạn đơn, đoạn kép và ba đoạn."
+          }
+        ],
+        "pricingHeading": "Gói luyện TOEIC",
+        "pricingNote": "Free có hạn mức đề mỗi tháng; Pro không giới hạn đề full.",
+        "faqHeading": "Hỏi đáp TOEIC",
+        "faq": [
+          {
+            "q": "Đề trên Allingo có phải đề thi thật?",
+            "a": "Không. Câu hỏi do Allingo tự biên soạn theo đúng định dạng đề công khai."
+          },
+          {
+            "q": "Bao lâu thì tôi lên điểm?",
+            "a": "Tuỳ điểm xuất phát và thời gian học; lộ trình ước tính mức tăng theo số giờ mỗi tuần."
+          }
+        ],
+        "ctaHeading": "Biết điểm TOEIC ước tính trong 25 phút",
+        "ctaBody": "Bài chẩn đoán thích ứng, miễn phí.",
+        "ctaButton": "Bắt đầu miễn phí",
+        "seoTitle": "Luyện thi TOEIC online cùng AI | Allingo",
+        "seoDescription": "Đề TOEIC đúng định dạng 7 Part, chế độ thi thật, giải thích AI song ngữ, sổ lỗi và lộ trình theo mục tiêu điểm."
+      }
+    },
+    "comingSoon": {
+      "metaTitle": "Luyện thi {program} – sắp ra mắt",
+      "metaDescription": "Allingo sắp mở luyện thi {program} cùng AI. Đăng ký để nhận thông báo sớm nhất.",
+      "title": "Luyện thi {program} cùng AI – sắp ra mắt",
+      "formTitle": "Nhận thông báo khi {program} mở",
+      "formDesc": "Chúng tôi chỉ gửi email khi chương trình mở và ưu đãi cho người đăng ký sớm.",
+      "points": {
+        "ielts": [
+          "Academic & General Training, đủ 4 kỹ năng",
+          "Chấm Writing và Speaking theo tiêu chí band",
+          "Lộ trình theo band mục tiêu và ngày thi"
+        ],
+        "jlpt": [
+          "N5–N1: từ vựng, ngữ pháp, đọc hiểu, nghe hiểu",
+          "Thẻ Kanji/từ vựng ôn theo FSRS",
+          "Giải thích song ngữ Việt – Nhật"
+        ],
+        "hsk": [
+          "HSK 1–6: nghe, đọc, viết",
+          "Luyện viết chữ Hán và thanh điệu",
+          "Thẻ từ có âm Hán Việt"
+        ]
+      }
+    },
+    "waitlist": {
+      "email": "Email",
+      "consent": "Tôi đồng ý nhận email thông báo về chương trình này và có thể huỷ bất kỳ lúc nào.",
+      "privacy": "Chính sách bảo mật",
+      "submit": "Đăng ký nhận thông báo",
+      "invalidEmail": "Email chưa hợp lệ.",
+      "consentRequired": "Bạn cần đồng ý nhận email thông báo.",
+      "accepted": "Đã ghi nhận! Chúng tôi sẽ gửi email khi chương trình mở.",
+      "unavailable": "Danh sách chờ đang được mở – bạn vui lòng quay lại sau ít ngày. Trong lúc chờ, bạn có thể luyện TOEIC miễn phí.",
+      "tryToeic": "Luyện TOEIC ngay",
+      "failed": "Chưa gửi được. Kiểm tra kết nối và thử lại."
+    },
+    "blog": {
+      "metaTitle": "Blog luyện thi",
+      "metaDescription": "Mẹo làm bài TOEIC theo từng Part, lộ trình học và hướng dẫn dùng Allingo.",
+      "title": "Blog",
+      "subtitle": "Mẹo làm bài, lộ trình học và hướng dẫn dùng Allingo.",
+      "empty": "Chưa có bài viết nào – quay lại sau nhé.",
+      "minutes": "{count, plural, other {# phút đọc}}",
+      "breadcrumb": "Đường dẫn",
+      "fallbackNotice": "Bài viết này hiện chỉ có bản tiếng Việt.",
+      "faq": "Hỏi đáp",
+      "aboutAuthor": "Về tác giả",
+      "ctaTitle": "Luyện thử miễn phí với bài chẩn đoán 25 phút",
+      "ctaButton": "Tạo tài khoản miễn phí"
+    },
+    "about": {
+      "title": "Về Allingo",
+      "lead": "Allingo – \"Ngoại ngữ cho tất cả\" – là nền tảng luyện thi bằng AI cho người học Việt Nam: làm đề đúng định dạng, hiểu vì sao sai và học đúng việc mỗi ngày.",
+      "sections": [
+        {
+          "title": "Chúng tôi làm gì",
+          "body": "Đề luyện tự biên soạn theo định dạng TOEIC, giải thích AI song ngữ cho từng câu, sổ lỗi phân loại tự động, thẻ từ vựng ôn theo FSRS và lộ trình bám ngày thi."
+        },
+        {
+          "title": "Nguyên tắc",
+          "body": "Không sao chép đề thi thật; điểm luôn ghi rõ là ước tính; dữ liệu học tập của bạn chỉ dùng để cá nhân hoá việc học, không bán cho bên thứ ba."
+        },
+        {
+          "title": "Lộ trình sản phẩm",
+          "body": "TOEIC đang mở; IELTS, JLPT và HSK ra mắt theo từng giai đoạn. Trường và trung tâm có thể dùng Allingo cho lớp học (B2B)."
+        }
+      ]
+    },
+    "contact": {
+      "title": "Liên hệ",
+      "lead": "Cần hỗ trợ tài khoản, thanh toán hay hợp tác? Hãy chọn kênh phù hợp bên dưới.",
+      "channels": {
+        "email": {
+          "label": "Email hỗ trợ",
+          "value": "hotro@allingo.vn"
+        },
+        "chat": {
+          "label": "Trong ứng dụng",
+          "value": "Gửi phản hồi ở từng câu giải thích hoặc trong gia sư AI."
+        },
+        "business": {
+          "label": "Trường & trung tâm",
+          "value": "Hợp tác B2B: gửi email với tiêu đề \"B2B\"."
+        }
+      },
+      "sections": [
+        {
+          "title": "Thời gian phản hồi",
+          "body": "Chúng tôi trả lời email trong 1–2 ngày làm việc. Yêu cầu về hoá đơn và hoàn tiền được ưu tiên."
+        },
+        {
+          "title": "Dữ liệu cá nhân",
+          "body": "Yêu cầu xoá hoặc xuất dữ liệu được xử lý theo Chính sách bảo mật; bạn cũng có thể tự gửi yêu cầu trong Cài đặt."
+        }
+      ]
+    }
   }
 }

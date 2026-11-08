@@ -4,7 +4,9 @@ import type { AttemptMode, PlanTask, ProgramCode } from '@allingo/schemas';
  * Ánh xạ `PlanTask.launch` → hành động mở nội dung (thuần, có test). Server quyết định `launch`; web chỉ chọn màn:
  *  - `attempt`  → POST /attempts {program, mode, test_set_id | section_id, plan_task_id} rồi mở /attempts/{id} (task tự done khi
  *                 bài được chấm – outbox `attempt.graded`);
- *  - `lesson`   → /lessons/{id}?task=…  ·  `vocab_list` → /vocab/{id}?task=… (đánh dấu xong tại trang, server cộng XP tự báo);
+ *  - `lesson`   → /lessons/{id}?task=… (đánh dấu xong tại trang, server cộng XP tự báo);
+ *  - `vocab_list` (S10) → phiên ôn `/toeic/vocab/review?list={id}&task=…` (task tự xong khi hết thẻ đến hạn / khi xong phiên);
+ *                 task đã xong → trang bộ từ `/toeic/vocab/{id}`;
  *  - `checkin`  → hộp thoại điểm danh tuần;
  *  - `review_errors` (S10) → POST /me/errors/drill {plan_task_id};
  *  - không có nội dung → tự đánh dấu xong (`self`).
@@ -30,8 +32,11 @@ export function launchAction(task: Pick<PlanTask, 'id' | 'status' | 'task_type' 
       return { kind: 'checkin' };
     case 'lesson':
       return l.lesson_id ? { kind: 'route', href: `/lessons/${encodeURIComponent(l.lesson_id)}${taskQuery}` } : { kind: 'self' };
-    case 'vocab_list':
-      return l.vocab_list_id ? { kind: 'route', href: `/vocab/${encodeURIComponent(l.vocab_list_id)}${taskQuery}` } : { kind: 'self' };
+    case 'vocab_list': {
+      if (!l.vocab_list_id) return { kind: 'self' };
+      const list = encodeURIComponent(l.vocab_list_id);
+      return { kind: 'route', href: pending ? `/toeic/vocab/review?list=${list}&task=${encodeURIComponent(task.id)}` : `/toeic/vocab/${list}` };
+    }
     case 'review_errors':
       return pending ? { kind: 'errors_drill', program, plan_task_id: task.id } : { kind: 'self' };
     case 'attempt': {

@@ -4,7 +4,7 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Button, type ButtonProps } from '@allingo/ui';
 import { useRouter } from '@/i18n/navigation';
-import { useStartGuest } from '@/lib/queries';
+import { useStartGuest } from '@/lib/guest';
 
 /**
  * "Luyện thử miễn phí": nếu chưa có phiên → POST /auth/guest (cookie + guest_token) rồi vào dashboard.

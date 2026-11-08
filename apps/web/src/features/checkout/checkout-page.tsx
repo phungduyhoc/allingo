@@ -5,6 +5,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Building2, CreditCard, Lock, QrCode, Smartphone, Tag, TriangleAlert, User as UserIcon, X } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
+import { FunnelTracker } from '@/features/consent/funnel-tracker';
 import type { PayResult, PromotionValidateResult } from '@allingo/schemas';
 import {
   Alert,
@@ -204,6 +205,8 @@ export function CheckoutPage() {
   const nextHere = `/checkout?${search.toString()}`;
   return (
     <div className="space-y-6" data-testid="checkout-page" data-price={priceId}>
+      {/* S10: sự kiện phễu checkout_start (chỉ khi đã đồng ý cookie phân tích) */}
+      <FunnelTracker event="checkout_start" properties={plan ? { plan_kind: plan.kind } : undefined} />
       <PageHeader
         title={t('title')}
         description={t('subtitle')}

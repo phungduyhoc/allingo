@@ -2,6 +2,7 @@ import { unwrap } from '@allingo/api-client';
 import { getApi } from './api';
 import { getDeviceFingerprint } from './fingerprint';
 import { clearReferral, getPendingReferral } from './referral';
+import { attributionField } from './analytics/attribution';
 import type { AuthTokens, GuestSession, User } from './types';
 
 const GUEST_TOKEN_KEY = 'allingo.guest_token';
@@ -43,7 +44,10 @@ function markFpHeaderBlocked(): void {
   }
 }
 
-/** Mã giới thiệu đang chờ (link `/register?ref=`) – gửi kèm khi tạo tài khoản (đăng ký, OTP, OAuth) */
+/**
+ * Mã giới thiệu đang chờ (link `/register?ref=`) – gửi kèm khi tạo tài khoản (đăng ký, OTP, OAuth). S10: kèm `attribution`
+ * lần chạm đầu (UTM/referrer/trang đích – lib/analytics/attribution); server chỉ lưu khi TẠO tài khoản, đăng nhập lại bỏ qua.
+ */
 function referralField(): { referral_code?: string } {
   const ref = getPendingReferral();
   return ref ? { referral_code: ref.code } : {};
@@ -81,7 +85,7 @@ export async function createGuestSession(): Promise<User> {
 
 export async function register(input: { email: string; password: string; display_name: string; ui_locale?: string; accept_terms: boolean; marketing_opt_in?: boolean }): Promise<User> {
   const guest = getGuestToken();
-  const body = { ...input, ...(guest ? { guest_token: guest } : {}), ...referralField() };
+  const body = { ...input, ...(guest ? { guest_token: guest } : {}), ...referralField(), ...attributionField() };
   const res = await authPost('/auth/register', { body });
   setGuestToken(null);
   clearReferral();
@@ -113,7 +117,7 @@ export async function requestEmailOtp(email: string): Promise<{ retry_after: num
 /** OTP qua email: xác minh → đăng nhập (tạo tài khoản nếu chưa có), ghép tiến độ khách */
 export async function verifyEmailOtp(input: { email: string; otp: string; ui_locale?: string }): Promise<User> {
   const guest = getGuestToken();
-  const body = { ...input, ...(guest ? { guest_token: guest } : {}), ...referralField() };
+  const body = { ...input, ...(guest ? { guest_token: guest } : {}), ...referralField(), ...attributionField() };
   const res = await authPost('/auth/otp/verify', { body });
   setGuestToken(null);
   clearReferral();
@@ -123,7 +127,7 @@ export async function verifyEmailOtp(input: { email: string; otp: string; ui_loc
 /** Google Identity Services: gửi id_token (credential) – 409 link_required khi email đã có tài khoản mật khẩu */
 export async function signInWithGoogle(input: { id_token: string; link_password?: string; ui_locale?: string }): Promise<User> {
   const guest = getGuestToken();
-  const body = { ...input, ...(guest ? { guest_token: guest } : {}), ...referralField() };
+  const body = { ...input, ...(guest ? { guest_token: guest } : {}), ...referralField(), ...attributionField() };
   const res = await authPost('/auth/oauth/{provider}', { params: { path: { provider: 'google' } }, body });
   setGuestToken(null);
   clearReferral();

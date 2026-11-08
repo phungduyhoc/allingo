@@ -14,6 +14,7 @@ import { env } from '@/env';
 import { safeNextPath } from '@/lib/billing';
 import { GoogleButton } from './google-button';
 import { OtpLoginForm } from './otp-login-form';
+import { FunnelTracker } from '@/features/consent/funnel-tracker';
 
 type Mode = 'login' | 'signup';
 
@@ -105,6 +106,8 @@ export function AuthForm({ mode }: { mode: Mode }) {
         <CardDescription>{mode === 'login' ? t('loginSubtitle') : t('signupSubtitle')}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
+        {/* S10: sự kiện phễu signup_start khi mở form đăng ký (chỉ khi đã đồng ý cookie phân tích) */}
+        {mode === 'signup' ? <FunnelTracker event="signup_start" /> : null}
         <GoogleButton mode={mode} onSuccess={afterSignIn} />
         {env.googleClientId ? (
           <div className="flex items-center gap-3 text-xs uppercase text-muted-foreground" aria-hidden>

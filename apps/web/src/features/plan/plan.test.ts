@@ -38,7 +38,9 @@ describe('launchAction – mở đúng màn từ task', () => {
     const lesson = task({ id: 'l1', task_type: 'grammar', launch: { kind: 'lesson', mode: null, test_set_id: null, section_id: null, lesson_id: 'les-9', vocab_list_id: null } });
     expect(launchAction(lesson)).toEqual({ kind: 'route', href: '/lessons/les-9?task=l1' });
     const vocab = task({ id: 'v1', task_type: 'vocab_review', status: 'done', launch: { kind: 'vocab_list', mode: null, test_set_id: null, section_id: null, lesson_id: null, vocab_list_id: 'vl-1' } });
-    expect(launchAction(vocab)).toEqual({ kind: 'route', href: '/vocab/vl-1' });
+    expect(launchAction(vocab)).toEqual({ kind: 'route', href: '/toeic/vocab/vl-1' });
+    // S10: task còn pending → mở thẳng phiên ôn của bộ (tự xong)
+    expect(launchAction({ ...vocab, status: 'pending' })).toEqual({ kind: 'route', href: '/toeic/vocab/review?list=vl-1&task=v1' });
   });
 
   it('check-in, review_errors (S10), thiếu nội dung → tự đánh dấu', () => {

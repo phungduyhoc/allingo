@@ -5,7 +5,7 @@ import { unwrap } from '@allingo/api-client';
 import { attemptAiDiagnosisSchema } from '@allingo/schemas';
 import { queryKeys } from '@allingo/api-client/react';
 import { getApi } from './api';
-import { createGuestSession, login, logout, register } from './auth';
+import { login, logout, register } from './auth';
 import type {
   Attempt,
   AttemptAiDiagnosis,
@@ -280,25 +280,8 @@ export function useAttemptAiDiagnosis(attemptId: string, opts?: Opts<AttemptAiDi
 
 // ----------------------------------------------------------------------------- Auth
 
-export function useStartGuest() {
-  const qc = useQueryClient();
-  return useMutation<User, Error, void>({
-    mutationFn: async () => {
-      // Đã có phiên (khách hoặc thật) → dùng lại, không tạo khách mới
-      const existing = qc.getQueryData<User>(queryKeys.me);
-      if (existing) return existing;
-      try {
-        const me = unwrap(await getApi().GET('/me')) as unknown as User;
-        return me;
-      } catch {
-        return createGuestSession();
-      }
-    },
-    onSuccess: (user) => {
-      qc.setQueryData(queryKeys.me, user);
-    },
-  });
-}
+/** Tách sang lib/guest.ts (landing không tải Zod/@allingo/schemas) – giữ tên xuất cũ */
+export { useStartGuest } from './guest';
 
 export function useRegister() {
   const qc = useQueryClient();

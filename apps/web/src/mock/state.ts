@@ -13,6 +13,8 @@ export interface MockUserRecord extends User {
   plan_kind?: string;
   /** S8: mã giới thiệu (cấp lười) */
   referral_code?: string;
+  /** S10: attribution lần chạm đầu gửi khi tạo tài khoản (như iam.users.attribution) – e2e kiểm tra */
+  attribution?: Record<string, unknown> | null;
 }
 
 /** S7/S8 – billing giả lập (bám billing.orders/payments/subscriptions/credit_ledger/invoices/promotion_redemptions) */
@@ -267,6 +269,62 @@ export interface MockState {
   xpLog: Record<string, { kind: string; xp: number; at: string; ref: string | null }[]>;
   badges: Record<string, Record<string, string>>;
   mastery: Record<string, { subskill: string; skill: string; sections?: string[]; mastery: number; confidence: number; n_obs: number }[]>;
+  /** S10: thẻ SRS FSRS giả lập (learn.srs_cards) – thẻ vocab S6 (`srsCards`) được nhập vào đây khi đọc */
+  srs: Record<string, MockSrsRecord>;
+  /** S10: khoá idempotent `${card_id}|${reviewed_at}` của POST /me/srs/review */
+  srsReviews: Record<string, true>;
+  /** S10: sổ lỗi (learn.error_log_entries) – gộp theo (user, question) */
+  errorLog: Record<string, MockErrorRecord>;
+  /** S10: sự kiện phễu nhận được (POST /analytics/events) – e2e kiểm tra cổng đồng ý */
+  analyticsEvents: Array<{ event: string; consent: boolean; anonymous_id: string; path: string | null; at: string }>;
+  /** S10: đăng ký chờ (không lưu email) */
+  waitlist: Array<{ program: string; locale: string; at: string }>;
+}
+
+/** S10 – thẻ SRS giả lập */
+export interface MockSrsRecord {
+  id: string;
+  user_id: string;
+  card_type: 'vocab' | 'error';
+  ref_id: string;
+  state: 'new' | 'learning' | 'review' | 'relearning';
+  due_at: string;
+  stability: number | null;
+  difficulty: number | null;
+  reps: number;
+  lapses: number;
+  last_review_at: string | null;
+  payload: Record<string, unknown>;
+  source_type: string;
+  created_at: string;
+  /** Bộ từ hệ thống chứa thẻ (lọc list_id) */
+  list_ids: string[];
+}
+
+/** S10 – mục sổ lỗi giả lập */
+export interface MockErrorRecord {
+  id: string;
+  user_id: string;
+  program: string;
+  question_id: string;
+  question_version_id: string;
+  section_code: string;
+  subskill: string | null;
+  topic: string | null;
+  kind_auto: string;
+  reason_override: string | null;
+  reason_auto: Record<string, unknown>;
+  your_answer: unknown;
+  correct_answer: unknown;
+  time_spent_ms: number | null;
+  occurrences: number;
+  note: string | null;
+  resolved: boolean;
+  resolved_at: string | null;
+  srs_card_id: string | null;
+  attempt_id: string;
+  created_at: string;
+  last_seen_at: string;
 }
 
 export interface MockMessageRecord {
@@ -333,6 +391,11 @@ export function emptyState(): MockState {
     xpLog: {},
     badges: {},
     mastery: {},
+    srs: {},
+    srsReviews: {},
+    errorLog: {},
+    analyticsEvents: [],
+    waitlist: [],
   };
 }
 

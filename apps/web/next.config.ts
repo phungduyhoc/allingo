@@ -1,5 +1,27 @@
+import { readFileSync } from 'node:fs';
 import type { NextConfig } from 'next';
 import createNextIntlPlugin from 'next-intl/plugin';
+
+/**
+ * S10: biến SERVER-ONLY của web (webhook revalidate CMS, URL CMS) đọc từ `.env` gốc repo khi chưa có trong môi trường (Next chỉ tự
+ * nạp `.env` của apps/web). Không nạp NEXT_PUBLIC_* ở đây (giữ nguyên cách inline lúc build). Biến đã đặt sẵn luôn thắng.
+ */
+const ROOT_ENV_KEYS = ['WEB_REVALIDATE_SECRET', 'CMS_URL', 'CMS_PUBLIC_URL'];
+function loadRootEnv(): void {
+  let text = '';
+  try {
+    text = readFileSync(new URL('../../.env', import.meta.url), 'utf8');
+  } catch {
+    return;
+  }
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)$/.exec(line);
+    if (!m || !ROOT_ENV_KEYS.includes(m[1]!) || process.env[m[1]!] !== undefined) continue;
+    const value = m[2]!.replace(/\s+#.*$/, '').trim().replace(/^(['"])(.*)\1$/, '$2');
+    if (value) process.env[m[1]!] = value;
+  }
+}
+loadRootEnv();
 
 const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 

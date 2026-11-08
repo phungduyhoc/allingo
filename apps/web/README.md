@@ -270,3 +270,74 @@ packages/ui/src                component dùng chung (Button, Card, Dialog/Sheet
   `learning.plan_adjust_ready`), câu lệnh tự nhiên (2 credit; "ignore previous instructions" → 400 `refusal_code=injection`), áp dụng,
   chuỗi ngày theo múi giờ (đóng băng Pro), nhật ký XP, 6 huy hiệu seed như API + thông báo; `POST /attempts {section_id}` (7 section id ổn
   định); bài học/bộ từ mẫu. Hook E2E: `__ALLINGO_MOCK__.diagnosticKey(questionId)`, `.seedStreak(days)`.
+
+## Sprint 10 – flashcard FSRS, sổ lỗi, thống kê & dashboard, marketing + blog + SEO, đồng ý cookie (giao diện)
+
+- **Lớp API** – `lib/s10-api.ts` (SRS due/review, bộ từ + enroll, sổ lỗi + PATCH + drill, dự báo, `POST /analytics/events`,
+  `POST /waitlist` – backend S12; 404 → `unavailable`, TODO bỏ khi có trong OpenAPI); Zod `learning-s10.ts`, sai dạng → dữ liệu thô.
+- **Từ vựng `/toeic/vocab`** (`features/flashcards`): hôm nay (đến hạn, từ mới còn trong hạn mức Free 10 / Pro 30), bộ từ hệ thống
+  (TOEIC 600 trọn bộ + chủ đề) với tiến độ đã thuộc/đang học/mới, hành động theo `next_action_code` (`vocab.next_action.*`), "Thêm
+  cả bộ" (idempotent). Trang bộ `/toeic/vocab/{id}` (thay trang tạm S9 – `/vocab/{id}` chuyển hướng, giữ `?task=`): từng từ + trạng
+  thái thẻ, phát âm, cursor.
+- **Phiên ôn `/toeic/vocab/review?list=&task=&size=&mode=`** – reducer thuần `session.ts` (có test): 10/20/30 thẻ, lật/chấm 4 nút
+  (Quên/Khó/Nhớ/Dễ) kèm lịch dự kiến từ `preview` (`intervalOf`), phím Space/Enter lật · 1–4 chấm · S phát âm (bỏ qua khi đang gõ),
+  mỗi lượt `POST /me/srs/review` với `reviewed_at` cố định (thử lại idempotent; lỗi mạng → "Thử lại"), **Again → thẻ quay lại sau 3
+  thẻ khác** (preview cũ bỏ, tải lại từ `/me/srs/due` khi tới lượt), server `in_session` cho lượt khác → cuối hàng đợi, 429
+  `srs_new_cards` → hoàn tác lượt + bỏ thẻ mới còn lại + thông báo giờ reset (giờ VN) + CTA Pro; chế độ "Nghe – gõ lại từ"
+  (dictation mini: so khớp chuẩn hoá, sai ≤ 1 ký tự = gần đúng → gợi ý điểm); thẻ lỗi (kind `error`) hiển thị câu + đáp án + ghi chú;
+  tổng kết (lượt, % nhớ, ôn lại, từ mới, lần đến hạn kế). Task `vocab_review` (launch `vocab_list`) mở thẳng phiên ôn của bộ, xong
+  phiên → PATCH done (server cũng tự xong khi hết thẻ đến hạn). TTS qua `GET /tts` (`speak.ts`, không nạp trước).
+- **Sổ lỗi `/toeic/errors`** (`features/errors`, bộ lọc thuần `filters.ts` có test): tổng chưa hiểu/đã hiểu, phân bố theo loại và theo
+  Part (bấm để lọc), bộ lọc trạng thái/loại/Part/7–30 ngày–mọi lúc/sắp xếp trên URL, danh sách cursor; mỗi mục: Part · kỹ năng con,
+  câu (Part 1/2 không chữ → nhãn câu nghe), bạn chọn vs đáp án đúng (+ chữ lựa chọn), số lần sai, thời gian, đổi lý do (`reason_override`),
+  ghi chú, tạo thẻ ôn, "Đã hiểu"/mở lại (cập nhật lạc quan), xem lại câu trong bài. "Làm lại" = đã chọn (≤ 10) hoặc 10 lỗi cũ nhất theo
+  bộ lọc → `POST /me/errors/drill` → màn làm bài timed_drill. `?task=` (review_errors) gắn `plan_task_id`; task review_errors khi
+  không còn lỗi (404) mở trang này. Exam Mode → 403 → banner.
+- **Dashboard + `/toeic/stats`** (`features/stats`, `stats-model.ts` có test): 6 KPI (ước tính, chuỗi, XP, phút tuần – cùng nguồn
+  `minutes_by_week`, từ đã thuộc, lỗi chưa hiểu), điểm theo thời gian (L/R + vạch mục tiêu), độ chính xác theo Part 30 ngày vs trước
+  (biểu đồ + bảng; trang thống kê thêm kỹ năng con), phút/tuần 8 tuần, cộng đồng (phân vị khi `reason=ok`, không thì lý do i18n), dự
+  báo v0 luôn nhãn "Ước tính sơ bộ" + `forecast.recommendation.*`, từ đến hạn, lỗi cần ôn, tóm tắt tuần (dựng từ stats – API chưa có
+  endpoint đọc notes `system_summary`). Biểu đồ recharts (`charts.tsx`) chỉ qua `next/dynamic` (ssr: false) + bảng ẩn cho trình đọc.
+- **Marketing (RSC + ISR 300 s)** – `lib/cms/*`: đọc Payload REST ở SERVER (`CMS_URL`, mặc định `http://localhost:3001`; thẻ fetch
+  `pages|page:<slug>|posts|post:<slug>|redirects|sitemap`), lỗi → nội dung tĩnh i18n `marketing.fallback.*`; dev/e2e mock
+  (`NEXT_PUBLIC_API_MOCK=1`) mà CMS tắt → fixture `src/mock/cms-fixtures.ts` (`CMS_URL=mock` ép fixture). Blocks (`features/marketing/
+  blocks.tsx`, không JS): hero (h1 gồm eyebrow), features, pricing (giới thiệu Free/Pro, giá thật ở /pricing), FAQ (`<details>`),
+  testimonial (chỉ khi có đồng ý), CTA. Liên kết CMS qua `normalizeCmsHref` (thêm locale, bí danh `/diagnostic` → `/toeic/diagnostic`
+  kể cả `next=`, chặn javascript:/data:). Trang: `/` (giữ "Luyện thử miễn phí" + câu mẫu + 4 chương trình), `/toeic` (+ bảng 7 Part +
+  **tuyên bố không liên kết ETS**), `/ielts|/jlpt|/hsk` (sắp ra mắt + đăng ký chờ), `/blog`, `/blog/[slug]` (Lexical → React an toàn
+  `lexical.ts`, ảnh `next/image` unoptimized, tác giả, chuyên mục, FAQ, fallback bản vi), `/about`, `/contact`; trang không khớp →
+  chuyển hướng CMS (`redirects`) trong `[...rest]`.
+- **SEO**: `alternatesFor` (canonical + hreflang vi/en/x-default), `marketingMetadata` (OG/Twitter), JSON-LD (`lib/seo/json-ld.ts`
+  – Organization ở `/`, FAQPage từ block FAQ/FAQ bài, Article|BlogPosting với URL có tiền tố locale; `serializeJsonLd` chống chèn thẻ),
+  `app/sitemap.ts` (`buildSitemap` – trang tĩnh + bài vi/en + hreflang, ISR 300 s), `app/robots.ts` (chặn khu vực học/API), OG động
+  `opengraph-image.tsx` (landing + bài blog; font mặc định của next/og có dấu tiếng Việt).
+- **Webhook `/api/revalidate`** (`lib/cms/revalidate.ts` có test): kiểm `x-allingo-signature = sha256=HMAC(WEB_REVALIDATE_SECRET,
+  "<ts>.<body>")` + timestamp ±5′ TRƯỚC khi đọc payload → `revalidateTag(tag, { expire: 0 })` + `revalidatePath` cho `/vi…`,`/en…`,
+  `/sitemap.xml`. 503 khi chưa cấu hình, 401 chữ ký/thời gian sai, 400 payload sai. `next.config.ts` nạp `WEB_REVALIDATE_SECRET`,
+  `CMS_URL`, `CMS_PUBLIC_URL` từ `.env` gốc nếu môi trường chưa có (không nạp NEXT_PUBLIC_*).
+- **Đồng ý cookie & phễu** (`lib/analytics/*` có test, `features/consent/*`): thanh đồng ý trong luồng trang (marketing + AppShell; có
+  sẵn trong HTML, script khởi động đặt `html[data-consent]` → CSS ẩn trước khi vẽ, không CLS), "Cài đặt cookie" ở chân trang mở lại.
+  Không tải SDK PostHog ở web: sự kiện client `landing_view` (landing/TOEIC/chương trình/blog), `signup_start` (form đăng ký),
+  `checkout_start` (checkout) → `POST /analytics/events {consent: true, anonymous_id}` CHỈ sau khi đồng ý (chưa đồng ý: không có request
+  nào); API chuyển PostHog server-side. Attribution lần chạm đầu (`allingo.attribution.v1`: UTM lọc email/SĐT, origin referrer ngoài
+  site, trang đích không query, thời điểm) gửi kèm `attribution` ở register/OTP/Google.
+- **Điều hướng**: thêm "Từ vựng", "Sổ lỗi" (8 mục; desktop nhãn từ 2xl, thanh dưới mobile 8 cột nhãn ngắn `nav.short.*`); header
+  marketing có TOEIC/Blog/Bảng giá; chân trang liên kết + cài đặt cookie.
+- **Mock S10** – `src/mock/s10.ts`: lịch giản lược (Again 1′/Hard 5′ trong phiên, Good 1 ngày, Easy 4 ngày), hạn mức thẻ mới khi học,
+  idempotent `(card_id, reviewed_at)`, 4 bộ từ mẫu (20 từ tự biên soạn), sổ lỗi khi chấm (luật timeout/subskill/Part như ADR-0033, gộp
+  theo câu), drill, thống kê S10 + phân vị (mẫu 12 điểm) + dự báo hồi quy, `/analytics/events` (lưu `analyticsEvents`), `/waitlist` 202;
+  register/OTP lưu `attribution` (không trả trong /me).
+- **E2E S10**: `flashcards.spec.ts`, `errors.spec.ts`, `dashboard.spec.ts`, `marketing.spec.ts` (mock + `E2E_REAL_API=1`;
+  `E2E_CMS_URL=http://localhost:3001` → so khớp nội dung CMS thật).
+- **Hiệu năng (S10)**: (1) thông điệp next-intl theo nhóm route – gốc `ROOT_MESSAGES`, marketing `MARKETING_MESSAGES`
+  (`lib/i18n-scope.ts`; trang /pricing và /notifications/manage thêm nhánh riêng qua `components/scoped-intl.tsx`), khu vực học vẫn
+  đủ thông điệp (S11 tách theo trang) → HTML landing 206 KB → 94 KB; (2) phần dưới hero + chân trang bọc `HydrateLater` (Suspense →
+  React hydrate sau, chia nhỏ); (3) `env.ts` bỏ Zod, "Luyện thử miễn phí" dùng `lib/guest.ts` (không kéo `lib/queries`/`@allingo/schemas`)
+  → JS landing ~1,0 MB → ~0,78 MB (chưa nén). Layout có `setRequestLocale` để giữ SSG.
+- **Lighthouse (S10, 2026-11-08, Lighthouse 13 + Chrome for Testing 153, `pnpm build && next start`)**: landing `/vi` mobile
+  Performance 96–100 (5 lượt; TBT 60–220 ms, LCP 0,9 s, CLS 0), Accessibility 100, Best practices 100, SEO 100; desktop 100/100/100/100;
+  `/vi/toeic` mobile 99/100/100/100; bài blog mobile 99/100/100/100. Đo landing bằng bản build `NEXT_PUBLIC_APP_URL=http://localhost:3100`
+  (canonical/hreflang trùng origin đang đo – bản build cổng 3000 đo ở 3100 bị trừ điểm "canonical trỏ tới vị trí hreflang khác").
+  Dashboard `/vi/toeic/dashboard` (khách, bản build phục vụ ở :3000 – API S11 chặn POST từ origin lạ `csrf_origin_mismatch` nên không đo
+  ở :3100 được nữa): mobile Performance 75–77 (TBT 1,1–1,3 s – tương đương S6 dù thêm thẻ S10), desktop 95; A11y 100; BP 100; SEO 63 do
+  `robots.txt` chặn khu vực học (cố ý). `/vi/toeic/vocab` mobile 85, `/vi/toeic/errors` 80.

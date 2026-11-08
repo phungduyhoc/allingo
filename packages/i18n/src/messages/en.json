@@ -50,7 +50,24 @@
     "adminBilling": "Billing admin",
     "referral": "Refer friends",
     "today": "Today",
-    "plan": "Study plan"
+    "plan": "Study plan",
+    "vocab": "Vocabulary",
+    "errors": "Error log",
+    "stats": "Stats",
+    "marketingNav": "Site navigation",
+    "toeic": "TOEIC",
+    "blog": "Blog",
+    "pricing": "Pricing",
+    "short": {
+      "today": "Today",
+      "plan": "Plan",
+      "dashboard": "Overview",
+      "testSets": "Tests",
+      "practice": "Practice",
+      "vocab": "Vocab",
+      "errors": "Errors",
+      "notes": "Notes"
+    }
   },
   "landing": {
     "heroTitle": "Languages for everyone",
@@ -206,7 +223,9 @@
     },
     "trendTitle": "30-day trend",
     "trendEmpty": "Take more tests to see a trend.",
-    "statsTitle": "Your stats"
+    "statsTitle": "Your stats",
+    "statsLink": "Detailed stats",
+    "insightsTitle": "Insights & forecast"
   },
   "testSets": {
     "title": "TOEIC tests",
@@ -708,7 +727,8 @@
       "ai_diagnose": "AI analysis",
       "ai_tutor": "AI tutor",
       "dictionary_ai": "AI dictionary",
-      "unknown": "this feature"
+      "unknown": "this feature",
+      "srs_new_cards": "new flashcards"
     },
     "explainLeft": "{remaining, plural, =0 {No explanations left today} one {# explanation left today} other {# explanations left today}}",
     "fullTestLeft": "{remaining, plural, =0 {No full tests left this month} one {# full test left this month} other {# full tests left this month}}",
@@ -2183,5 +2203,557 @@
     "markVocabDone": "I've reviewed these",
     "completed": "Marked as done in your plan.",
     "backToday": "Back to Today"
+  },
+  "vocab": {
+    "title": "Vocabulary",
+    "desc": "TOEIC 600 word sets by topic – add a whole set, then review daily on an FSRS schedule.",
+    "reviewAll": "Review all due cards",
+    "todayTitle": "Today",
+    "dueNow": "Cards due",
+    "newToday": "New words left today",
+    "newUsed": "New words learned today",
+    "newLimit": "Limit {limit} new words/day",
+    "newTotal": "New words not started",
+    "listsTitle": "Word sets",
+    "empty": "No word sets yet.",
+    "progressMastered": "{count, plural, other {# mastered}}",
+    "progressLearning": "{count, plural, other {# learning}}",
+    "progressNew": "{count, plural, other {# new}}",
+    "progressDue": "{count, plural, other {# due}}",
+    "words": "{count, plural, =1 {1 word} other {# words}}",
+    "kindCore": "Combined set",
+    "free": "Free",
+    "pro": "Pro",
+    "progressLabel": "Progress of {title}",
+    "notEnrolled": "Not added to reviews yet.",
+    "lockedCta": "Upgrade to unlock this set",
+    "next_action": {
+      "enroll": "Add whole set",
+      "review": "{count, plural, =1 {Review 1 card} other {Review # cards}}",
+      "learn_new": "{count, plural, =1 {Learn 1 new word} other {Learn # new words}}",
+      "done": "Done for today"
+    },
+    "viewWords": "View words",
+    "enrolled": "Added {added} words ({existing} were already there).",
+    "enrolledPerDay": "{count, plural, other {You can learn up to # new words a day.}}",
+    "enrollFailed": "Couldn't add the set. Please try again.",
+    "listFallbackTitle": "Word set",
+    "allLists": "All word sets",
+    "taskHint": "Today's task: review this set – finishing the session completes the task.",
+    "reviewList": "Review this set",
+    "noWords": "This set has no words yet.",
+    "wordsLabel": "Word list",
+    "status": {
+      "none": "Not added",
+      "new": "New",
+      "learning": "Learning",
+      "review": "Reviewing",
+      "mastered": "Mastered"
+    },
+    "speakWord": "Pronounce {word}",
+    "loadMore": "Load more"
+  },
+  "flashcards": {
+    "title": "Flashcard review",
+    "setupDesc": "Pick the number of cards and a review mode. Due cards come first, then new words within today's limit.",
+    "backToLists": "Back to word sets",
+    "backToday": "Back to Today",
+    "countDue": "Due now",
+    "countNew": "New words left today",
+    "countNewOf": "Limit {limit}/day",
+    "unlimited": "Unlimited",
+    "countLater": "Due later today",
+    "sizeLabel": "Cards per session",
+    "sizeOption": "{count, plural, other {# cards}}",
+    "modeLabel": "Review mode",
+    "mode": {
+      "flashcard": "Flip cards",
+      "dictation": "Listen & type"
+    },
+    "modeHint": {
+      "flashcard": "See the word, recall its meaning, then flip to check.",
+      "dictation": "Hear the word and its meaning, then type it correctly."
+    },
+    "start": "Start review",
+    "shortcuts": "Shortcuts: Space flip · 1–4 rate · S pronounce",
+    "examLocked": "You're taking an exam – reviews are locked until you submit.",
+    "emptyTitle": "Nothing to review",
+    "emptyDesc": "Add a word set to get started.",
+    "emptyNext": "The next card is due at {at}.",
+    "emptyCta": "Choose a word set",
+    "summaryTitle": "Session complete",
+    "summaryDesc": "Your next reviews have been scheduled with FSRS.",
+    "saving": "Saving your last reviews…",
+    "summaryHeadline": "{cards, plural, =1 {You reviewed 1 card} other {You reviewed # cards}}",
+    "summaryReviews": "Ratings",
+    "summaryRecall": "Recalled",
+    "summaryAgain": "To relearn",
+    "summaryNew": "New words learned",
+    "continue": "Keep reviewing",
+    "end": "End",
+    "progress": "{done}/{total} cards",
+    "progressLabel": "Session progress",
+    "rateTitle": "How well did you remember?",
+    "flip": "Flip card (Space)",
+    "rating": {
+      "again": "Again",
+      "hard": "Hard",
+      "good": "Good",
+      "easy": "Easy"
+    },
+    "interval": {
+      "minute": "{count, plural, =1 {1 min} other {# min}}",
+      "hour": "{count, plural, =1 {1 hr} other {# hr}}",
+      "day": "{count, plural, =1 {1 day} other {# days}}",
+      "month": "{count, plural, =1 {1 mo} other {# mo}}",
+      "year": "{count} yr"
+    },
+    "newLimitTitle": "Today's new-word limit reached",
+    "newLimitHint": "New words unlock again tomorrow.",
+    "newLimitUpgrade": "Upgrade to Pro for up to 30 new words a day",
+    "failed": "{count, plural, =1 {1 review wasn't saved} other {# reviews weren't saved}} (connection lost?).",
+    "retry": "Retry",
+    "moreAvailable": "{due} due cards and {fresh} new words left today.",
+    "nextDue": "The next card is due at {at}.",
+    "allDone": "You've reviewed everything for today.",
+    "state": {
+      "new": "New word",
+      "learning": "Learning",
+      "review": "Review",
+      "relearning": "Relearning"
+    },
+    "cardType": {
+      "vocab": "Vocabulary",
+      "error": "Missed item",
+      "other": "Card"
+    },
+    "speak": "Pronounce (S)",
+    "dictationPrompt": "Listen and type the word",
+    "dictationLabel": "Type the word you hear",
+    "dictationCheck": "Check",
+    "dictationResult": {
+      "correct": "Correct!",
+      "close": "Almost – answer: {word}",
+      "wrong": "Not quite – answer: {word}"
+    },
+    "collocations": "Common phrases",
+    "errorNoStem": "Listening item – recall the correct answer.",
+    "errorCorrect": "Correct answer",
+    "errorNote": "Your note"
+  },
+  "errorLog": {
+    "title": "Error log",
+    "desc": "Every wrong answer is saved and classified automatically. Redo exactly those items so you don't miss them again.",
+    "drill": "{count, plural, =0 {Redo mistakes} =1 {Redo 1 mistake} other {Redo # mistakes}}",
+    "drillSelected": "{count, plural, =1 {Redo 1 selected} other {Redo # selected}}",
+    "drillNone": "No open mistakes left to redo.",
+    "drillFailed": "Couldn't create the redo drill. Please try again.",
+    "examLocked": "You're taking an exam – the error log is locked until you submit.",
+    "taskHint": "Today's task: review mistakes – redo items or mark them understood.",
+    "summaryTitle": "Error log overview",
+    "totalOpen": "Open",
+    "totalResolved": "Understood",
+    "byKind": "By mistake type",
+    "byPart": "By part",
+    "none": "No data yet.",
+    "filtersTitle": "Filters",
+    "statusLabel": "Status",
+    "status": {
+      "open": "Open",
+      "resolved": "Understood",
+      "all": "All"
+    },
+    "kindLabel": "Mistake type",
+    "allKinds": "All types",
+    "partLabel": "Part",
+    "allParts": "All parts",
+    "windowLabel": "Period",
+    "windowDays": "{count, plural, other {Last # days}}",
+    "windowAll": "All time",
+    "sortLabel": "Sort",
+    "sortNewest": "Most recent first",
+    "sortOldest": "Oldest first",
+    "listTitle": "Mistakes",
+    "clearSelection": "Clear selection",
+    "selectMax": "Select up to {max} items per redo.",
+    "empty": "No mistakes match these filters.",
+    "emptyResolved": "Nothing marked as understood yet.",
+    "emptyDesc": "Wrong answers from practice and tests appear here after grading.",
+    "loadMore": "Load more",
+    "resolvedToast": "Marked as understood.",
+    "cardCreatedToast": "Flashcard created for this item.",
+    "patchFailed": "Couldn't save the change.",
+    "kind": {
+      "paraphrase": "Paraphrase",
+      "trap": "Trap",
+      "vocabulary": "Vocabulary",
+      "timeout": "Ran out of time",
+      "grammar": "Grammar",
+      "listening_detail": "Listening detail",
+      "inference": "Inference",
+      "spelling": "Spelling",
+      "tone": "Tone",
+      "pronunciation": "Pronunciation",
+      "other": "Other"
+    },
+    "select": "Select this item to redo",
+    "autoWas": "(auto: {kind})",
+    "occurrences": "{count, plural, =1 {Missed once} other {Missed # times}}",
+    "listeningItem": "Listening item {section} (no printed text)",
+    "yourAnswer": "You chose",
+    "correctAnswer": "Correct answer",
+    "blank": "Left blank",
+    "timeSpent": "Time spent: {seconds} s",
+    "note": "Note",
+    "noteSave": "Save note",
+    "cancel": "Cancel",
+    "noteAdd": "Add note",
+    "noteEdit": "Edit note",
+    "resolve": "Understood",
+    "reopen": "Reopen",
+    "cardCreated": "Flashcard created",
+    "createCard": "Create flashcard",
+    "changeReason": "Change reason",
+    "reasonAuto": "Auto: {kind}",
+    "openReview": "Review item"
+  },
+  "stats": {
+    "title": "Stats",
+    "desc": "Your progress over time.",
+    "generatedAt": "Computed at {at} (refreshed after each graded attempt).",
+    "backDashboard": "Back to overview",
+    "kpiTitle": "Key metrics",
+    "insightsTitle": "Insights",
+    "kpiMinutes": "Minutes this week",
+    "kpiMinutesHint": "Attempts + card reviews (estimated)",
+    "kpiVocab": "Words mastered",
+    "kpiVocabHint": "{learning} learning · {due} due today",
+    "kpiErrors": "Open mistakes",
+    "kpiErrorsHint": "{count} understood",
+    "scoreTitle": "Score over time",
+    "scoreEmpty": "Take a mini test or the diagnostic to see your score over time.",
+    "scoreOne": "Only one estimated score so far ({score}). Do more to see a trend.",
+    "seriesTotal": "Total",
+    "seriesListening": "Listening",
+    "seriesReading": "Reading",
+    "target": "Target {score}",
+    "accuracyTitle": "Accuracy by part (last {days} days vs. before)",
+    "accuracyEmpty": "No answers in the last 60 days.",
+    "subskillTitle": "By sub-skill",
+    "periodCurrent": "Last 30 days",
+    "periodPrevious": "Previous 30 days",
+    "colPart": "Part",
+    "colDelta": "Change",
+    "minutesTitle": "Study minutes per week",
+    "minutesEmpty": "No study time in the last 8 weeks.",
+    "minutesLabel": "Minutes",
+    "minutesValue": "{count, plural, =1 {1 min} other {# min}}",
+    "weekOf": "Week of {date}",
+    "communityTitle": "Compared with learners like you",
+    "percentile": "Ahead of {value}%",
+    "communityOk": "{size} anonymous learners, target band {bucket}.",
+    "communityReason": {
+      "ok": "Enough data.",
+      "no_estimate": "You need an estimated score (diagnostic or mini test) to compare.",
+      "cohort_too_small": "Fewer than 10 learners share your target ({size}) – shown once there's enough data."
+    },
+    "forecastTitle": "Score forecast",
+    "errorsTitle": "Mistakes to review",
+    "errorsCta": "Open error log",
+    "errorsOpen": "open mistakes",
+    "errorsNone": "No mistakes to review – great job!",
+    "vocabTitle": "Words due",
+    "vocabLists": "Word sets",
+    "vocabDue": "cards due",
+    "vocabNew": "new words",
+    "vocabStart": "Review now",
+    "vocabAdd": "Add a word set",
+    "weekTitle": "This week",
+    "weekBody": "{minutes} minutes, {attempts} attempts, {reviews} card reviews, {xp} XP.",
+    "weekDelta": "({delta} min vs. last week)",
+    "weekErrors": "{count, plural, =1 {1 open mistake in your error log.} other {# open mistakes in your error log.}}",
+    "vocabBreakdown": "Vocabulary",
+    "errorsByKind": "Open mistakes by type",
+    "vocab": {
+      "total": "Total cards",
+      "new": "New",
+      "learning": "Learning",
+      "mastered": "Mastered",
+      "due_today": "Due today",
+      "reviews_7d": "Reviews (7 days)"
+    }
+  },
+  "forecast": {
+    "label": {
+      "preliminary_estimate": "Preliminary estimate"
+    },
+    "recommendation": {
+      "need_data": "Take the diagnostic or a mini test to get your first estimated score.",
+      "keep_going": "You're improving – keep your current pace.",
+      "increase_practice": "Your current pace won't reach the target – add more practice each week.",
+      "on_track": "You're on track to hit your target by exam day.",
+      "target_reached": "You've reached your target – consider raising it.",
+      "set_target": "Set a target score and exam date to compare the forecast with your goal."
+    },
+    "range": "range {low}–{high}",
+    "horizon": "Forecast for {date}",
+    "onTrack": "On track for your target",
+    "offTrack": "Not yet enough for {target}"
+  },
+  "consent": {
+    "label": "Cookie consent",
+    "text": "Allingo uses essential cookies so you can sign in and take tests. With your consent, we also measure anonymous visits to improve the product.",
+    "policy": "Privacy policy",
+    "currentAccepted": "(Currently: analytics allowed.)",
+    "currentRejected": "(Currently: essential cookies only.)",
+    "accept": "Allow analytics",
+    "reject": "Essential only",
+    "settings": "Cookie settings"
+  },
+  "marketing": {
+    "footer": {
+      "label": "Links",
+      "toeic": "TOEIC prep",
+      "blog": "Blog",
+      "pricing": "Pricing",
+      "about": "About",
+      "contact": "Contact",
+      "terms": "Terms",
+      "privacy": "Privacy"
+    },
+    "etsTitle": "No affiliation",
+    "etsBody": "TOEIC® is a registered trademark of ETS (Educational Testing Service). Allingo is an independent product and is not affiliated with, sponsored or endorsed by ETS. All practice items are written by Allingo in the publicly known test format; scores shown are estimates, not official scores.",
+    "ogTitle": "AI test prep – the right format, the right plan",
+    "ogKicker": "Languages for everyone",
+    "ogFooter": "TOEIC · IELTS · JLPT · HSK",
+    "pricing": {
+      "heading": "Start free, upgrade when you need to",
+      "freeName": "Free",
+      "freeDesc": "Enough to practise every day.",
+      "proName": "Pro",
+      "proDesc": "For learners racing to exam day.",
+      "popular": "Popular",
+      "cta": "See full pricing",
+      "freeItems": [
+        "Diagnostic and weekly plan",
+        "Part drills and mini tests within limits",
+        "Daily AI explanations",
+        "10 new words a day with FSRS flashcards"
+      ],
+      "proItems": [
+        "Unlimited full mock tests",
+        "Higher AI and tutor limits",
+        "30 new words a day",
+        "AI analysis after every attempt"
+      ]
+    },
+    "toeicFormat": {
+      "title": "TOEIC Listening & Reading format",
+      "part": "Part",
+      "items": "Items",
+      "itemsCount": "{count, plural, other {# items}}",
+      "note": "200 items · about 120 minutes. Allingo follows this structure with self-written items."
+    },
+    "fallback": {
+      "home": {
+        "title": "Allingo – AI test prep",
+        "eyebrow": "Languages for everyone",
+        "heading": "Exam-format practice with AI explanations for every item",
+        "subheading": "Start with a free diagnostic, get a plan for your exam date and study daily with bilingual AI explanations.",
+        "primaryCta": "Take the diagnostic",
+        "secondaryCta": "See pricing",
+        "featuresHeading": "Everything you need to raise your score",
+        "features": [
+          {
+            "icon": "file-check",
+            "title": "Exam format",
+            "body": "Full tests, mini tests and part drills with a real exam timer."
+          },
+          {
+            "icon": "sparkles",
+            "title": "Bilingual AI explanations",
+            "body": "Understand why each option is right or wrong."
+          },
+          {
+            "icon": "route",
+            "title": "A plan to exam day",
+            "body": "Time split by weak skills, adjusted weekly."
+          },
+          {
+            "icon": "notebook-pen",
+            "title": "Error log",
+            "body": "Mistakes grouped by type – redo exactly those items."
+          },
+          {
+            "icon": "layers",
+            "title": "FSRS vocabulary",
+            "body": "Review right before you forget, with TOEIC 600."
+          },
+          {
+            "icon": "chart-line",
+            "title": "Progress stats",
+            "body": "Scores over time, per-part accuracy, a preliminary forecast."
+          }
+        ],
+        "pricingHeading": "Start free, upgrade when you need to",
+        "pricingNote": "Pay with VNPay, MoMo or ZaloPay.",
+        "faqHeading": "Frequently asked questions",
+        "faq": [
+          {
+            "q": "Is Allingo free?",
+            "a": "Yes. Free includes the diagnostic, part drills, AI explanations and vocabulary reviews within daily limits."
+          },
+          {
+            "q": "Are Allingo scores official?",
+            "a": "No. Scaled scores and forecasts are estimates to track progress, not official results."
+          }
+        ],
+        "ctaHeading": "Ready to start?",
+        "ctaBody": "About 25 minutes to find out where you stand and what to study.",
+        "ctaButton": "Create a free account",
+        "seoTitle": "Allingo – AI prep for TOEIC, IELTS, JLPT, HSK",
+        "seoDescription": "Exam-format practice, bilingual AI explanations, a plan to exam day, an error log and FSRS vocabulary reviews."
+      },
+      "toeic": {
+        "title": "TOEIC Listening & Reading prep",
+        "eyebrow": "TOEIC Listening & Reading",
+        "heading": "Practise TOEIC in the real format and see exactly where you slip",
+        "subheading": "7 parts, 200 items – drill each part or take a full test in exam mode, then review every item.",
+        "primaryCta": "Take the TOEIC diagnostic",
+        "secondaryCta": "Read the blog",
+        "featuresHeading": "Part by part",
+        "features": [
+          {
+            "icon": "headphones",
+            "title": "Parts 1–4",
+            "body": "Played once like the real test; transcripts after you submit."
+          },
+          {
+            "icon": "pencil-line",
+            "title": "Parts 5–6",
+            "body": "Grammar, word forms and vocabulary in context – timed."
+          },
+          {
+            "icon": "book-open",
+            "title": "Part 7",
+            "body": "Single, double and triple passages."
+          }
+        ],
+        "pricingHeading": "TOEIC plans",
+        "pricingNote": "Free has a monthly test allowance; Pro has unlimited full tests.",
+        "faqHeading": "TOEIC FAQ",
+        "faq": [
+          {
+            "q": "Are these real TOEIC tests?",
+            "a": "No. All items are written by Allingo in the publicly known format."
+          },
+          {
+            "q": "How soon will my score improve?",
+            "a": "It depends on your starting level and weekly study time; your plan estimates the gain."
+          }
+        ],
+        "ctaHeading": "Get your estimated TOEIC score in 25 minutes",
+        "ctaBody": "An adaptive diagnostic, free.",
+        "ctaButton": "Start free",
+        "seoTitle": "Online TOEIC prep with AI | Allingo",
+        "seoDescription": "TOEIC practice in the real 7-part format, exam mode, bilingual AI explanations, an error log and a target-based plan."
+      }
+    },
+    "comingSoon": {
+      "metaTitle": "{program} prep – coming soon",
+      "metaDescription": "Allingo is opening AI-powered {program} prep soon. Sign up to be notified first.",
+      "title": "{program} prep with AI – coming soon",
+      "formTitle": "Get notified when {program} opens",
+      "formDesc": "We'll only email you when the program opens, plus an early-bird offer.",
+      "points": {
+        "ielts": [
+          "Academic & General Training, all 4 skills",
+          "Writing and Speaking graded against band descriptors",
+          "A plan for your target band and exam date"
+        ],
+        "jlpt": [
+          "N5–N1: vocabulary, grammar, reading, listening",
+          "Kanji and vocabulary flashcards with FSRS",
+          "Bilingual Vietnamese–Japanese explanations"
+        ],
+        "hsk": [
+          "HSK 1–6: listening, reading, writing",
+          "Character writing and tone practice",
+          "Flashcards with Sino-Vietnamese readings"
+        ]
+      }
+    },
+    "waitlist": {
+      "email": "Email",
+      "consent": "I agree to receive notification emails about this program and can unsubscribe at any time.",
+      "privacy": "Privacy policy",
+      "submit": "Notify me",
+      "invalidEmail": "Please enter a valid email.",
+      "consentRequired": "Please agree to receive notification emails.",
+      "accepted": "You're on the list! We'll email you when the program opens.",
+      "unavailable": "The waitlist is opening soon – please check back in a few days. Meanwhile, you can practise TOEIC for free.",
+      "tryToeic": "Practise TOEIC now",
+      "failed": "Couldn't send. Check your connection and try again."
+    },
+    "blog": {
+      "metaTitle": "Test-prep blog",
+      "metaDescription": "Part-by-part TOEIC tips, study plans and guides to using Allingo.",
+      "title": "Blog",
+      "subtitle": "Test tips, study plans and guides to using Allingo.",
+      "empty": "No posts yet – check back soon.",
+      "minutes": "{count, plural, =1 {1 min read} other {# min read}}",
+      "breadcrumb": "Breadcrumb",
+      "fallbackNotice": "This post is currently available in Vietnamese only.",
+      "faq": "FAQ",
+      "aboutAuthor": "About the author",
+      "ctaTitle": "Try a free 25-minute diagnostic",
+      "ctaButton": "Create a free account"
+    },
+    "about": {
+      "title": "About Allingo",
+      "lead": "Allingo – \"Languages for everyone\" – is an AI test-prep platform for Vietnamese learners: practise in the real format, understand your mistakes and do the right task every day.",
+      "sections": [
+        {
+          "title": "What we do",
+          "body": "Self-written practice items in the TOEIC format, bilingual AI explanations for every item, an auto-classified error log, FSRS vocabulary flashcards and a plan anchored to your exam date."
+        },
+        {
+          "title": "Principles",
+          "body": "We never copy real exam items; scores are always labelled as estimates; your learning data is used only to personalise your study and is never sold."
+        },
+        {
+          "title": "Roadmap",
+          "body": "TOEIC is live; IELTS, JLPT and HSK launch in stages. Schools and centres can use Allingo for their classes (B2B)."
+        }
+      ]
+    },
+    "contact": {
+      "title": "Contact",
+      "lead": "Need help with your account, payments or a partnership? Pick a channel below.",
+      "channels": {
+        "email": {
+          "label": "Support email",
+          "value": "hotro@allingo.vn"
+        },
+        "chat": {
+          "label": "In the app",
+          "value": "Send feedback on any explanation or in the AI tutor."
+        },
+        "business": {
+          "label": "Schools & centres",
+          "value": "B2B partnerships: email us with the subject \"B2B\"."
+        }
+      },
+      "sections": [
+        {
+          "title": "Response time",
+          "body": "We reply to emails within 1–2 business days. Invoice and refund requests are prioritised."
+        },
+        {
+          "title": "Personal data",
+          "body": "Deletion and export requests follow our Privacy policy; you can also submit them in Settings."
+        }
+      ]
+    }
   }
 }
