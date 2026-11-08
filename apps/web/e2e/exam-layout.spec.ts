@@ -4,7 +4,7 @@ import { answerCurrent, freshGuestStorage, REAL, startAsGuest, startTestSet } fr
 /**
  * Sprint 3 – bố cục Exam Mode một trang cho Reading Part 5–7: thanh Part (+ phím [ ]), đoạn văn trái – câu hỏi phải
  * có thanh kéo (desktop) / đoạn văn thu gọn được (mobile), câu cùng nhóm hiển thị cùng đoạn văn, mốc [n] tô sáng,
- * tiêu đề phụ [Nhãn] của bộ nhiều đoạn, chế độ tập trung (Z/Esc), cỡ chữ 3 mức lưu localStorage.
+ * bộ nhiều văn bản Part 7 hiện tab từng văn bản (B5/S24), chế độ tập trung (Z/Esc), cỡ chữ 3 mức lưu localStorage.
  * Mock: đề `toeic-reading-mini-01` (3+4+3 câu). API thật: `toeic-reading-full-01` (30/16/54 câu, 75 phút).
  */
 
@@ -85,8 +85,19 @@ test('Reading Part 5–7: thanh Part, đoạn văn + nhóm câu, tập trung, c�
   }
   await expect(page.getByTestId('part-tab-part7')).toHaveAttribute('data-active', 'true');
   await expect(page.getByTestId('question-card')).toContainText(`Câu ${P7_MULTI}/${TOTAL}`);
-  await expect(page.getByTestId('passage-heading').first()).toBeVisible();
-  expect(await page.getByTestId('passage-heading').count()).toBeGreaterThanOrEqual(2);
+  // B5/S24: bộ nhiều văn bản → tab từng văn bản (tablist WAI-ARIA); phím mũi tên trên tab không chuyển câu
+  await expect(page.getByTestId('passage')).toHaveAttribute('data-parts', /^[23]$/);
+  const tabs = page.getByTestId('passage-tablist').getByRole('tab');
+  expect(await tabs.count()).toBeGreaterThanOrEqual(2);
+  await expect(tabs.first()).toHaveAttribute('aria-selected', 'true');
+  await tabs.nth(1).click();
+  await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('passage-panel-2')).toBeVisible();
+  await expect(page.getByTestId('passage-panel-1')).toBeHidden();
+  await page.keyboard.press('ArrowLeft');
+  await expect(tabs.first()).toHaveAttribute('aria-selected', 'true');
+  await expect(tabs.first()).toBeFocused();
+  await expect(page.getByTestId('question-card')).toContainText(`Câu ${P7_MULTI}/${TOTAL}`);
 
   // Chế độ tập trung: ẩn header/thanh Part/lưới, đồng hồ vẫn hiện; Esc thoát
   await page.keyboard.press('z');

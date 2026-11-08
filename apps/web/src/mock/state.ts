@@ -7,6 +7,7 @@ import type { AnswerInput } from '@allingo/schemas/question/answer';
 import type { DiagnosticState } from '@allingo/scoring';
 import type { MockPromotion } from './billing-fixtures';
 import type { MockS12State } from './s12';
+import type { MockContentToolsState } from './content-tools';
 
 /** Trạng thái "máy chủ" giả lập, lưu localStorage để tải lại trang vẫn giữ phiên/nháp */
 
@@ -287,6 +288,8 @@ export interface MockState {
   waitlist: Array<{ program: string; locale: string; at: string }>;
   /** S12: beta, phản hồi, hỗ trợ, MFA, admin vận hành (khởi tạo lười trong s12.ts) */
   s12?: MockS12State;
+  /** B2: hàng chờ duyệt / nhập Excel / AI soạn đề (khởi tạo lười trong content-tools.ts) */
+  contentTools?: MockContentToolsState;
 }
 
 /** S10 – thẻ SRS giả lập */

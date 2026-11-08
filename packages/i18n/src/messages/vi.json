@@ -77,7 +77,8 @@
     "support": "Hỗ trợ",
     "admin": "Quản trị",
     "security": "Bảo mật",
-    "feedback": "Góp ý"
+    "feedback": "Góp ý",
+    "contentAdmin": "Quản trị nội dung"
   },
   "landing": {
     "heroTitle": "Ngoại ngữ cho tất cả",
@@ -413,7 +414,10 @@
     "questionTimerLabel": "{seconds, plural, other {Còn # giây cho câu này}}",
     "questionTimeUp": "Hết giờ câu này",
     "questionTimerLeft": "{seconds} giây",
-    "partTabAria": "{short} {answered}/{total} – {title}, đã trả lời {answered} trên {total} câu"
+    "partTabAria": "{short} {answered}/{total} – {title}, đã trả lời {answered} trên {total} câu",
+    "passageTextN": "Văn bản {n}",
+    "passageTextsLabel": "Các văn bản của bộ đề ({count})",
+    "passageTextsHint": "Bộ {count} văn bản – chọn tab để đọc từng văn bản"
   },
   "result": {
     "title": "Kết quả",
@@ -3405,7 +3409,10 @@
     "content": {
       "tabs": {
         "reports": "Báo lỗi câu hỏi",
-        "stats": "Thống kê câu"
+        "stats": "Thống kê câu",
+        "queue": "Hàng chờ duyệt",
+        "import": "Nhập Excel",
+        "generate": "AI soạn đề"
       },
       "status": {
         "open": "Mở",
@@ -3664,6 +3671,247 @@
       "before": "Trước",
       "after": "Sau",
       "hint": "Hành động kết thúc bằng \".\" hoặc \"*\" là tìm theo tiền tố (vd. user. hoặc beta.*). Mặc định 30 ngày gần nhất."
+    }
+  },
+  "contentTools": {
+    "status": {
+      "draft": "Nháp",
+      "ai_checked": "AI đã kiểm",
+      "review1": "Chờ duyệt vòng 1",
+      "review2": "Chờ duyệt vòng 2",
+      "published": "Đã phát hành",
+      "rejected": "Đã từ chối",
+      "retired": "Đã gỡ"
+    },
+    "source": {
+      "human": "Tự soạn",
+      "ai": "AI",
+      "licensed": "Bản quyền",
+      "user_submitted": "Người dùng gửi"
+    },
+    "verdict": {
+      "pass": "AI: đạt",
+      "needs_change": "AI: cần sửa",
+      "fail": "AI: không đạt"
+    },
+    "queue": {
+      "filters": {
+        "program": "Chương trình",
+        "section": "Part",
+        "status": "Trạng thái",
+        "source": "Nguồn",
+        "duplicate": "Cờ trùng",
+        "createdBy": "Người tạo",
+        "assignee": "Reviewer",
+        "from": "Từ ngày",
+        "to": "Đến ngày",
+        "q": "Tìm trong đề bài",
+        "sort": "Sắp xếp",
+        "order": "Thứ tự"
+      },
+      "dupOnly": "Chỉ câu nghi trùng",
+      "notDup": "Không nghi trùng",
+      "me": "Tôi",
+      "none": "Chưa phân công",
+      "sortBy": {
+        "created_at": "Ngày tạo",
+        "updated_at": "Cập nhật gần nhất",
+        "similarity": "Độ giống (nghi trùng)"
+      },
+      "orderBy": {
+        "desc": "Giảm dần",
+        "asc": "Tăng dần"
+      },
+      "count": "{status}: {n}",
+      "selectAll": "Chọn tất cả câu trên trang",
+      "selectOne": "Chọn câu {stem}",
+      "selected": "Đã chọn {count} câu",
+      "clear": "Bỏ chọn",
+      "approve": "Duyệt",
+      "reject": "Từ chối",
+      "needsChange": "Yêu cầu sửa",
+      "submit": "Gửi duyệt",
+      "assign": "Phân công",
+      "assignTo": "Phân công cho",
+      "unassign": "Bỏ phân công",
+      "assignApply": "Áp dụng",
+      "rejectTitle": "Từ chối {count} câu?",
+      "needsChangeTitle": "Trả {count} câu về nháp để sửa?",
+      "approveTitle": "Duyệt {count} câu?",
+      "submitTitle": "Gửi {count} câu sang duyệt vòng 1?",
+      "decisionDesc": "Mỗi câu đi qua máy trạng thái duyệt 2 lớp (vòng theo trạng thái hiện tại, nguyên tắc 4 mắt ở vòng 2). Câu không hợp lệ được báo riêng, không chặn câu khác.",
+      "reasonLabel": "Lý do (bắt buộc, ít nhất 3 ký tự)",
+      "reasonPlaceholder": "Ví dụ: đáp án B cũng đúng – sửa phương án nhiễu",
+      "bulkDone": "Đã xử lý {ok}/{requested} câu",
+      "bulkFailedTitle": "{failed} câu không xử lý được",
+      "assigned": "Đã phân công {n} câu",
+      "unassigned": "Đã bỏ phân công {n} câu",
+      "shortcuts": "Phím tắt: J/K – câu sau/trước · A – duyệt · R – từ chối · X – chọn/bỏ chọn",
+      "empty": "Không có câu nào khớp bộ lọc.",
+      "noSelection": "Chọn một câu trong danh sách để xem trước.",
+      "listLabel": "Danh sách câu chờ duyệt",
+      "dupBadge": "Nghi trùng {pct}",
+      "errorsBadge": "{n} lỗi",
+      "warningsBadge": "{n} cảnh báo",
+      "assignedTo": "Reviewer: {name}",
+      "by": "Tạo bởi {name}",
+      "pending": "Bản sửa chờ duyệt",
+      "draftTest": "Đề nháp"
+    },
+    "preview": {
+      "title": "Xem trước",
+      "stem": "Đề bài",
+      "options": "Phương án",
+      "correct": "Đáp án đúng",
+      "explanation": "Giải thích",
+      "passage": "Đoạn văn",
+      "aiCheck": "AI kiểm tra",
+      "aiNone": "Chưa có kết quả AI kiểm tra.",
+      "autoChecks": "Kiểm tra tự động",
+      "autoOk": "Không phát hiện lỗi cấu trúc.",
+      "duplicate": "Nghi trùng",
+      "dupNone": "Không thấy câu tương tự vượt ngưỡng.",
+      "dupMethod": {
+        "embedding": "embedding (ngữ nghĩa)",
+        "trigram": "pg_trgm (ký tự)",
+        "in_batch": "trong cùng lô"
+      },
+      "dupOf": "Giống câu {id} – độ giống {pct} ({method})",
+      "similar": "Câu tương tự",
+      "recheck": "Kiểm trùng lại",
+      "rechecked": "Đã kiểm trùng lại",
+      "version": "Phiên bản {n}",
+      "externalRef": "Mã tham chiếu",
+      "createdAt": "Tạo lúc",
+      "level": {
+        "error": "Lỗi",
+        "warning": "Cảnh báo"
+      }
+    },
+    "checks": {
+      "content_invalid": "Nội dung không đúng schema dạng câu ({path})",
+      "type_mismatch": "Dạng câu không khớp ({actual} ≠ {expected})",
+      "stem_missing": "Thiếu đề bài",
+      "answer_key_missing": "Thiếu đáp án đúng",
+      "answer_key_not_in_options": "Đáp án {key} không có trong các phương án",
+      "duplicate_options": "Có phương án trùng nhau",
+      "empty_option": "Có phương án rỗng",
+      "option_count": "Số phương án {actual} khác chuẩn của Part ({expected})",
+      "passage_missing": "Part này cần đoạn văn/script nhưng câu chưa gắn passage",
+      "audio_missing": "Câu Listening chưa có audio (cần TTS/ghi âm trước khi phát hành)",
+      "image_missing": "Part 1 chưa có ảnh",
+      "explanation_missing": "Chưa có giải thích"
+    },
+    "errors": {
+      "invalid_transition": "Không hợp lệ ở trạng thái hiện tại",
+      "role_not_allowed": "Vai trò của bạn không được thực hiện bước này",
+      "four_eyes": "Nguyên tắc 4 mắt: người duyệt vòng 1 không duyệt vòng 2",
+      "note_required": "Cần ghi lý do",
+      "ai_check_failed": "AI kiểm tra kết luận không đạt – sửa trước khi gửi duyệt",
+      "ai_check_only": "Bước AI kiểm tra do hệ thống thực hiện",
+      "generic": "Lỗi: {message}"
+    },
+    "import": {
+      "title": "Nhập câu hỏi từ Excel",
+      "desc": "Tải mẫu, điền câu hỏi (mỗi dòng một câu), tải lên để kiểm tra từng dòng – lỗi hiện theo dòng/cột, câu trùng được phát hiện trước khi ghi. Chỉ ghi khi bạn xác nhận.",
+      "template": "Tải tệp mẫu (.xlsx)",
+      "templateDone": "Đã tải tệp mẫu",
+      "file": "Tệp Excel (.xlsx, ≤ 1 MB)",
+      "skipDup": "Bỏ qua dòng nghi trùng câu đã có (mặc định: vẫn nhập và gắn cờ trong hàng chờ duyệt)",
+      "check": "Kiểm tra (không ghi)",
+      "checking": "Đang kiểm tra…",
+      "confirm": "Xác nhận nhập {count} câu",
+      "writing": "Đang ghi…",
+      "reset": "Chọn tệp khác",
+      "chooseFile": "Chọn tệp .xlsx trước.",
+      "tooLarge": "Tệp lớn hơn 1 MB.",
+      "summary": {
+        "total": "Số dòng",
+        "valid": "Hợp lệ",
+        "errors": "Dòng lỗi",
+        "warnings": "Dòng cảnh báo",
+        "examples": "Dòng ví dụ bỏ qua",
+        "created": "Đã tạo",
+        "skipped": "Bỏ qua"
+      },
+      "issuesTitle": "Lỗi và cảnh báo theo dòng",
+      "row": "Dòng",
+      "column": "Cột",
+      "level": "Mức",
+      "message": "Nội dung",
+      "dryRunDone": "Kiểm tra xong: {valid} dòng hợp lệ, {errors} dòng lỗi",
+      "committed": "Đã nhập {created} câu (nháp) vào hàng chờ duyệt",
+      "openQueue": "Mở hàng chờ duyệt",
+      "noIssues": "Không có lỗi hay cảnh báo.",
+      "fileError": "Không đọc được tệp: {message}",
+      "fingerprintMismatch": "Tệp đã thay đổi so với lần kiểm tra – hãy kiểm tra lại."
+    },
+    "importIssues": {
+      "missing_column": "Thiếu cột bắt buộc: {columns}",
+      "required": "Bắt buộc nhập",
+      "invalid_value": "Giá trị không hợp lệ: {value}",
+      "unsupported_type": "Dạng câu chưa hỗ trợ trong mẫu Excel: {value}",
+      "answer_not_in_options": "Đáp án {value} không có nội dung phương án",
+      "content_invalid": "Nội dung không hợp lệ ({detail})",
+      "too_long": "Quá dài (tối đa {max} ký tự)",
+      "passage_conflict": "Nội dung đoạn văn khác dòng {first_row} cùng passage_key (dùng nội dung dòng đầu)",
+      "duplicate_in_file": "Trùng dòng {of_row} trong tệp (độ giống {similarity})",
+      "duplicate_in_bank": "Nghi trùng câu đã có {question_id} (độ giống {similarity})",
+      "import_key_exists": "Đã nhập trước đó ({value}) – bỏ qua",
+      "unknown_section": "Part không thuộc chương trình: {value}",
+      "too_many_rows": "Quá nhiều dòng"
+    },
+    "generate": {
+      "title": "AI soạn nháp cả đề theo blueprint",
+      "desc": "Chọn số câu mỗi Part, phân bố độ khó và chủ đề. AI soạn câu mới (tên riêng hư cấu, không sao chép đề thật) → AI kiểm tra → lọc trùng → câu nháp vào hàng chờ duyệt, gắn vào một đề nháp.",
+      "program": "Chương trình",
+      "kind": "Loại đề",
+      "kinds": {
+        "mini": "Đề mini",
+        "full": "Đề đầy đủ",
+        "part_drill": "Luyện một Part"
+      },
+      "titleVi": "Tiêu đề đề nháp (tuỳ chọn)",
+      "parts": "Số câu mỗi Part",
+      "partCount": "Số câu {part}",
+      "multiTexts": "Part 7 – số văn bản mỗi bộ ≥ 5 câu",
+      "texts": {
+        "1": "Đoạn đơn",
+        "2": "Bộ đôi",
+        "3": "Bộ ba"
+      },
+      "difficulty": "Phân bố độ khó (%)",
+      "level": "Mức {level}",
+      "topics": "Chủ đề",
+      "total": "Tổng {count} câu",
+      "start": "Bắt đầu soạn đề",
+      "starting": "Đang gửi…",
+      "noParts": "Nhập số câu cho ít nhất một Part.",
+      "progressTitle": "Tiến độ",
+      "phase": {
+        "queued": "Đang chờ",
+        "generate": "AI đang soạn câu",
+        "check": "AI đang kiểm tra",
+        "dedup": "Đang lọc trùng",
+        "done": "Hoàn tất",
+        "validate": "Đang kiểm tra"
+      },
+      "progress": "{done}/{total} câu",
+      "failed": "Soạn đề thất bại: {error}",
+      "summary": {
+        "created": "Câu đã tạo",
+        "invalid": "Không hợp lệ",
+        "duplicates": "Nghi trùng",
+        "pass": "AI đạt",
+        "needs_change": "AI cần sửa",
+        "fail": "AI không đạt"
+      },
+      "shortfall": "Thiếu {missing} câu ở {part}",
+      "openQueue": "Duyệt các câu của đề nháp",
+      "publish": "Phát hành đề nháp",
+      "published": "Đã phát hành đề {code}",
+      "publishBlocked": "Chưa phát hành được: {count} câu chưa được duyệt xong",
+      "code": "Mã đề: {code}"
     }
   }
 }

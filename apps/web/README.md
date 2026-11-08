@@ -493,3 +493,16 @@ packages/ui/src                component dùng chung (Button, Card, Dialog/Sheet
   PWA đỏ. Thanh "Câu sai trước/tiếp" ở Review không còn tràn ngang mobile với font hệ thống rộng (DejaVu Sans trên runner Ubuntu) – nguyên
   nhân gốc các ca click "intercepts pointer events" trên Pixel 7 (trình duyệt thu nhỏ trang tràn ngang). Tái hiện cục bộ:
   `FONTCONFIG_FILE=$PWD/e2e/fonts/ci-like.conf CI=1 pnpm exec playwright test --project=mobile` (ép sans-serif/system-ui = DejaVu Sans, loại Inter – như runner CI).
+
+### Backlog B5 + B2 (09/11/2026)
+
+- **Part 7 nhiều văn bản (S24)**: `passage.parts` → `PassagePane` hiện tablist WAI-ARIA (←/→ vòng, Home/End, chỉ tab chọn có tabIndex 0,
+  phím trên tab không chuyển câu – chặn lan tới phím tắt Exam Mode); tab tự chuyển tới văn bản chứa mốc `[n]` câu đang hỏi; dùng chung ở làm bài,
+  Exam Mode, chẩn đoán, xem lại (`PassageTabs`, `idPrefix` để id không trùng) và hàng chờ duyệt. Passage không có part → như trước.
+- **`/admin/content`** thêm tab **Hàng chờ duyệt** (lọc chương trình/Part/trạng thái/nguồn/cờ trùng/người tạo/reviewer/ngày/từ khoá, sắp xếp;
+  khung xem trước: đáp án, passage + tab, AI check, kiểm tra tự động theo mã i18n `contentTools.checks.*`, cờ trùng + câu tương tự, kiểm trùng lại;
+  hàng loạt duyệt/yêu cầu sửa/từ chối (lý do)/gửi duyệt, phân công reviewer; phím tắt J/K/A/R/X), **Nhập Excel** (tải mẫu, dry-run lỗi theo
+  dòng/cột, xác nhận với fingerprint), **AI soạn đề** (blueprint → tiến độ polling → kết quả → hàng chờ lọc theo đề nháp → phát hành đề nháp).
+  Editor/teacher vào được `/admin/content` (chỉ 3 tab này, nút `nav-content-admin` ở header). API: `src/lib/content-tools-api.ts`; mock:
+  `src/mock/content-tools.ts` (báo cáo nhập cố định theo hợp đồng, fingerprint sha256 thật). E2E: `e2e/part7-tabs.spec.ts`,
+  `e2e/content-tools.spec.ts` (tệp .xlsx tạo bằng `e2e/xlsx-helper.ts`), `exam-layout.spec.ts` kiểm tab thay cho tiêu đề phụ.

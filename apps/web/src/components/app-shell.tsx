@@ -13,7 +13,7 @@ import { TutorProvider } from '@/features/tutor/tutor-provider';
 import { InstallBanner } from '@/features/pwa/install-banner';
 import { Deferred } from './deferred';
 import { SubscriptionBanner } from '@/features/billing/subscription-banner';
-import { isAdmin } from '@/features/admin/is-admin';
+import { isAdmin, isContentStaff } from '@/features/admin/is-admin';
 import { useFlag } from '@/features/flags/flags-provider';
 import type { FlagKey } from '@/lib/flags';
 import { FeedbackButton } from '@/features/feedback/feedback-button';
@@ -100,6 +100,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   title={t('admin')}
                   className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'hidden sm:inline-flex', pathname.startsWith('/admin') && 'bg-secondary')}
                   data-testid="nav-admin"
+                >
+                  <ShieldCheck aria-hidden />
+                </Link>
+              ) : user && isContentStaff(user) ? (
+                // B2: editor/teacher – chỉ mục Nội dung (hàng chờ duyệt, nhập Excel, AI soạn đề)
+                <Link
+                  href="/admin/content"
+                  aria-label={t('contentAdmin')}
+                  title={t('contentAdmin')}
+                  className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'hidden sm:inline-flex', pathname.startsWith('/admin') && 'bg-secondary')}
+                  data-testid="nav-content-admin"
                 >
                   <ShieldCheck aria-hidden />
                 </Link>

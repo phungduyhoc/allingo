@@ -15,6 +15,7 @@ import { growthRoutes, referralHooks } from './growth';
 import { learningPlanMock } from './learning-plan';
 import { s10Mock } from './s10';
 import { s12Mock } from './s12';
+import { contentToolsMock } from './content-tools';
 import { MOCK_DIAGNOSTIC_QUESTIONS, MOCK_DIAGNOSTIC_SET } from './diagnostic-fixtures';
 
 /**
@@ -553,9 +554,14 @@ export function createMockFetch(): typeof fetch {
     },
   });
 
+  // B2: hàng chờ duyệt, nhập Excel, AI soạn đề nháp, phát hành đề nháp
+  const contentTools = contentToolsMock<Route>({ state, persist, route, json, error, uuid, nowIso, currentUser });
+
   const routes: Route[] = [
     // --------------------------------------------------------------------- S12
     ...s12.routes,
+    // --------------------------------------------------------------------- B2
+    ...contentTools.routes,
     // --------------------------------------------------------------------- auth
     route('POST', '/auth/guest', () => {
       const user = makeUser({ is_guest: true, guest_token: `guest_${uuid()}` });

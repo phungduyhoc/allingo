@@ -22,6 +22,7 @@ import { useOptionalTutor } from '@/features/tutor/tutor-provider';
 import { useFlag } from '@/features/flags/flags-provider';
 import { Transcript } from './transcript';
 import { parseTranscript } from './transcript-format';
+import { PassageTabs, partsOf } from '@/features/attempt/passage-pane';
 
 export interface ReviewMedia {
   resolve: (assetId: string | null | undefined, fallback: string) => string;
@@ -129,6 +130,7 @@ export function ReviewItemCard({
   const chosen = yourAnswer?.type === 'mcq_single' ? (yourAnswer.selected ?? undefined) : undefined;
   const transcript = parseTranscript(item.transcript_highlight);
   const audioScript = item.question.passage?.kind === 'audio_script';
+  const passageParts = partsOf(item.question.passage);
   const resolve = media?.resolve ?? ((_id: string | null | undefined, fallback: string) => fallback);
   const onMediaError = () => void media?.refresh();
 
@@ -175,12 +177,17 @@ export function ReviewItemCard({
         </span>
       </header>
 
-      {item.question.passage?.body && !audioScript ? (
-        <details className="mb-3 rounded-lg border border-border bg-background p-3 text-sm">
+      {item.question.passage && !audioScript && (item.question.passage.body || passageParts.length) ? (
+        <details className="mb-3 rounded-lg border border-border bg-background p-3 text-sm" data-testid="review-passage">
           <summary className="cursor-pointer font-medium">{item.question.passage.title ?? ta('passageTitle')}</summary>
-          <div className="mt-2 leading-relaxed whitespace-pre-wrap" data-lookup="">
-            {item.question.passage.body}
-          </div>
+          {passageParts.length ? (
+            // B5/S24: bộ đôi/bộ ba Part 7 – tab từng văn bản (như khi làm bài)
+            <PassageTabs passageId={item.question.passage.id} parts={passageParts} idPrefix={`review-${number}-passage`} className="mt-2" testId="review-passage-tabs" />
+          ) : (
+            <div className="mt-2 leading-relaxed whitespace-pre-wrap" data-lookup="">
+              {item.question.passage.body}
+            </div>
+          )}
         </details>
       ) : null}
 

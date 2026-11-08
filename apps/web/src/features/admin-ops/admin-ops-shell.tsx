@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl';
 import { Alert, AlertDescription, AlertTitle, buttonVariants, cn } from '@allingo/ui';
 import { Link } from '@/i18n/navigation';
 import { useMe } from '@/lib/queries';
-import { isAdmin } from '@/features/admin/is-admin';
+import { isAdmin, isContentStaff } from '@/features/admin/is-admin';
 import { PageHeader } from '@/components/page-header';
 
 import { ADMIN_SECTIONS, type AdminSection } from './sections';
@@ -33,7 +33,10 @@ const ICONS: Record<AdminSection | 'overview' | 'billing', typeof Users> = {
 export function AdminOpsShell({ section, children }: { section: AdminSection | 'overview'; children: React.ReactNode }) {
   const t = useTranslations('adminOps');
   const me = useMe();
-  if (!isAdmin(me.data)) {
+  const admin = isAdmin(me.data);
+  // B2: editor/teacher chỉ vào được mục Nội dung (server vẫn kiểm vai trò từng endpoint)
+  const contentOnly = !admin && section === 'content' && isContentStaff(me.data);
+  if (!admin && !contentOnly) {
     return (
       <Alert variant="destructive" data-testid="admin-forbidden">
         <ShieldAlert aria-hidden />
@@ -42,13 +45,11 @@ export function AdminOpsShell({ section, children }: { section: AdminSection | '
       </Alert>
     );
   }
-  const items: Array<{ key: AdminSection | 'overview' | 'billing'; href: string }> = [
-    { key: 'overview', href: '/admin' },
-    ...ADMIN_SECTIONS.map((s) => ({ key: s, href: `/admin/${s}` })),
-    { key: 'billing', href: '/admin/billing' },
-  ];
+  const items: Array<{ key: AdminSection | 'overview' | 'billing'; href: string }> = contentOnly
+    ? [{ key: 'content', href: '/admin/content' }]
+    : [{ key: 'overview', href: '/admin' }, ...ADMIN_SECTIONS.map((s) => ({ key: s, href: `/admin/${s}` })), { key: 'billing', href: '/admin/billing' }];
   return (
-    <div className="space-y-6" data-testid="admin-ops" data-section={section}>
+    <div className="space-y-6" data-testid="admin-ops" data-section={section} data-content-only={contentOnly || undefined}>
       <PageHeader title={t(`sections.${section}.title`)} description={t(`sections.${section}.desc`)} />
       <nav aria-label={t('navLabel')} className="-mx-1 overflow-x-auto pb-1">
         <ul className="flex w-max gap-1 px-1">

@@ -77,7 +77,8 @@
     "support": "Support",
     "admin": "Admin",
     "security": "Security",
-    "feedback": "Feedback"
+    "feedback": "Feedback",
+    "contentAdmin": "Content admin"
   },
   "landing": {
     "heroTitle": "Languages for everyone",
@@ -413,7 +414,10 @@
     "questionTimerLabel": "{seconds, plural, =1 {1 second left for this question} other {# seconds left for this question}}",
     "questionTimeUp": "Time is up for this question",
     "questionTimerLeft": "{seconds}s",
-    "partTabAria": "{short} {answered}/{total} – {title}, {answered} of {total} answered"
+    "partTabAria": "{short} {answered}/{total} – {title}, {answered} of {total} answered",
+    "passageTextN": "Text {n}",
+    "passageTextsLabel": "Texts in this set ({count})",
+    "passageTextsHint": "Set of {count} texts – use the tabs to read each text"
   },
   "result": {
     "title": "Result",
@@ -3405,7 +3409,10 @@
     "content": {
       "tabs": {
         "reports": "Question reports",
-        "stats": "Item statistics"
+        "stats": "Item statistics",
+        "queue": "Review queue",
+        "import": "Excel import",
+        "generate": "AI test draft"
       },
       "status": {
         "open": "Open",
@@ -3664,6 +3671,247 @@
       "before": "Before",
       "after": "After",
       "hint": "Actions ending in \".\" or \"*\" match by prefix (e.g. user. or beta.*). Defaults to the last 30 days."
+    }
+  },
+  "contentTools": {
+    "status": {
+      "draft": "Draft",
+      "ai_checked": "AI checked",
+      "review1": "Awaiting review 1",
+      "review2": "Awaiting review 2",
+      "published": "Published",
+      "rejected": "Rejected",
+      "retired": "Retired"
+    },
+    "source": {
+      "human": "Human",
+      "ai": "AI",
+      "licensed": "Licensed",
+      "user_submitted": "User submitted"
+    },
+    "verdict": {
+      "pass": "AI: pass",
+      "needs_change": "AI: needs change",
+      "fail": "AI: fail"
+    },
+    "queue": {
+      "filters": {
+        "program": "Program",
+        "section": "Part",
+        "status": "Status",
+        "source": "Source",
+        "duplicate": "Duplicate flag",
+        "createdBy": "Created by",
+        "assignee": "Reviewer",
+        "from": "From",
+        "to": "To",
+        "q": "Search stem",
+        "sort": "Sort",
+        "order": "Order"
+      },
+      "dupOnly": "Suspected duplicates only",
+      "notDup": "Not flagged",
+      "me": "Me",
+      "none": "Unassigned",
+      "sortBy": {
+        "created_at": "Created",
+        "updated_at": "Last updated",
+        "similarity": "Similarity (duplicates)"
+      },
+      "orderBy": {
+        "desc": "Descending",
+        "asc": "Ascending"
+      },
+      "count": "{status}: {n}",
+      "selectAll": "Select all on this page",
+      "selectOne": "Select question {stem}",
+      "selected": "{count} selected",
+      "clear": "Clear selection",
+      "approve": "Approve",
+      "reject": "Reject",
+      "needsChange": "Request changes",
+      "submit": "Submit for review",
+      "assign": "Assign",
+      "assignTo": "Assign to",
+      "unassign": "Unassign",
+      "assignApply": "Apply",
+      "rejectTitle": "Reject {count} question(s)?",
+      "needsChangeTitle": "Send {count} question(s) back to draft?",
+      "approveTitle": "Approve {count} question(s)?",
+      "submitTitle": "Submit {count} question(s) to review 1?",
+      "decisionDesc": "Each question goes through the two-step review state machine (stage by current status, four-eyes rule at review 2). Invalid questions are reported individually and do not block the others.",
+      "reasonLabel": "Reason (required, at least 3 characters)",
+      "reasonPlaceholder": "e.g. option B is also correct – fix the distractor",
+      "bulkDone": "Processed {ok}/{requested} question(s)",
+      "bulkFailedTitle": "{failed} question(s) could not be processed",
+      "assigned": "Assigned {n} question(s)",
+      "unassigned": "Unassigned {n} question(s)",
+      "shortcuts": "Shortcuts: J/K – next/previous · A – approve · R – reject · X – toggle selection",
+      "empty": "No questions match the filters.",
+      "noSelection": "Select a question to preview it.",
+      "listLabel": "Questions awaiting review",
+      "dupBadge": "Duplicate? {pct}",
+      "errorsBadge": "{n} error(s)",
+      "warningsBadge": "{n} warning(s)",
+      "assignedTo": "Reviewer: {name}",
+      "by": "By {name}",
+      "pending": "Pending revision",
+      "draftTest": "Draft test"
+    },
+    "preview": {
+      "title": "Preview",
+      "stem": "Stem",
+      "options": "Options",
+      "correct": "Correct answer",
+      "explanation": "Explanation",
+      "passage": "Passage",
+      "aiCheck": "AI check",
+      "aiNone": "No AI check result yet.",
+      "autoChecks": "Automated checks",
+      "autoOk": "No structural problems found.",
+      "duplicate": "Duplicate check",
+      "dupNone": "No similar question above the threshold.",
+      "dupMethod": {
+        "embedding": "embedding (semantic)",
+        "trigram": "pg_trgm (characters)",
+        "in_batch": "same batch"
+      },
+      "dupOf": "Similar to {id} – similarity {pct} ({method})",
+      "similar": "Similar questions",
+      "recheck": "Re-check duplicates",
+      "rechecked": "Duplicate check refreshed",
+      "version": "Version {n}",
+      "externalRef": "Reference",
+      "createdAt": "Created",
+      "level": {
+        "error": "Error",
+        "warning": "Warning"
+      }
+    },
+    "checks": {
+      "content_invalid": "Content does not match the question schema ({path})",
+      "type_mismatch": "Question type mismatch ({actual} ≠ {expected})",
+      "stem_missing": "Missing stem",
+      "answer_key_missing": "Missing answer key",
+      "answer_key_not_in_options": "Answer {key} is not among the options",
+      "duplicate_options": "Duplicate options",
+      "empty_option": "Empty option",
+      "option_count": "{actual} options – the Part expects {expected}",
+      "passage_missing": "This Part needs a passage/script but none is attached",
+      "audio_missing": "Listening question has no audio yet (TTS/recording needed before publishing)",
+      "image_missing": "Part 1 question has no photo",
+      "explanation_missing": "No explanation"
+    },
+    "errors": {
+      "invalid_transition": "Not allowed in the current status",
+      "role_not_allowed": "Your role cannot perform this step",
+      "four_eyes": "Four-eyes rule: the review 1 approver cannot approve review 2",
+      "note_required": "A reason is required",
+      "ai_check_failed": "AI check failed – fix before submitting",
+      "ai_check_only": "The AI check step is run by the system",
+      "generic": "Error: {message}"
+    },
+    "import": {
+      "title": "Import questions from Excel",
+      "desc": "Download the template, fill one question per row, upload to check every row – errors are shown per row/column and duplicates are detected before anything is written. Nothing is written until you confirm.",
+      "template": "Download template (.xlsx)",
+      "templateDone": "Template downloaded",
+      "file": "Excel file (.xlsx, ≤ 1 MB)",
+      "skipDup": "Skip rows that look like existing questions (default: import and flag them in the review queue)",
+      "check": "Check (no write)",
+      "checking": "Checking…",
+      "confirm": "Confirm import of {count} question(s)",
+      "writing": "Writing…",
+      "reset": "Choose another file",
+      "chooseFile": "Choose an .xlsx file first.",
+      "tooLarge": "The file is larger than 1 MB.",
+      "summary": {
+        "total": "Rows",
+        "valid": "Valid",
+        "errors": "Rows with errors",
+        "warnings": "Rows with warnings",
+        "examples": "Example rows skipped",
+        "created": "Created",
+        "skipped": "Skipped"
+      },
+      "issuesTitle": "Errors and warnings by row",
+      "row": "Row",
+      "column": "Column",
+      "level": "Level",
+      "message": "Message",
+      "dryRunDone": "Check complete: {valid} valid row(s), {errors} row(s) with errors",
+      "committed": "Imported {created} draft question(s) into the review queue",
+      "openQueue": "Open review queue",
+      "noIssues": "No errors or warnings.",
+      "fileError": "Cannot read the file: {message}",
+      "fingerprintMismatch": "The file changed since the check – please check again."
+    },
+    "importIssues": {
+      "missing_column": "Missing required column(s): {columns}",
+      "required": "Required",
+      "invalid_value": "Invalid value: {value}",
+      "unsupported_type": "Question type not supported by the Excel template: {value}",
+      "answer_not_in_options": "Answer {value} has no option text",
+      "content_invalid": "Invalid content ({detail})",
+      "too_long": "Too long (max {max} characters)",
+      "passage_conflict": "Passage text differs from row {first_row} with the same passage_key (the first row is used)",
+      "duplicate_in_file": "Duplicate of row {of_row} in the file (similarity {similarity})",
+      "duplicate_in_bank": "Looks like existing question {question_id} (similarity {similarity})",
+      "import_key_exists": "Already imported ({value}) – skipped",
+      "unknown_section": "Part not in the program: {value}",
+      "too_many_rows": "Too many rows"
+    },
+    "generate": {
+      "title": "AI drafts a whole test from a blueprint",
+      "desc": "Choose the number of questions per Part, the difficulty mix and topics. AI writes new items (fictional names, never copied from real tests) → AI check → duplicate filter → draft questions in the review queue, attached to a draft test.",
+      "program": "Program",
+      "kind": "Test type",
+      "kinds": {
+        "mini": "Mini test",
+        "full": "Full test",
+        "part_drill": "Single-Part drill"
+      },
+      "titleVi": "Draft title (optional)",
+      "parts": "Questions per Part",
+      "partCount": "Questions in {part}",
+      "multiTexts": "Part 7 – texts per set of ≥ 5 questions",
+      "texts": {
+        "1": "Single text",
+        "2": "Double",
+        "3": "Triple"
+      },
+      "difficulty": "Difficulty mix (%)",
+      "level": "Level {level}",
+      "topics": "Topics",
+      "total": "Total {count} questions",
+      "start": "Start drafting",
+      "starting": "Sending…",
+      "noParts": "Enter a number of questions for at least one Part.",
+      "progressTitle": "Progress",
+      "phase": {
+        "queued": "Queued",
+        "generate": "AI is writing items",
+        "check": "AI is checking",
+        "dedup": "Filtering duplicates",
+        "done": "Done",
+        "validate": "Validating"
+      },
+      "progress": "{done}/{total} questions",
+      "failed": "Drafting failed: {error}",
+      "summary": {
+        "created": "Created",
+        "invalid": "Invalid",
+        "duplicates": "Suspected duplicates",
+        "pass": "AI pass",
+        "needs_change": "AI needs change",
+        "fail": "AI fail"
+      },
+      "shortfall": "{missing} question(s) missing in {part}",
+      "openQueue": "Review this draft's questions",
+      "publish": "Publish draft test",
+      "published": "Published test {code}",
+      "publishBlocked": "Cannot publish yet: {count} question(s) are not fully reviewed",
+      "code": "Code: {code}"
     }
   }
 }

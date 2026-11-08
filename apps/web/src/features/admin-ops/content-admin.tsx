@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import dynamic from 'next/dynamic';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Calculator, PencilLine } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -10,22 +11,46 @@ import { Badge, Button, cn, Label, NativeSelect, Tabs, TabsList, TabsTrigger } f
 import { getErrorCode } from '@/lib/errors';
 import { getQuestionStats, listContentReports, patchContentReport, recomputeQuestionStats, s12Keys, type ContentReportItem, type QuestionStats } from '@/lib/s12-api';
 import { DataTable, FilterBar, ShortId, useCursorList, When } from '@/features/admin/ui';
+import { isAdmin } from '@/features/admin/is-admin';
+import { CardSkeleton } from '@/components/states';
+import { useMe } from '@/lib/queries';
 import { ConfirmDialog } from './confirm-dialog';
 import { JsonBlock, pct, useSubTab } from './admin-ops-shell';
 
-const TABS = ['reports', 'stats'] as const;
+const TABS = ['queue', 'reports', 'stats', 'import', 'generate'] as const;
+/** B2: editor/teacher (không phải admin) chỉ dùng công cụ sản xuất nội dung – báo lỗi/thống kê là endpoint admin */
+const STAFF_TABS = ['queue', 'import', 'generate'] as const;
+type Tab = (typeof TABS)[number];
+const loadingTab = () => <CardSkeleton lines={6} />;
+const ReviewQueue = dynamic(() => import('@/features/content-tools/review-queue').then((m) => m.ReviewQueue), { loading: loadingTab });
+const ExcelImport = dynamic(() => import('@/features/content-tools/excel-import').then((m) => m.ExcelImport), { loading: loadingTab });
+const DraftTest = dynamic(() => import('@/features/content-tools/draft-test').then((m) => m.DraftTest), { loading: loadingTab });
 type ReportStatus = (typeof CONTENT_REPORT_STATUSES)[number];
 const REC_VARIANT: Record<string, 'destructive' | 'gold' | 'success' | 'muted'> = { retire: 'destructive', review: 'gold', ok: 'success', insufficient_data: 'muted' };
 
-/** Nội dung: hàng đợi báo lỗi câu (SLA 48 giờ – cùng dữ liệu CMS) + thống kê câu (p-value, phân biệt, đề xuất retire/review) */
+/**
+ * Nội dung: hàng chờ duyệt (B2), báo lỗi câu (SLA 48 giờ – cùng dữ liệu CMS), thống kê câu (p-value, phân biệt, đề xuất retire/review),
+ * nhập Excel và AI soạn nháp cả đề (B2). Editor/teacher chỉ thấy các tab công cụ sản xuất nội dung.
+ */
 export function ContentAdmin({ initialTab }: { initialTab: string | null }) {
   const t = useTranslations('adminOps');
-  const [tab, go] = useSubTab(TABS, initialTab);
+  const me = useMe();
+  const tabs: readonly Tab[] = isAdmin(me.data) ? TABS : STAFF_TABS;
+  const [tab, go] = useSubTab(tabs, initialTab);
+  const [testSetId, setTestSetId] = React.useState<string | null>(() => (typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('test_set')));
+  const openQueue = (id: string | null) => {
+    setTestSetId(id);
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set('test_set', id);
+    else url.searchParams.delete('test_set');
+    window.history.replaceState(null, '', `${url.pathname}${url.search}`);
+    go('queue');
+  };
   return (
     <div className="space-y-6">
-      <Tabs value={tab} onValueChange={(v) => go(v as (typeof TABS)[number])}>
-        <TabsList aria-label={t('sections.content.title')}>
-          {TABS.map((k) => (
+      <Tabs value={tab} onValueChange={(v) => go(v as Tab)}>
+        <TabsList aria-label={t('sections.content.title')} className="h-auto flex-wrap">
+          {tabs.map((k) => (
             <TabsTrigger key={k} value={k} data-testid={`content-tab-${k}`}>
               {t(`content.tabs.${k}`)}
             </TabsTrigger>
@@ -33,7 +58,11 @@ export function ContentAdmin({ initialTab }: { initialTab: string | null }) {
         </TabsList>
       </Tabs>
       <div role="tabpanel" aria-label={t(`content.tabs.${tab}`)}>
-        {tab === 'reports' ? <ReportsTab /> : <StatsTab />}
+        {tab === 'queue' ? <ReviewQueue key={testSetId ?? 'all'} initialTestSetId={testSetId} /> : null}
+        {tab === 'reports' ? <ReportsTab /> : null}
+        {tab === 'stats' ? <StatsTab /> : null}
+        {tab === 'import' ? <ExcelImport onOpenQueue={() => openQueue(null)} /> : null}
+        {tab === 'generate' ? <DraftTest onOpenQueue={(id) => openQueue(id)} /> : null}
       </div>
     </div>
   );

@@ -17,7 +17,7 @@ export interface MockQuestion {
   /** `transcript`: transcript audio của câu (Part 1/2 – như media_assets.transcript), chỉ trả trong Review/feedback */
   media: { id: string; kind: string; url: string; duration_ms: number | null; transcript?: MockTranscript }[];
   /** Part 3/4: passage `audio_script` – `body` là transcript (ẩn khi đang làm bài), `segments` mốc thời gian để tô sáng */
-  passage: { id: string; kind: string; title: string | null; body: string | null; media_url: string | null; media_asset_id?: string; segments?: MockSegment[] } | null;
+  passage: { id: string; kind: string; title: string | null; body: string | null; media_url: string | null; media_asset_id?: string; segments?: MockSegment[]; parts?: Array<{ id: string; sort_order: number; title: string | null; body: string }> } | null;
   /** % cộng đồng đúng (giả lập) */
   community_correct_rate: number;
 }
@@ -428,17 +428,10 @@ Daniel Huynh`,
   media_url: null,
 };
 
-const P7_PASSAGE = {
-  id: uid(3, 'eeee'),
-  kind: 'double',
-  title: 'Notice + E-mail',
-  body: `[Notice]
-Riverside Community Library – Summer Hours
+const P7_NOTICE = `Riverside Community Library – Summer Hours
 
-From 1 July to 31 August, the library will open at 9:00 A.M. and close at 6:00 P.M. on weekdays. On Saturdays, the library will close at 1:00 P.M. The library will be closed on Sundays during the summer.
-
-[E-mail]
-From: Mai Linh Tran
+From 1 July to 31 August, the library will open at 9:00 A.M. and close at 6:00 P.M. on weekdays. On Saturdays, the library will close at 1:00 P.M. The library will be closed on Sundays during the summer.`;
+const P7_EMAIL = `From: Mai Linh Tran
 To: Riverside Community Library
 Date: 3 July
 Subject: Study room booking
@@ -448,8 +441,19 @@ Hello,
 I would like to book a study room for a group of five students on Saturday, 12 July, from 11:00 A.M. to 3:00 P.M. Could you let me know whether a room is available?
 
 Thank you,
-Mai Linh Tran`,
+Mai Linh Tran`;
+
+/** Bộ đôi Part 7: `body` gộp `[Tiêu đề]` (dự phòng như API) + `parts` từng văn bản (B5/S24 – tab trên giao diện) */
+const P7_PASSAGE = {
+  id: uid(3, 'eeee'),
+  kind: 'reading_passage',
+  title: 'Notice + E-mail',
+  body: `[Notice]\n${P7_NOTICE}\n\n[E-mail]\n${P7_EMAIL}`,
   media_url: null,
+  parts: [
+    { id: uid(31, 'eeee'), sort_order: 1, title: 'Notice', body: P7_NOTICE },
+    { id: uid(32, 'eeee'), sort_order: 2, title: 'E-mail', body: P7_EMAIL },
+  ],
 };
 
 /** Đề mini Reading 3 Part (5–6–7) để thử thanh Part, đoạn văn chia đôi màn hình, nhóm câu chung đoạn văn (Sprint 3) */
