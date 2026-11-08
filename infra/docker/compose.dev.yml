@@ -49,8 +49,12 @@ services:
     volumes:
       - meili:/meili_data
 
+  # MinIO đã ngừng phát hành image cộng đồng (Docker Hub xoá minio/minio, minio/mc ngày 11/09/2026; quay.io đóng 24/09/2026).
+  # Dev mặc định dùng driver lưu trữ fs (.env STORAGE_DRIVER=fs, ADR-0025) – hai dịch vụ dưới chỉ chạy khi bật profile `s3`
+  # (`docker compose --profile s3 …`) và cần thay image S3 tương thích đã chọn qua ADR (SPEC-ISSUES S143).
   minio:
     image: minio/minio:latest
+    profiles: ['s3']
     container_name: allingo-minio
     command: server /data --console-address ':9001'
     environment:
@@ -70,6 +74,7 @@ services:
   # Tạo bucket media/recordings/invoices một lần (invoices: PDF hoá đơn – Sprint 8)
   minio-init:
     image: minio/mc:latest
+    profiles: ['s3']
     depends_on:
       minio:
         condition: service_healthy

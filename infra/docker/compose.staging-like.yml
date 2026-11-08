@@ -78,6 +78,8 @@ services:
     volumes:
       - meili:/meili_data
 
+  # CẢNH BÁO: Docker Hub đã xoá minio/minio và minio/mc (11/09/2026) – thay bằng image S3 tương thích chọn qua ADR
+  # trước khi chạy tệp này (SPEC-ISSUES S143).
   minio:
     image: minio/minio:latest
     command: server /data
