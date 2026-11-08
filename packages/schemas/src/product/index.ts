@@ -150,6 +150,19 @@ export const DOMAIN_EVENTS = {
   LESSON_COMPLETED: 'lesson.completed',
   /** S10: sổ lỗi cập nhật sau attempt.graded (số mục mới/gộp) – analytics xoá cache thống kê */
   ERROR_LOG_UPDATED: 'error_log.updated',
+  /** S12: beta kín & phản hồi */
+  WAITLIST_JOINED: 'waitlist.joined',
+  BETA_INVITED: 'beta.invited',
+  BETA_REDEEMED: 'beta.redeemed',
+  SURVEY_SUBMITTED: 'survey.submitted',
+  FEEDBACK_SUBMITTED: 'feedback.submitted',
+  CONTENT_REPORT_CREATED: 'content_report.created',
+  CONTENT_REPORT_RESOLVED: 'content_report.resolved',
+  SUPPORT_TICKET_CREATED: 'support_ticket.created',
+  SUPPORT_TICKET_REPLIED: 'support_ticket.replied',
+  /** S12: admin khoá/mở tài khoản */
+  USER_LOCKED: 'user.locked',
+  USER_UNLOCKED: 'user.unlocked',
 } as const;
 export type DomainEvent = (typeof DOMAIN_EVENTS)[keyof typeof DOMAIN_EVENTS];
 
@@ -192,6 +205,14 @@ export const JOB_NAMES = {
   SRS_OPTIMIZE: 'srs.optimize',
   /** S10 – email/in-app tóm tắt tuần sáng thứ Hai (giờ VN) */
   WEEKLY_SUMMARY: 'notify.weekly_summary',
+  /** S12 – thống kê câu từ attempt_answers (p-value, point-biserial, thời gian TB, báo lỗi) – 02:30 giờ VN */
+  CONTENT_STATS_NIGHTLY: 'content.stats_nightly',
+  /** S12 – dọn dữ liệu theo chính sách lưu giữ (ghi âm hết hạn + S3, ai_tasks, outbox/thông báo/audit cũ) – 03:30 giờ VN */
+  RETENTION_CLEANUP: 'ops.retention_cleanup',
+  /** S12 – gửi email mời beta theo đợt (≤ daily_invite_limit/ngày giờ VN) + hết hạn mã */
+  BETA_INVITES_SEND: 'beta.invites_send',
+  /** S12 – cảnh báo SLA (báo lỗi câu 48 giờ, ticket phản hồi đầu 24 giờ) */
+  SLA_CHECK: 'ops.sla_check',
 } as const;
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
 

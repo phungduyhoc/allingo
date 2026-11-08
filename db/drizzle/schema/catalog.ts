@@ -308,6 +308,9 @@ export const catalogQuestions = catalog.table(
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
     retiredAt: timestamp('retired_at', { withTimezone: true, mode: 'date' }),
+    // v1.1 – Sprint 12 (migration 0009): thống kê câu (content.stats_nightly)
+    stats: jsonb().$type<Record<string, unknown>>(),
+    statsUpdatedAt: timestamp('stats_updated_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
     index('ix_questions_irt')

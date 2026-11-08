@@ -227,6 +227,8 @@ export const notesListQuerySchema = z.object({
   question_id: uuidSchema.optional(),
   attempt_id: uuidSchema.optional(),
   test_set_id: uuidSchema.optional(),
+  /** S12 (fix web S10): `system_summary` = tóm tắt tiến bộ AI (summarize_attempt, mỗi 3 bài) – mặc định ghi chú của người học */
+  kind: z.enum(['user', 'system_summary']).default('user'),
   cursor: z.string().max(512).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -239,6 +241,10 @@ export const noteSchema = z.object({
   test_set_id: uuidSchema.nullable(),
   created_at: z.string().nullable(),
   updated_at: z.string(),
+  /** S12: loại ghi chú; `summary` (JSON summarize_attempt) + `attempt_ids` chỉ có với system_summary */
+  kind: z.enum(['user', 'system_summary']).optional(),
+  summary: z.record(z.string(), z.unknown()).nullable().optional(),
+  attempt_ids: z.array(uuidSchema).optional(),
 });
 export type Note = z.infer<typeof noteSchema>;
 

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { isoDateSchema, localizedTextSchema, programCodeSchema, uuidSchema } from '../common.js';
-import { questionPublicSchema } from './attempt.js';
+import { questionPublicSchema, transcriptHighlightSchema } from './attempt.js';
 import { srsCardSchema, SRS_CARD_TYPES, SRS_STATES } from './learning-tools.js';
 
 /**
@@ -159,6 +159,8 @@ export const errorLogEntrySchema = z.object({
   reason_auto: z.record(z.string(), z.unknown()),
   reason_override: errorKindSchema.nullable(),
   question: questionPublicSchema.nullable(),
+  /** S12 (fix web S10): transcript/chữ được đọc trong audio (Part 1–4) – như review; null nếu không có */
+  transcript_highlight: transcriptHighlightSchema.nullable().optional(),
   question_id: uuidSchema.nullable(),
   question_version_id: uuidSchema.nullable(),
   section_code: z.string().nullable(),
@@ -218,12 +220,38 @@ export const errorDrillInputSchema = z.object({
 });
 export type ErrorDrillInput = z.infer<typeof errorDrillInputSchema>;
 
+// ----------------------------------------------------------------------------- Thang điểm từng điểm số (S12 – fix web S10)
+/**
+ * Phần điểm của một bài: `total` (thang tổng – TOEIC 10–990) hoặc một kỹ năng (`listening`/`reading` – TOEIC 5–495, khi đề chỉ có
+ * một kỹ năng, vd mini Listening). current_estimate/forecast chỉ dùng điểm `total`.
+ */
+export const SCORE_PARTS = ['total', 'listening', 'reading'] as const;
+export const scorePartSchema = z.enum(SCORE_PARTS);
+export type ScorePart = (typeof SCORE_PARTS)[number];
+export function scorePartOf(scaled: { total?: number | null; listening?: number | null; reading?: number | null } | null | undefined): ScorePart {
+  if (!scaled) return 'total';
+  if (scaled.total !== null && scaled.total !== undefined) return 'total';
+  const l = scaled.listening !== null && scaled.listening !== undefined;
+  const r = scaled.reading !== null && scaled.reading !== undefined;
+  // Bản ghi cũ không có khoá total nhưng đủ hai kỹ năng → thang tổng
+  if (l && r) return 'total';
+  if (l) return 'listening';
+  if (scaled.reading !== null && scaled.reading !== undefined) return 'reading';
+  return 'total';
+}
+export function scoreScaleOf(program: string, part: ScorePart): { min: number; max: number } {
+  if (program === 'toeic') return part === 'total' ? { min: 10, max: 990 } : { min: 5, max: 495 };
+  if (program === 'ielts') return { min: 0, max: 9 };
+  if (program === 'jlpt') return { min: 0, max: 180 };
+  return { min: 0, max: 300 };
+}
+
 // ----------------------------------------------------------------------------- Thống kê (mở rộng Stats – S10)
 const accuracyCell = z.object({ correct: z.number().int(), total: z.number().int(), accuracy: z.number().nullable() });
 export const accuracyCompareSchema = z.object({ current: accuracyCell, previous: accuracyCell, delta: z.number().nullable() });
 export const statsS10Schema = z.object({
   /** Điểm theo thời gian: bài có thang điểm (exam/mini/full/diagnostic) */
-  score_history: z.array(z.object({ date: z.string(), at: z.string(), score: z.number(), listening: z.number().nullable(), reading: z.number().nullable(), kind: z.string().nullable(), mode: z.string(), attempt_id: uuidSchema })),
+  score_history: z.array(z.object({ date: z.string(), at: z.string(), score: z.number(), listening: z.number().nullable(), reading: z.number().nullable(), kind: z.string().nullable(), mode: z.string(), attempt_id: uuidSchema, part: scorePartSchema.optional(), scale: z.object({ min: z.number(), max: z.number() }).optional() })),
   /** Độ chính xác 30 ngày gần nhất vs 30 ngày trước đó theo Part và subskill */
   accuracy: z.object({ window_days: z.number().int(), by_section: z.record(z.string(), accuracyCompareSchema), by_subskill: z.record(z.string(), accuracyCompareSchema) }),
   /** Phút học theo tuần (8 tuần, thứ Hai đầu tuần theo giờ người học): bài làm + ôn thẻ (ước tính 10 giây/thẻ) */
@@ -284,7 +312,8 @@ export const attributionInputSchema = z.object({
 });
 export type AttributionInput = z.infer<typeof attributionInputSchema>;
 
-export const FUNNEL_EVENTS = ['landing_view', 'signup_start', 'signup_done', 'diagnostic_done', 'first_attempt', 'checkout_start', 'order_paid'] as const;
+/** S12: + sự kiện beta (server, từ outbox): beta_redeemed, survey_submitted, feedback_submitted, content_reported, support_ticket_created */
+export const FUNNEL_EVENTS = ['landing_view', 'signup_start', 'signup_done', 'diagnostic_done', 'first_attempt', 'checkout_start', 'order_paid', 'beta_redeemed', 'survey_submitted', 'feedback_submitted', 'content_reported', 'support_ticket_created'] as const;
 export type FunnelEvent = (typeof FUNNEL_EVENTS)[number];
 /** Sự kiện client được phép gửi qua POST /analytics/events (còn lại do server phát từ outbox) */
 export const CLIENT_FUNNEL_EVENTS = ['landing_view', 'signup_start', 'checkout_start'] as const;

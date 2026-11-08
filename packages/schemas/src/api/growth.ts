@@ -26,6 +26,12 @@ export const NOTIFICATION_TEMPLATE_CODES = [
   'learning.plan_adjust_ready',
   'admin.invoice_failed',
 ] as const;
+/**
+ * S12 – mẫu mới phía server (API render title/body vào payload). CHƯA gộp vào NOTIFICATION_TEMPLATE_CODES vì web kiểm tra mọi
+ * mã có bản dịch (notification-text.ts) – agent web gộp khi thêm bản dịch vi/en (SPEC-ISSUES S136).
+ */
+export const S12_NOTIFICATION_TEMPLATE_CODES = ['support.reply', 'content.report_resolved', 'beta.invite'] as const;
+export type S12NotificationTemplateCode = (typeof S12_NOTIFICATION_TEMPLATE_CODES)[number];
 export type NotificationTemplateCode = (typeof NOTIFICATION_TEMPLATE_CODES)[number];
 
 /** Sự kiện Socket.IO (namespace /ws, room user:<id>) khi có thông báo in-app mới – v1.1 S8 */

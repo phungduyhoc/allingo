@@ -50,6 +50,10 @@ export const ERROR_CODES = [
   'rate_limited',
   'exam_mode_locked',
   'feature_disabled',
+  /** S12: beta kín – tài khoản chưa đổi mã mời khi `ff.growth.beta_gate` bật */
+  'beta_required',
+  /** S12: admin/superadmin cần xác minh TOTP (step-up) cho endpoint quản trị */
+  'mfa_required',
   'internal',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

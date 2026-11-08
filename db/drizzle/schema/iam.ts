@@ -14,6 +14,8 @@ import {
   inet,
   pgPolicy,
   primaryKey,
+  bigint,
+  check,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { citext } from './_types.js';
@@ -27,6 +29,8 @@ export const iamConsentType = iam.enum('consent_type', [
   'voice_processing',
   'marketing',
   'minor_guardian',
+  // v1.1 – Sprint 12 (migration 0009)
+  'refund_policy',
 ]);
 
 export const iamOrgRole = iam.enum('org_role', ['org_admin', 'teacher', 'learner']);
@@ -97,6 +101,8 @@ export const iamSessions = iam.table(
     revokedAt: timestamp('revoked_at', { withTimezone: true, mode: 'date' }),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true, mode: 'date' }),
+    // v1.1 – Sprint 12 (migration 0009): phiên đã xác minh TOTP (step-up admin)
+    mfaVerifiedAt: timestamp('mfa_verified_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
     index('ix_sessions_user_active')
@@ -301,5 +307,30 @@ export const iamOrgMemberships = iam.table(
       to: ['public'],
       using: sql`((current_setting('app.role'::text, true) = ANY (ARRAY['admin'::text, 'superadmin'::text, 'service'::text])) OR ((org_id)::text = current_setting('app.org_id'::text, true)) OR ((user_id)::text = current_setting('app.user_id'::text, true)))`,
     }),
+  ],
+);
+
+// v1.1 – Sprint 12 (migration 0009): MFA TOTP cho admin/superadmin (secret mã hoá, mã khôi phục băm)
+export const iamMfaFactors = iam.table(
+  'mfa_factors',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    userId: uuid('user_id').notNull(),
+    kind: text().default('totp').notNull(),
+    secretEnc: text('secret_enc').notNull(),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true, mode: 'date' }),
+    lastUsedStep: bigint('last_used_step', { mode: 'number' }),
+    recoveryCodes: jsonb('recovery_codes').$type<Array<{ hash: string; used_at: string | null }>>().default([]).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [iamUsers.id],
+      name: 'mfa_factors_user_id_fkey',
+    }).onDelete('cascade'),
+    unique('mfa_factors_user_id_kind_key').on(table.userId, table.kind),
+    check('mfa_factors_kind_check', sql`kind = 'totp'::text`),
   ],
 );

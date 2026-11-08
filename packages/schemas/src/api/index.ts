@@ -10,6 +10,7 @@ export * from './billing.js';
 export * from './growth.js';
 export * from './learning-plan.js';
 export * from './learning-s10.js';
+export * from './s12.js';
 import { attributionInputSchema, statsS10Schema } from './learning-s10.js';
 
 // ----------------------------------------------------------------------------- Auth / Me
@@ -99,7 +100,7 @@ export type OAuthInput = z.infer<typeof oauthInputSchema>;
 export const deletionRequestResultSchema = z.object({ status: z.literal('scheduled'), due_at: z.string(), request_id: uuidSchema });
 
 export const roleGrantInputSchema = z.object({
-  role_code: z.enum(['learner', 'teacher', 'editor', 'admin', 'org_admin', 'service']),
+  role_code: z.enum(['learner', 'teacher', 'editor', 'admin', 'org_admin', 'service', 'beta_tester']),
   program_code: programCodeSchema.optional(),
   action: z.enum(['grant', 'revoke']).default('grant'),
 });
@@ -150,7 +151,8 @@ export const sessionSchema = z.object({
   current: z.boolean(),
 });
 
-export const CONSENT_TYPES = ['terms', 'privacy', 'voice_processing', 'marketing', 'minor_guardian'] as const;
+/** v1.1 – S12: `refund_policy` (chính sách hoàn tiền có phiên bản); tài liệu `voice_consent` ghi đồng ý loại `voice_processing` */
+export const CONSENT_TYPES = ['terms', 'privacy', 'voice_processing', 'marketing', 'minor_guardian', 'refund_policy'] as const;
 export const consentInputSchema = z.object({
   type: z.enum(CONSENT_TYPES),
   granted: z.boolean(),

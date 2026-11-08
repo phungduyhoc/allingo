@@ -1,7 +1,8 @@
 // ⚠️ Tệp sinh tự động bởi db/scripts/organize-schema.ts từ drizzle-kit pull. Không sửa tay —
 // thay đổi schema = migration SQL mới trong db/drizzle/migrations + cập nhật docs/spec/allingo-schema.sql, rồi chạy pnpm schema:refresh.
 
-import { unique, uuid, text, smallint, timestamp, index, foreignKey, jsonb } from 'drizzle-orm/pg-core';
+import { unique, uuid, text, smallint, timestamp, index, foreignKey, jsonb, boolean, check, uniqueIndex } from 'drizzle-orm/pg-core';
+import { citext } from './_types.js';
 import { sql } from 'drizzle-orm';
 import { ops } from './_common.js';
 import { iamUsers } from './iam.js';
@@ -106,6 +107,8 @@ export const opsFeedback = ops.table(
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
   },
   (table) => [
+    // v1.1 – Sprint 12: hàng đợi admin
+    index('ix_feedback_status').using('btree', table.status.asc().nullsLast(), table.createdAt.desc().nullsFirst()),
     foreignKey({
       columns: [table.userId],
       foreignColumns: [iamUsers.id],
@@ -126,8 +129,17 @@ export const opsContentReports = ops.table(
     resolvedBy: uuid('resolved_by'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
     resolvedAt: timestamp('resolved_at', { withTimezone: true, mode: 'date' }),
+    // v1.1 – Sprint 12 (migration 0009)
+    message: text(),
+    resolutionNote: text('resolution_note'),
+    slaDueAt: timestamp('sla_due_at', { withTimezone: true, mode: 'date' }),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
   },
   (table) => [
+    index('ix_content_reports_status_due').using('btree', table.status.asc().nullsLast(), table.slaDueAt.asc().nullsLast()),
+    uniqueIndex('ux_content_reports_open_per_user')
+      .using('btree', table.userId.asc().nullsLast(), table.entityType.asc().nullsLast(), table.entityId.asc().nullsLast())
+      .where(sql`(status = 'open'::text)`),
     index('ix_content_reports_entity').using(
       'btree',
       table.entityType.asc().nullsLast().op('text_ops'),
@@ -160,8 +172,17 @@ export const opsSupportTickets = ops.table(
     assignedTo: uuid('assigned_to'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    // v1.1 – Sprint 12 (migration 0009): loại, ngữ cảnh kỹ thuật, SLA phản hồi đầu 24 giờ
+    category: text().default('other').notNull(),
+    context: jsonb().$type<Record<string, unknown>>().default({}).notNull(),
+    firstResponseDueAt: timestamp('first_response_due_at', { withTimezone: true, mode: 'date' }),
+    firstRespondedAt: timestamp('first_responded_at', { withTimezone: true, mode: 'date' }),
+    lastMessageAt: timestamp('last_message_at', { withTimezone: true, mode: 'date' }),
+    closedAt: timestamp('closed_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
+    index('ix_support_tickets_user').using('btree', table.userId.asc().nullsLast(), table.createdAt.desc().nullsFirst()),
+    index('ix_support_tickets_status').using('btree', table.status.asc().nullsLast(), table.firstResponseDueAt.asc().nullsLast()),
     foreignKey({
       columns: [table.userId],
       foreignColumns: [iamUsers.id],
@@ -183,4 +204,106 @@ export const opsJobsDeadletter = ops.table('jobs_deadletter', {
   error: text(),
   attempts: smallint(),
   failedAt: timestamp('failed_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+  // v1.1 – Sprint 12 (migration 0009): replay dead-letter
+  jobName: text('job_name'),
+  replayedAt: timestamp('replayed_at', { withTimezone: true, mode: 'date' }),
+  replayCount: smallint('replay_count').default(0).notNull(),
 });
+
+// v1.1 – Sprint 12 (migration 0009): hội thoại ticket 2 chiều
+export const opsSupportMessages = ops.table(
+  'support_messages',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    ticketId: uuid('ticket_id').notNull(),
+    authorUserId: uuid('author_user_id'),
+    authorKind: text('author_kind').notNull(),
+    body: text().notNull(),
+    delivery: jsonb().$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('ix_support_messages_ticket').using('btree', table.ticketId.asc().nullsLast(), table.createdAt.asc().nullsLast()),
+    foreignKey({ columns: [table.ticketId], foreignColumns: [opsSupportTickets.id], name: 'support_messages_ticket_id_fkey' }).onDelete('cascade'),
+    foreignKey({ columns: [table.authorUserId], foreignColumns: [iamUsers.id], name: 'support_messages_author_user_id_fkey' }).onDelete('set null'),
+    check('support_messages_author_kind_check', sql`author_kind = ANY (ARRAY['user'::text, 'agent'::text, 'system'::text])`),
+  ],
+);
+
+// v1.1 – Sprint 12 (migration 0009): beta kín – đăng ký chờ, mã mời (sha256), khảo sát
+export const opsWaitlistEntries = ops.table(
+  'waitlist_entries',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    email: citext('email').notNull(),
+    program: text().notNull(),
+    locale: text().default('vi').notNull(),
+    consentMarketing: boolean('consent_marketing').default(false).notNull(),
+    source: text(),
+    status: text().default('waiting').notNull(),
+    ipHash: text('ip_hash'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('ix_waitlist_entries_status').using('btree', table.program.asc().nullsLast(), table.status.asc().nullsLast(), table.createdAt.asc().nullsLast()),
+    unique('waitlist_entries_email_program_key').on(table.email, table.program),
+    check('waitlist_entries_status_check', sql`status = ANY (ARRAY['waiting'::text, 'invited'::text, 'joined'::text, 'removed'::text])`),
+  ],
+);
+
+export const opsBetaInvites = ops.table(
+  'beta_invites',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    email: citext('email').notNull(),
+    waitlistEntryId: uuid('waitlist_entry_id'),
+    program: text().default('toeic').notNull(),
+    locale: text().default('vi').notNull(),
+    codeHash: text('code_hash'),
+    status: text().default('queued').notNull(),
+    batch: text(),
+    createdBy: uuid('created_by'),
+    sentAt: timestamp('sent_at', { withTimezone: true, mode: 'date' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }),
+    sendAttempts: smallint('send_attempts').default(0).notNull(),
+    lastError: text('last_error'),
+    redeemedBy: uuid('redeemed_by'),
+    redeemedAt: timestamp('redeemed_at', { withTimezone: true, mode: 'date' }),
+    grantResult: jsonb('grant_result').$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('ux_beta_invites_email_active')
+      .using('btree', table.email.asc().nullsLast())
+      .where(sql`(status = ANY (ARRAY['queued'::text, 'sent'::text, 'redeemed'::text]))`),
+    uniqueIndex('ux_beta_invites_redeemed_by').using('btree', table.redeemedBy.asc().nullsLast()).where(sql`(redeemed_by IS NOT NULL)`),
+    index('ix_beta_invites_status').using('btree', table.status.asc().nullsLast(), table.createdAt.asc().nullsLast()),
+    unique('beta_invites_code_hash_key').on(table.codeHash),
+    foreignKey({ columns: [table.waitlistEntryId], foreignColumns: [opsWaitlistEntries.id], name: 'beta_invites_waitlist_entry_id_fkey' }).onDelete('set null'),
+    foreignKey({ columns: [table.createdBy], foreignColumns: [iamUsers.id], name: 'beta_invites_created_by_fkey' }).onDelete('set null'),
+    foreignKey({ columns: [table.redeemedBy], foreignColumns: [iamUsers.id], name: 'beta_invites_redeemed_by_fkey' }).onDelete('set null'),
+    check('beta_invites_status_check', sql`status = ANY (ARRAY['queued'::text, 'sent'::text, 'redeemed'::text, 'revoked'::text, 'expired'::text, 'failed'::text])`),
+  ],
+);
+
+export const opsSurveyResponses = ops.table(
+  'survey_responses',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    userId: uuid('user_id').notNull(),
+    kind: text().notNull(),
+    answers: jsonb().$type<Record<string, unknown>>().default({}).notNull(),
+    score: smallint(),
+    comment: text(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('ix_survey_responses_kind').using('btree', table.kind.asc().nullsLast(), table.createdAt.asc().nullsLast()),
+    unique('survey_responses_user_id_kind_key').on(table.userId, table.kind),
+    foreignKey({ columns: [table.userId], foreignColumns: [iamUsers.id], name: 'survey_responses_user_id_fkey' }).onDelete('cascade'),
+    check('survey_responses_kind_check', sql`kind = ANY (ARRAY['beta_onboarding'::text, 'nps_d7'::text, 'nps_d14'::text])`),
+    check('survey_responses_score_check', sql`(score IS NULL) OR ((score >= 0) AND (score <= 10))`),
+  ],
+);

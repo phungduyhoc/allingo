@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Allingo – Nền tảng luyện thi AI (TOEIC · IELTS · JLPT · HSK)
--- PostgreSQL 16+ DDL tham chiếu · v1.0 · 31/10/2026
+-- PostgreSQL 16+ DDL tham chiếu · v1.0 · 31/10/2026 · v1.1 (S1–S12, cập nhật 08/11/2026)
 -- 6 schema: iam, catalog, learn, ai, billing, ops
 -- Quy ước: snake_case, khoá chính uuid (gen_random_uuid), timestamptz,
 --          i18n JSONB {"vi":..,"en":..,"ja":..,"ko":..,"th":..}, soft-delete bằng deleted_at
@@ -31,7 +31,7 @@ CREATE TYPE iam.auth_provider AS ENUM ('email','phone','google','apple','faceboo
 CREATE TYPE iam.org_type AS ENUM ('school','center','company','other');
 CREATE TYPE iam.org_role AS ENUM ('org_admin','teacher','learner');
 CREATE TYPE iam.referral_status AS ENUM ('joined','started','upgraded');
-CREATE TYPE iam.consent_type AS ENUM ('terms','privacy','voice_processing','marketing','minor_guardian');
+CREATE TYPE iam.consent_type AS ENUM ('terms','privacy','voice_processing','marketing','minor_guardian','refund_policy');  -- v1.1 – Sprint 12: refund_policy
 
 CREATE TABLE iam.users (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -75,7 +75,8 @@ CREATE TABLE iam.sessions (
   expires_at         timestamptz NOT NULL,
   revoked_at         timestamptz,
   created_at         timestamptz NOT NULL DEFAULT now(),
-  last_seen_at       timestamptz
+  last_seen_at       timestamptz,
+  mfa_verified_at    timestamptz                        -- v1.1 – Sprint 12: phiên đã xác minh TOTP (step-up admin) – refresh giữ claim mfa
 );
 CREATE INDEX ix_sessions_user_active ON iam.sessions(user_id) WHERE revoked_at IS NULL;
 
@@ -163,6 +164,23 @@ CREATE TABLE iam.deletion_requests (
   completed_at timestamptz,
   export_url   text
 );
+
+-- v1.1 – Sprint 12 (migration 0009): MFA TOTP (RFC 6238) bắt buộc cho admin/superadmin; secret mã hoá AES-256-GCM,
+-- last_used_step chống dùng lại mã, recovery_codes = [{hash, used_at}] (sha256, hiển thị một lần khi xác nhận)
+CREATE TABLE iam.mfa_factors (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        uuid NOT NULL REFERENCES iam.users(id) ON DELETE CASCADE,
+  kind           text NOT NULL DEFAULT 'totp',
+  secret_enc     text NOT NULL,
+  confirmed_at   timestamptz,
+  last_used_step bigint,
+  recovery_codes jsonb NOT NULL DEFAULT '[]',
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  updated_at     timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (user_id, kind),
+  CHECK (kind IN ('totp'))
+);
+CREATE TRIGGER trg_mfa_factors_updated BEFORE UPDATE ON iam.mfa_factors FOR EACH ROW EXECUTE FUNCTION ops.set_updated_at();
 
 -- =============================================================================
 -- 2. CATALOG – chương trình, cấu trúc đề, câu hỏi, đề thi, bài học, video, từ vựng
@@ -299,7 +317,9 @@ CREATE TABLE catalog.questions (
   created_by         uuid REFERENCES iam.users(id),
   created_at         timestamptz NOT NULL DEFAULT now(),
   updated_at         timestamptz NOT NULL DEFAULT now(),
-  retired_at         timestamptz
+  retired_at         timestamptz,
+  stats              jsonb,                             -- v1.1 – Sprint 12: {n, p_value, discrimination, avg_time_ms, reports_open, reports_total, recommendation, reasons[], window_days} (content.stats_nightly)
+  stats_updated_at   timestamptz                        -- v1.1 – Sprint 12
 );
 CREATE INDEX ix_questions_program_section_status ON catalog.questions(program_code, section_id, status);
 CREATE INDEX ix_questions_passage ON catalog.questions(passage_id);
@@ -1333,6 +1353,7 @@ CREATE TABLE ops.audit_logs (
 ) PARTITION BY RANGE (created_at);
 CREATE INDEX ix_audit_logs_entity ON ops.audit_logs(entity_type, entity_id, created_at DESC);
 CREATE INDEX ix_audit_logs_actor ON ops.audit_logs(actor_user_id, created_at DESC);
+CREATE INDEX ix_audit_logs_action ON ops.audit_logs(action, created_at DESC);  -- v1.1 – Sprint 12: GET /admin/audit-logs?action=
 
 CREATE TABLE ops.outbox (                                -- domain events (ADR-06)
   id             bigserial,
@@ -1400,6 +1421,7 @@ CREATE TABLE ops.feedback (
   status     text NOT NULL DEFAULT 'new',               -- new | triaged | done | wontfix
   created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX ix_feedback_status ON ops.feedback(status, created_at DESC);  -- v1.1 – Sprint 12: hàng đợi admin
 
 CREATE TABLE ops.content_reports (                       -- người học báo câu hỏi sai
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1410,9 +1432,17 @@ CREATE TABLE ops.content_reports (                       -- người học báo 
   status      text NOT NULL DEFAULT 'open',             -- open | confirmed | rejected | fixed
   resolved_by uuid REFERENCES iam.users(id),
   created_at  timestamptz NOT NULL DEFAULT now(),
-  resolved_at timestamptz
+  resolved_at timestamptz,
+  -- v1.1 – Sprint 12 (migration 0009): mô tả của người học, ghi chú xử lý, hạn SLA 48 giờ (vòng sửa nội dung), updated_at (đồng bộ CMS)
+  message         text,
+  resolution_note text,
+  sla_due_at      timestamptz,
+  updated_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_content_reports_entity ON ops.content_reports(entity_type, entity_id, status);
+CREATE INDEX ix_content_reports_status_due ON ops.content_reports(status, sla_due_at);  -- v1.1 – Sprint 12
+CREATE UNIQUE INDEX ux_content_reports_open_per_user ON ops.content_reports(user_id, entity_type, entity_id) WHERE status = 'open';  -- v1.1 – Sprint 12
+CREATE TRIGGER trg_content_reports_updated BEFORE UPDATE ON ops.content_reports FOR EACH ROW EXECUTE FUNCTION ops.set_updated_at();
 
 CREATE TABLE ops.support_tickets (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1424,8 +1454,31 @@ CREATE TABLE ops.support_tickets (
   priority    text NOT NULL DEFAULT 'normal',
   assigned_to uuid REFERENCES iam.users(id),
   created_at  timestamptz NOT NULL DEFAULT now(),
-  updated_at  timestamptz NOT NULL DEFAULT now()
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  -- v1.1 – Sprint 12 (migration 0009): loại sự cố, ngữ cảnh kỹ thuật (trace_id, trang, attempt), SLA phản hồi đầu 24 giờ
+  category              text NOT NULL DEFAULT 'other',  -- account | billing | exam | content | technical | other
+  context               jsonb NOT NULL DEFAULT '{}',
+  first_response_due_at timestamptz,
+  first_responded_at    timestamptz,
+  last_message_at       timestamptz,
+  closed_at             timestamptz
 );
+CREATE INDEX ix_support_tickets_user ON ops.support_tickets(user_id, created_at DESC);  -- v1.1 – Sprint 12
+CREATE INDEX ix_support_tickets_status ON ops.support_tickets(status, first_response_due_at);  -- v1.1 – Sprint 12
+CREATE TRIGGER trg_support_tickets_updated BEFORE UPDATE ON ops.support_tickets FOR EACH ROW EXECUTE FUNCTION ops.set_updated_at();
+
+-- v1.1 – Sprint 12: hội thoại 2 chiều của ticket (người học ↔ đội hỗ trợ); delivery = kết quả gửi email/in-app
+CREATE TABLE ops.support_messages (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticket_id      uuid NOT NULL REFERENCES ops.support_tickets(id) ON DELETE CASCADE,
+  author_user_id uuid REFERENCES iam.users(id) ON DELETE SET NULL,
+  author_kind    text NOT NULL,
+  body           text NOT NULL,
+  delivery       jsonb,
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  CHECK (author_kind IN ('user','agent','system'))
+);
+CREATE INDEX ix_support_messages_ticket ON ops.support_messages(ticket_id, created_at);
 
 CREATE TABLE ops.jobs_deadletter (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1434,8 +1487,69 @@ CREATE TABLE ops.jobs_deadletter (
   payload    jsonb,
   error      text,
   attempts   smallint,
-  failed_at  timestamptz NOT NULL DEFAULT now()
+  failed_at  timestamptz NOT NULL DEFAULT now(),
+  job_name     text,                                    -- v1.1 – Sprint 12: tên job BullMQ (replay)
+  replayed_at  timestamptz,                             -- v1.1 – Sprint 12: lần replay gần nhất (POST /admin/jobs/dead-letters/{id}/replay)
+  replay_count smallint NOT NULL DEFAULT 0              -- v1.1 – Sprint 12
 );
+
+-- v1.1 – Sprint 12 (migration 0009): beta kín – đăng ký chờ (landing), mã mời đơn dùng một lần (chỉ lưu sha256), khảo sát
+CREATE TABLE ops.waitlist_entries (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email             citext NOT NULL,
+  program           text NOT NULL,
+  locale            text NOT NULL DEFAULT 'vi',
+  consent_marketing boolean NOT NULL DEFAULT false,
+  source            text,
+  status            text NOT NULL DEFAULT 'waiting',    -- waiting | invited | joined | removed
+  ip_hash           text,                               -- sha256(salt:ip) – chống lạm dụng, không lưu IP gốc
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (email, program),
+  CHECK (status IN ('waiting','invited','joined','removed'))
+);
+CREATE INDEX ix_waitlist_entries_status ON ops.waitlist_entries(program, status, created_at);
+CREATE TRIGGER trg_waitlist_entries_updated BEFORE UPDATE ON ops.waitlist_entries FOR EACH ROW EXECUTE FUNCTION ops.set_updated_at();
+
+CREATE TABLE ops.beta_invites (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email             citext NOT NULL,
+  waitlist_entry_id uuid REFERENCES ops.waitlist_entries(id) ON DELETE SET NULL,
+  program           text NOT NULL DEFAULT 'toeic',
+  locale            text NOT NULL DEFAULT 'vi',
+  code_hash         text UNIQUE,                        -- sha256(mã chuẩn hoá) – mã gốc chỉ có trong email
+  status            text NOT NULL DEFAULT 'queued',     -- queued | sent | redeemed | revoked | expired | failed
+  batch             text,
+  created_by        uuid REFERENCES iam.users(id) ON DELETE SET NULL,
+  sent_at           timestamptz,
+  expires_at        timestamptz,
+  send_attempts     smallint NOT NULL DEFAULT 0,
+  last_error        text,
+  redeemed_by       uuid REFERENCES iam.users(id) ON DELETE SET NULL,
+  redeemed_at       timestamptz,
+  grant_result      jsonb,                              -- {subscription_id, trial_ends_at, credits, ledger_id}
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now(),
+  CHECK (status IN ('queued','sent','redeemed','revoked','expired','failed'))
+);
+CREATE UNIQUE INDEX ux_beta_invites_email_active ON ops.beta_invites(email) WHERE status IN ('queued','sent','redeemed');
+CREATE UNIQUE INDEX ux_beta_invites_redeemed_by ON ops.beta_invites(redeemed_by) WHERE redeemed_by IS NOT NULL;
+CREATE INDEX ix_beta_invites_status ON ops.beta_invites(status, created_at);
+CREATE TRIGGER trg_beta_invites_updated BEFORE UPDATE ON ops.beta_invites FOR EACH ROW EXECUTE FUNCTION ops.set_updated_at();
+
+CREATE TABLE ops.survey_responses (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid NOT NULL REFERENCES iam.users(id) ON DELETE CASCADE,
+  kind       text NOT NULL,                             -- beta_onboarding | nps_d7 | nps_d14
+  answers    jsonb NOT NULL DEFAULT '{}',
+  score      smallint,                                  -- NPS 0–10
+  comment    text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (user_id, kind),
+  CHECK (kind IN ('beta_onboarding','nps_d7','nps_d14')),
+  CHECK (score IS NULL OR score BETWEEN 0 AND 10)
+);
+CREATE INDEX ix_survey_responses_kind ON ops.survey_responses(kind, created_at);
 
 -- =============================================================================
 -- 7. PARTITION – tạo partition tháng cho các bảng lớn (gọi bởi job hằng tháng)
@@ -1522,7 +1636,8 @@ ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO iam.roles (code, description) VALUES
  ('learner','Người học'),('teacher','Giáo viên duyệt nội dung / chấm'),('editor','Biên tập nội dung'),
- ('admin','Quản trị vận hành'),('superadmin','Quản trị hệ thống'),('org_admin','Quản trị tổ chức B2B')
+ ('admin','Quản trị vận hành'),('superadmin','Quản trị hệ thống'),('org_admin','Quản trị tổ chức B2B'),
+ ('beta_tester','Người thử nghiệm beta kín (S12)')
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO catalog.question_types (code, name, content_schema, auto_gradable) VALUES

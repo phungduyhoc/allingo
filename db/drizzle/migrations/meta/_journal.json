@@ -57,6 +57,13 @@
       "when": 1794052800000,
       "tag": "0008_s11_perf_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794139200000,
+      "tag": "0009_s12_beta_ops",
+      "breakpoints": true
     }
   ]
 }
