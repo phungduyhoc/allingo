@@ -129,9 +129,9 @@ Web Sprint 7–8: bảng giá thật, checkout, kết quả thanh toán (polling
 | 1 | Thêm 20 từ → hôm nay 10 thẻ mới (Free); Again quay lại trong phiên; "Good → hôm sau"; mô phỏng 7 ngày khớp ts-fsrs | ĐẠT (có điều chỉnh) | FSRS-5 chuẩn: thẻ mới Good → 3 ngày (Again rồi Good → 1 ngày) – giữ thuật toán, đề xuất sửa tiêu chí (S120); 11 bộ TOEIC 600 từ |
 | 2 | Sai 8 câu → 8 mục sổ lỗi, "làm lại 10 câu sai" đúng câu; đã hiểu → khỏi `review_errors` | ĐẠT (API) | Phân loại theo luật |
 | 3 | Dashboard điểm, độ chính xác theo Part, percentile; `GET /me/stats` p95 < 300 ms (50 attempt) | ĐẠT (API) | Replica READ ONLY + cache 1 giờ |
-| 4 | Blog Payload → web ≤ 5 phút (ISR + webhook), JSON-LD, OG, sitemap | ĐẠT phía CMS | Webhook ký HMAC; phần web (ISR, sitemap) chờ giao diện Sprint 10 |
-| 5 | PostHog chỉ nhận sau đồng ý cookie; phễu 7 sự kiện | ĐẠT phía server (sink giả) | Cần key PostHog thật; consent banner ở web |
-| 6 | Lighthouse mobile landing; `api:diff`, `db:diff` | (điền khi giao diện xong) | Migration 0007, ADR-0033 |
+| 4 | Blog Payload → web ≤ 5 phút (ISR + webhook), JSON-LD, OG, sitemap | ĐẠT (thành phần) | Web: ISR 300 s, `/api/revalidate` kiểm HMAC (đúng/sai/quá hạn → 200/401/401), sitemap + hreflang, JSON-LD, OG động; luồng đầu-cuối xuất bản từ admin CMS → webhook chưa thử tay |
+| 5 | PostHog chỉ nhận sau đồng ý cookie; phễu 7 sự kiện | ĐẠT (sink giả) | Banner đồng ý; trước đồng ý không có request sự kiện (E2E); server phát 4 sự kiện còn lại; cần key PostHog thật |
+| 6 | Lighthouse mobile landing ≥ 90/95/95/95; `api:diff`, `db:diff` | ĐẠT | Landing mobile Perf 96–100, A11y/BP/SEO 100 (trước tối ưu 79); dashboard mobile 75–77 (mục tiêu ≥ 85 – T9); web unit 281, E2E mock 58/58, API thật 55/57 (2 ca chập chờn) |
 
 ### Sprint 11 — Observability, hiệu năng, bảo mật, vận hành
 
