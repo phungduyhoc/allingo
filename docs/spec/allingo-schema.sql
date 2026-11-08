@@ -296,6 +296,22 @@ CREATE TABLE catalog.passages (
 );
 CREATE INDEX ix_passages_program_status ON catalog.passages(program_code, status);
 
+-- v1.1 – B5/S24 (migration 0011): văn bản của passage nhiều đoạn (TOEIC Part 7 bộ đôi/bộ ba) – giao diện hiện tab từng văn bản.
+-- passages.body giữ bản gộp `[Tiêu đề]\n…` (dự phòng cho client cũ/AI giải thích); passage không có part hiển thị như cũ.
+CREATE TABLE catalog.passage_parts (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  passage_id     uuid NOT NULL REFERENCES catalog.passages(id) ON DELETE CASCADE,
+  sort_order     smallint NOT NULL,                     -- 1, 2, 3 … (thứ tự tab)
+  title          text,                                  -- "E-mail", "Notice", "Invoice" … (nhãn tab)
+  body           text NOT NULL,                         -- văn bản (markdown nhẹ, mốc [1]–[4] như passages.body)
+  media_asset_id uuid REFERENCES catalog.media_assets(id),
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  updated_at     timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (passage_id, sort_order),
+  CHECK (sort_order >= 1)
+);
+CREATE TRIGGER trg_passage_parts_updated BEFORE UPDATE ON catalog.passage_parts FOR EACH ROW EXECUTE FUNCTION ops.set_updated_at();
+
 CREATE TABLE catalog.questions (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   program_code       text NOT NULL REFERENCES catalog.programs(code),
@@ -319,12 +335,16 @@ CREATE TABLE catalog.questions (
   updated_at         timestamptz NOT NULL DEFAULT now(),
   retired_at         timestamptz,
   stats              jsonb,                             -- v1.1 – Sprint 12: {n, p_value, discrimination, avg_time_ms, reports_open, reports_total, recommendation, reasons[], window_days} (content.stats_nightly)
-  stats_updated_at   timestamptz                        -- v1.1 – Sprint 12
+  stats_updated_at   timestamptz,                       -- v1.1 – Sprint 12
+  review_assignee_id uuid REFERENCES iam.users(id),     -- v1.1 – B2 (migration 0011): reviewer được phân công trong hàng chờ duyệt
+  review_assigned_at timestamptz                        -- v1.1 – B2
 );
 CREATE INDEX ix_questions_program_section_status ON catalog.questions(program_code, section_id, status);
 CREATE INDEX ix_questions_passage ON catalog.questions(passage_id);
 CREATE INDEX ix_questions_irt ON catalog.questions(program_code, section_id, irt_b) WHERE status = 'published';
 CREATE TRIGGER trg_questions_updated BEFORE UPDATE ON catalog.questions FOR EACH ROW EXECUTE FUNCTION ops.set_updated_at();
+CREATE INDEX ix_questions_review_assignee ON catalog.questions(review_assignee_id) WHERE review_assignee_id IS NOT NULL;  -- v1.1 – B2
+CREATE INDEX ix_questions_review_queue ON catalog.questions(status, created_at) WHERE status IN ('draft','ai_checked','review1','review2');  -- v1.1 – B2
 
 CREATE TABLE catalog.question_versions (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -360,6 +380,7 @@ CREATE TABLE catalog.test_sets (
   status        catalog.content_status NOT NULL DEFAULT 'draft',
   published_at  timestamptz,
   created_at    timestamptz NOT NULL DEFAULT now(),
+  metadata      jsonb NOT NULL DEFAULT '{}',            -- v1.1 – B5/S30 (migration 0011): {source: mini_generator|ai_draft, seed, blueprint, bank_fingerprint, by_section, shortfall, job_id}
   UNIQUE (program_code, code)
 );
 CREATE INDEX ix_test_sets_program_kind ON catalog.test_sets(program_code, kind, status);

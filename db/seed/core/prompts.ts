@@ -66,6 +66,7 @@ const DEFAULT_TIMEOUT: Record<string, number> = {
   plan_adjust: 45_000,
   upgrade_phrasing: 20_000,
   generate_questions: 90_000,
+  generate_item_set: 120_000,
   check_question: 45_000,
 };
 

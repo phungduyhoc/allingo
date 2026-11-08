@@ -13,7 +13,7 @@ import type { QuestionContent } from '@allingo/schemas';
  * - Part 6 đánh dấu chỗ trống `[131]`…`[146]` trong body; Part 7 câu chèn câu dùng `[1]`–`[4]`.
  * - Câu từ vựng Part 7 ("paragraph N, line 1"): từ được hỏi luôn nằm ở đầu đoạn văn để "line 1" đúng ở mọi độ rộng màn hình.
  * - `catalog.questions.passage_id` chỉ trỏ được một đoạn: dùng `mergeGroupPassages()` để gộp nhóm đa đoạn thành một
- *   bản ghi `catalog.passages` khi seed (xem cuối tệp).
+ *   bản ghi `catalog.passages` khi seed (xem cuối tệp); từ B5/S24 từng văn bản còn được ghi vào `catalog.passage_parts`.
  */
 
 export interface ReadingPassage {
@@ -2268,13 +2268,17 @@ export interface MergedGroupPassage {
   section: 'part6' | 'part7';
   topic: string;
   title: string;
+  /** Bản gộp `[Tiêu đề]\n…` – dự phòng cho client cũ/AI giải thích (passages.body) */
   body: string;
   passage_keys: string[];
+  /** B5/S24: nhóm đa đoạn → từng văn bản (catalog.passage_parts, tab trên giao diện); đoạn đơn → [] */
+  parts: Array<{ sort_order: number; title: string; body: string }>;
 }
 
 /**
  * Một bản ghi mỗi group_key: đoạn đơn giữ nguyên; nhóm đa đoạn nối các đoạn theo thứ tự, mỗi đoạn mở đầu bằng
  * nhãn `[Tiêu đề]` để giao diện và AI giải thích phân biệt được từng văn bản.
+ * B5/S24: nhóm đa đoạn kèm `parts` (một văn bản mỗi phần tử) → `catalog.passage_parts`; bản gộp giữ làm dự phòng.
  */
 export function mergeGroupPassages(
   passages: readonly ReadingPassage[] = READING_FULL_01.passages,
@@ -2293,6 +2297,7 @@ export function mergeGroupPassages(
       title: single ? first.title : list.map((p) => p.title).join(' + '),
       body: single ? first.body : list.map((p) => `[${p.title}]\n${p.body}`).join('\n\n'),
       passage_keys: list.map((p) => p.key),
+      parts: single ? [] : list.map((p, i) => ({ sort_order: i + 1, title: p.title, body: p.body })),
     });
   }
   return merged;

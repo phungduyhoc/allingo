@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 import { eq } from 'drizzle-orm';
 import type { Db } from '../../src/client.js';
-import { catalogPassages } from '../../drizzle/schema/index.js';
+import { catalogPassageParts, catalogPassages } from '../../drizzle/schema/index.js';
 import {
   assertStructure,
   hardestOf,
@@ -34,7 +34,8 @@ export interface PartSeedResult {
 /**
  * Seed đề TOEIC Reading đầy đủ 01 (100 câu, nội dung tự biên soạn, source = 'human') + 3 bộ luyện theo Part.
  * Idempotent: câu hỏi nhận diện qua `question_versions.metadata.seed_key`; đoạn văn nhận diện qua passage_id của câu đầu nhóm.
- * Nhóm đa đoạn (bộ đôi/bộ ba Part 7) gộp thành một `catalog.passages` vì `questions.passage_id` chỉ trỏ một đoạn (SPEC-ISSUES S24).
+ * Nhóm đa đoạn (bộ đôi/bộ ba Part 7) gộp thành một `catalog.passages` vì `questions.passage_id` chỉ trỏ một đoạn; B5/S24: từng văn
+ * bản của nhóm ghi thêm vào `catalog.passage_parts` (tab trên giao diện) – `passages.body` giữ bản gộp làm dự phòng.
  */
 export async function seedReadingFull01(db: Db, ctx: SeedContext): Promise<PartSeedResult> {
   const questions = READING_FULL_01.questions;
@@ -84,6 +85,12 @@ export async function seedReadingFull01(db: Db, ctx: SeedContext): Promise<PartS
       const [row] = await db.insert(catalogPassages).values(values).returning({ id: catalogPassages.id });
       passageIdByGroup.set(g.group_key, row!.id);
     }
+    // Văn bản từng phần (idempotent: thay toàn bộ part của passage)
+    const passageId = passageIdByGroup.get(g.group_key)!;
+    await db.delete(catalogPassageParts).where(eq(catalogPassageParts.passageId, passageId));
+    if (g.parts.length) {
+      await db.insert(catalogPassageParts).values(g.parts.map((p) => ({ passageId, sortOrder: p.sort_order, title: p.title, body: p.body })));
+    }
   }
 
   // ---------------------------------------------------------------- Câu hỏi
@@ -128,7 +135,7 @@ export async function seedReadingFull01(db: Db, ctx: SeedContext): Promise<PartS
   }
 
   console.log(
-    `[seed:demo] ${READING_FULL_01.code} passages=${groups.length} questions=${questionIdByKey.size} drills=${READING_DRILLS.length}`,
+    `[seed:demo] ${READING_FULL_01.code} passages=${groups.length} parts=${groups.reduce((n, g) => n + g.parts.length, 0)} questions=${questionIdByKey.size} drills=${READING_DRILLS.length}`,
   );
   return { passages: groups.length, questionIdByKey, items, testSetIds };
 }

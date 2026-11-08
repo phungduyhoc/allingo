@@ -15,6 +15,7 @@ import {
   bigint,
   numeric,
   primaryKey,
+  check,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
@@ -284,6 +285,35 @@ export const catalogPassages = catalog.table(
   ],
 );
 
+// v1.1 – B5/S24 (migration 0011): văn bản của passage nhiều đoạn (TOEIC Part 7 bộ đôi/bộ ba) – tab từng văn bản
+export const catalogPassageParts = catalog.table(
+  'passage_parts',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    passageId: uuid('passage_id').notNull(),
+    sortOrder: smallint('sort_order').notNull(),
+    title: text(),
+    body: text().notNull(),
+    mediaAssetId: uuid('media_asset_id'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.passageId],
+      foreignColumns: [catalogPassages.id],
+      name: 'passage_parts_passage_id_fkey',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.mediaAssetId],
+      foreignColumns: [catalogMediaAssets.id],
+      name: 'passage_parts_media_asset_id_fkey',
+    }),
+    unique('passage_parts_passage_id_sort_order_key').on(table.passageId, table.sortOrder),
+    check('passage_parts_sort_order_check', sql`sort_order >= 1`),
+  ],
+);
+
 export const catalogQuestions = catalog.table(
   'questions',
   {
@@ -311,6 +341,9 @@ export const catalogQuestions = catalog.table(
     // v1.1 – Sprint 12 (migration 0009): thống kê câu (content.stats_nightly)
     stats: jsonb().$type<Record<string, unknown>>(),
     statsUpdatedAt: timestamp('stats_updated_at', { withTimezone: true, mode: 'date' }),
+    // v1.1 – B2 (migration 0011): phân công reviewer trong hàng chờ duyệt
+    reviewAssigneeId: uuid('review_assignee_id'),
+    reviewAssignedAt: timestamp('review_assigned_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
     index('ix_questions_irt')
@@ -322,6 +355,12 @@ export const catalogQuestions = catalog.table(
       )
       .where(sql`(status = 'published'::catalog.content_status)`),
     index('ix_questions_passage').using('btree', table.passageId.asc().nullsLast().op('uuid_ops')),
+    index('ix_questions_review_assignee')
+      .using('btree', table.reviewAssigneeId.asc().nullsLast().op('uuid_ops'))
+      .where(sql`(review_assignee_id IS NOT NULL)`),
+    index('ix_questions_review_queue')
+      .using('btree', table.status.asc().nullsLast().op('enum_ops'), table.createdAt.asc().nullsLast().op('timestamptz_ops'))
+      .where(sql`(status = ANY (ARRAY['draft'::catalog.content_status, 'ai_checked'::catalog.content_status, 'review1'::catalog.content_status, 'review2'::catalog.content_status]))`),
     index('ix_questions_program_section_status').using(
       'btree',
       table.programCode.asc().nullsLast().op('enum_ops'),
@@ -357,6 +396,11 @@ export const catalogQuestions = catalog.table(
       columns: [table.createdBy],
       foreignColumns: [iamUsers.id],
       name: 'questions_created_by_fkey',
+    }),
+    foreignKey({
+      columns: [table.reviewAssigneeId],
+      foreignColumns: [iamUsers.id],
+      name: 'questions_review_assignee_id_fkey',
     }),
   ],
 );
@@ -410,6 +454,8 @@ export const catalogTestSets = catalog.table(
     status: catalogContentStatus().default('draft').notNull(),
     publishedAt: timestamp('published_at', { withTimezone: true, mode: 'date' }),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    // v1.1 – B5/S30 (migration 0011): seed/blueprint/bank_fingerprint của đề sinh tự động
+    metadata: jsonb().$type<Record<string, unknown>>().default({}).notNull(),
   },
   (table) => [
     index('ix_test_sets_program_kind').using(

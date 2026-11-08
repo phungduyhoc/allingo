@@ -365,4 +365,27 @@ describe('Đề TOEIC Reading 01 – bộ luyện & gộp đoạn', () => {
     expect(single?.body).toBe(passagesOfGroup('r01-p7-s01')[0]?.body);
     expect(byGroup.get('r01-p7-m03')?.passage_keys).toEqual(['r01-p7-m03-a', 'r01-p7-m03-b', 'r01-p7-m03-c']);
   });
+
+  it('B5/S24: nhóm đa đoạn Part 7 có parts đúng thứ tự (tiêu đề + body từng văn bản); đoạn đơn không có part', () => {
+    const merged = mergeGroupPassages();
+    const multi = merged.filter((m) => m.passage_keys.length > 1);
+    expect(multi.length).toBeGreaterThan(0);
+    for (const m of merged) {
+      const src = passagesOfGroup(m.group_key);
+      if (src.length === 1) {
+        expect(m.parts, m.group_key).toEqual([]);
+        continue;
+      }
+      expect(m.parts.map((p) => p.sort_order)).toEqual(src.map((_, i) => i + 1));
+      expect(m.parts.map((p) => p.title)).toEqual(src.map((p) => p.title));
+      expect(m.parts.map((p) => p.body)).toEqual(src.map((p) => p.body));
+      // Bản gộp (dự phòng) vẫn chứa từng văn bản kèm nhãn [Tiêu đề]
+      for (const p of m.parts) expect(m.body).toContain(`[${p.title}]\n${p.body}`);
+    }
+    expect(byKeyParts(merged, 'r01-p7-m03')).toHaveLength(3);
+  });
 });
+
+function byKeyParts(merged: ReturnType<typeof mergeGroupPassages>, groupKey: string) {
+  return merged.find((m) => m.group_key === groupKey)?.parts ?? [];
+}
