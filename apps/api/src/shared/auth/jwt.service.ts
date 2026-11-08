@@ -8,12 +8,23 @@ export interface AccessClaims extends JWTPayload {
   sid: string;
   roles: string[];
   guest: boolean;
+  /** S12: phiên đã xác minh TOTP (step-up admin) */
+  mfa?: boolean;
+  /** S12: token impersonate chỉ đọc */
+  scope?: 'read_only';
+  /** S12: id admin đang impersonate */
+  imp?: string;
 }
 export interface AccessClaimsInput {
   sub: string;
   sid: string;
   roles: string[];
   guest: boolean;
+  mfa?: boolean;
+  scope?: 'read_only';
+  imp?: string;
+  /** Ghi đè thời hạn (giây) – impersonate 10 phút */
+  ttlSeconds?: number;
 }
 export interface GuestTokenClaims extends JWTPayload {
   sub: string;
@@ -36,13 +47,17 @@ export class JwtService {
   }
 
   async signAccess(claims: AccessClaimsInput): Promise<string> {
-    return new SignJWT({ roles: claims.roles, guest: claims.guest, sid: claims.sid })
+    const extra: Record<string, unknown> = {};
+    if (claims.mfa) extra.mfa = true;
+    if (claims.scope) extra.scope = claims.scope;
+    if (claims.imp) extra.imp = claims.imp;
+    return new SignJWT({ roles: claims.roles, guest: claims.guest, sid: claims.sid, ...extra })
       .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
       .setSubject(claims.sub)
       .setIssuer('allingo')
       .setAudience('allingo-api')
       .setIssuedAt()
-      .setExpirationTime(`${this.env.JWT_ACCESS_TTL_SECONDS}s`)
+      .setExpirationTime(`${claims.ttlSeconds ?? this.env.JWT_ACCESS_TTL_SECONDS}s`)
       .sign(this.key);
   }
 

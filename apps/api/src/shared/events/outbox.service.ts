@@ -60,6 +60,17 @@ export class OutboxService {
     return rows.length;
   }
 
+  /** S12 – retention: xoá sự kiện đã relay (published_at) cũ hơn `before` theo lô */
+  async purgePublished(before: Date, batch: number): Promise<number> {
+    let total = 0;
+    for (let i = 0; i < 1000; i++) {
+      const r = (await this.dbs.db.execute(sql`delete from ops.outbox where (id, created_at) in (select id, created_at from ops.outbox where published_at is not null and created_at < ${before.toISOString()}::timestamptz limit ${batch}) returning 1`)) as unknown as unknown[];
+      total += r.length;
+      if (r.length < batch) break;
+    }
+    return total;
+  }
+
   /** Phát ngay sau commit (không qua relay) cho các consumer cùng process cần phản hồi nhanh (realtime, XP). Relay vẫn chạy để consumer ngoài process nhận. */
   emitLocal(eventType: string, payload: Record<string, unknown>): void {
     this.emitter.emit(`local.${eventType}`, payload);

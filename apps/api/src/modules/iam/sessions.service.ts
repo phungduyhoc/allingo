@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { ENV, type Env } from '../../config/env.js';
 import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import { DbService, type DbOrTx } from '../../shared/db/db.module.js';
@@ -26,7 +27,25 @@ export class SessionsService {
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
     private readonly revocation: SessionRevocationService,
+    @Inject(ENV) private readonly env: Env,
   ) {}
+
+  /** S12: claim `mfa` còn hiệu lực khi phiên đã step-up trong MFA_SESSION_MAX_AGE_HOURS */
+  mfaFresh(verifiedAt: Date | null | undefined, now = Date.now()): boolean {
+    return !!verifiedAt && now - verifiedAt.getTime() < this.env.MFA_SESSION_MAX_AGE_HOURS * 3_600_000;
+  }
+
+  /** S12: đánh dấu phiên đã xác minh TOTP + cấp access token mới (cùng sid, claim mfa). null = phiên không còn hiệu lực */
+  async markMfaVerified(sessionId: string, user: { id: string; isGuest: boolean }, roles: string[]): Promise<{ accessToken: string; expiresIn: number } | null> {
+    const rows = await this.dbs.db
+      .update(iamSessions)
+      .set({ mfaVerifiedAt: new Date() })
+      .where(and(eq(iamSessions.id, sessionId), eq(iamSessions.userId, user.id), isNull(iamSessions.revokedAt), gt(iamSessions.expiresAt, new Date())))
+      .returning({ id: iamSessions.id });
+    if (!rows.length) return null;
+    const accessToken = await this.jwt.signAccess({ sub: user.id, sid: sessionId, roles, guest: user.isGuest, mfa: true });
+    return { accessToken, expiresIn: this.jwt.accessTtl };
+  }
 
   async create(tx: DbOrTx, user: { id: string; isGuest: boolean }, roles: string[], meta: { device?: Record<string, unknown>; ip?: string | null }): Promise<IssuedTokens> {
     const { token, hash } = this.jwt.newRefreshToken();
@@ -63,7 +82,7 @@ export class SessionsService {
       const device = { ...((session.device as Record<string, unknown> | null) ?? {}), _prev_rt: hash };
       await tx.update(iamSessions).set({ refreshTokenHash: next.hash, expiresAt, lastSeenAt: new Date(), device }).where(eq(iamSessions.id, session.id));
       const [r, g] = await Promise.all([roles(session.userId), isGuest(session.userId)]);
-      const accessToken = await this.jwt.signAccess({ sub: session.userId, sid: session.id, roles: r, guest: g });
+      const accessToken = await this.jwt.signAccess({ sub: session.userId, sid: session.id, roles: r, guest: g, mfa: this.mfaFresh(session.mfaVerifiedAt) });
       return { accessToken, refreshToken: next.token, sessionId: session.id, expiresIn: this.jwt.accessTtl };
     });
     if (result && 'accessToken' in result) return result;

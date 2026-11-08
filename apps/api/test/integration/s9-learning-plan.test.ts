@@ -27,7 +27,7 @@ describe('Sprint 9 – learning v1 (integration)', () => {
 
   const register = async (): Promise<Api> => {
     const inject = app.getHttpAdapter().getInstance().inject.bind(app.getHttpAdapter().getInstance());
-    const res = await inject({ method: 'POST', url: '/v1/auth/register', body: { email: `s9-${uniq()}@example.com`, password: 'Password123!', display_name: 'Học viên S9', accept_terms: true } });
+    const res = await inject({ method: 'POST', url: '/v1/auth/register', body: { email: `s9-${uniq()}@example.com`, password: 'Hoc-vien#S12-xK9q', display_name: 'Học viên S9', accept_terms: true } });
     expect(res.statusCode).toBe(201);
     const b = res.json<{ access_token: string; user: { id: string } }>();
     return {

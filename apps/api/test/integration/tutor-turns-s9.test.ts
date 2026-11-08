@@ -44,12 +44,12 @@ describe('gia sư AI – turns.limit theo gói (khách / Free / Pro)', () => {
 
   it('Free đăng ký: limit 20; Pro: limit 200', async () => {
     const free = client(app);
-    expect((await free.call('POST', '/auth/register', { email: `tt-${crypto.randomUUID()}@example.com`, password: 'Password123!', display_name: 'Free', accept_terms: true })).status).toBe(201);
+    expect((await free.call('POST', '/auth/register', { email: `tt-${crypto.randomUUID()}@example.com`, password: 'Hoc-vien#S12-xK9q', display_name: 'Free', accept_terms: true })).status).toBe(201);
     const f = await turnsOf(free);
     for (const x of [f.created, f.listed, f.detail]) expect(x).toMatchObject({ limit: 20 });
 
     const pro = client(app);
-    const reg = await pro.call('POST', '/auth/register', { email: `tt-${crypto.randomUUID()}@example.com`, password: 'Password123!', display_name: 'Pro', accept_terms: true });
+    const reg = await pro.call('POST', '/auth/register', { email: `tt-${crypto.randomUUID()}@example.com`, password: 'Hoc-vien#S12-xK9q', display_name: 'Pro', accept_terms: true });
     const userId = reg.body.user.id as string;
     await dbs.db.insert(schema.billingEntitlements).values(Object.values(FEATURE_CODES).map((feature) => ({ userId, programCode: 'toeic', featureCode: feature, source: 'admin', validFrom: new Date(Date.now() - 60_000), validTo: new Date(Date.now() + 86_400_000) })));
     await app.get(EntitlementService).invalidate(userId);
@@ -59,7 +59,7 @@ describe('gia sư AI – turns.limit theo gói (khách / Free / Pro)', () => {
 
   it('ngữ cảnh quyền trong cache thiếu planKind (định dạng cũ) / gói không có dòng quota → vẫn 20 (Free) / 200 (trả phí), không null', async () => {
     const api = client(app);
-    const reg = await api.call('POST', '/auth/register', { email: `tt-${crypto.randomUUID()}@example.com`, password: 'Password123!', display_name: 'Cache', accept_terms: true });
+    const reg = await api.call('POST', '/auth/register', { email: `tt-${crypto.randomUUID()}@example.com`, password: 'Hoc-vien#S12-xK9q', display_name: 'Cache', accept_terms: true });
     const userId = reg.body.user.id as string;
     await app.get(RedisService).safe((r) => r.set(`ent:${userId}:toeic`, JSON.stringify({ isPro: false, features: ['ai_tutor'] }), 'EX', 60));
     const t = await turnsOf(api);

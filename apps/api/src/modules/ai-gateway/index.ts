@@ -21,3 +21,5 @@ export { AiTaskFailedError, type RunTaskInput, type RunTaskResult, type Resolved
 export { AiFeaturesModule } from './features/ai-features.module.js';
 export { ExplainService } from './features/explain.service.js';
 export { wrapUserInput, wrapData } from './core/prompt-renderer.js';
+// S12
+export { AiQualityService } from './core/ai-quality.service.js';

@@ -237,6 +237,17 @@ export class NotificationService {
   }
 
   /** POST /notifications/unsubscribe (one-click RFC 8058 hoặc nút trên trang quản lý): tắt email của loại (all = mọi loại) */
+  /** S12 – retention: xoá thông báo đã xử lý (sent/read/cancelled/failed) cũ hơn `before` theo lô (đã hẹn giờ thì giữ) */
+  async purgeBefore(before: Date, batch: number): Promise<number> {
+    let total = 0;
+    for (let i = 0; i < 1000; i++) {
+      const r = (await this.dbs.db.execute(sql`delete from ops.notifications where id in (select id from ops.notifications where status in ('sent','read','cancelled','failed') and scheduled_at < ${before.toISOString()}::timestamptz limit ${batch}) returning 1`)) as unknown as unknown[];
+      total += r.length;
+      if (r.length < batch) break;
+    }
+    return total;
+  }
+
   async unsubscribe(token: string): Promise<{ unsubscribed: true; category: UnsubscribeScope; channel: 'email' }> {
     const { userId, scope } = this.fromToken(token);
     const user = await this.users.findById(userId);

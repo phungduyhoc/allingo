@@ -8,3 +8,6 @@ export { buildQuestionDoc, type QuestionSearchDoc } from './search/question-doc.
 export { MiniTestService, generateTestSetInputSchema, generateTestSetResultSchema, type GenerateTestSetInput, type GenerateTestSetResult } from './mini-test.service.js';
 export { ContentGenerationService, generateQuestionsInputSchema, dedupText, type GenerateQuestionsInput, type GeneratedItemResult } from './content-generation.service.js';
 export { DictionaryService, translationCacheKey, type LookupInput, type LookupResult } from './dictionary.service.js';
+// S12
+export { ContentReportsService } from './content-reports.service.js';
+export { QuestionStatsService, type QuestionStatsValue, type QuestionRecommendation } from './question-stats.service.js';

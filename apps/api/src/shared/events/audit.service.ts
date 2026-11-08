@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import { DbService, type DbOrTx } from '../db/db.module.js';
 
@@ -34,5 +35,16 @@ export class AuditService {
       ip: entry.ip ?? null,
       userAgent: entry.userAgent?.slice(0, 300) ?? null,
     });
+  }
+
+  /** S12 – retention: xoá audit cũ hơn `before` (mặc định 730 ngày – RETENTION_AUDIT_DAYS) theo lô */
+  async purgeBefore(before: Date, batch: number): Promise<number> {
+    let total = 0;
+    for (let i = 0; i < 1000; i++) {
+      const r = (await this.dbs.db.execute(sql`delete from ops.audit_logs where (id, created_at) in (select id, created_at from ops.audit_logs where created_at < ${before.toISOString()}::timestamptz limit ${batch}) returning 1`)) as unknown as unknown[];
+      total += r.length;
+      if (r.length < batch) break;
+    }
+    return total;
   }
 }

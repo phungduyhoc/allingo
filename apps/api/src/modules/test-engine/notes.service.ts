@@ -41,7 +41,11 @@ export class NotesService {
 
   toDto(r: NoteRow): Note {
     const d = (r.data as NoteData | null) ?? {};
-    return { id: r.id, body: r.body, question_id: r.questionId ?? null, question_version_id: d.question_version_id ?? null, attempt_id: d.attempt_id ?? null, test_set_id: r.testSetId ?? null, created_at: d.created_at ?? null, updated_at: r.updatedAt.toISOString() };
+    const base = { id: r.id, body: r.body, question_id: r.questionId ?? null, question_version_id: d.question_version_id ?? null, attempt_id: d.attempt_id ?? null, test_set_id: r.testSetId ?? null, created_at: d.created_at ?? null, updated_at: r.updatedAt.toISOString() };
+    if (r.kind !== 'system_summary') return base;
+    // S12: tóm tắt tuần/tiến bộ AI cho dashboard (không lộ ai_task_id/prompt_version_id)
+    const sd = (r.data ?? {}) as { summary?: Record<string, unknown>; attempt_ids?: string[] };
+    return { ...base, kind: 'system_summary', summary: sd.summary ?? null, attempt_ids: sd.attempt_ids ?? [] };
   }
 
   private cleanBody(raw: string): string {
@@ -119,7 +123,7 @@ export class NotesService {
     return this.toDto(row!);
   }
 
-  async list(userId: string, f: NoteRefs & { q?: string; cursor?: string; limit: number }): Promise<{ data: Note[]; next_cursor: string | null }> {
+  async list(userId: string, f: NoteRefs & { q?: string; kind?: 'user' | 'system_summary'; cursor?: string; limit: number }): Promise<{ data: Note[]; next_cursor: string | null }> {
     const c = decodeCursor<{ u: string; id: string }>(f.cursor);
     const q = f.q?.trim();
     const rows = await this.dbs.db
@@ -128,7 +132,7 @@ export class NotesService {
       .where(
         and(
           eq(learnNotes.userId, userId),
-          eq(learnNotes.kind, 'user'),
+          eq(learnNotes.kind, f.kind ?? 'user'),
           f.question_id ? eq(learnNotes.questionId, f.question_id) : undefined,
           f.test_set_id ? eq(learnNotes.testSetId, f.test_set_id) : undefined,
           f.question_version_id ? sql`${learnNotes.data} ->> 'question_version_id' = ${f.question_version_id}` : undefined,

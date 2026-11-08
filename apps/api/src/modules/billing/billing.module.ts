@@ -1,3 +1,4 @@
+import { BetaGrantService } from './beta-grant.service.js';
 import { Module } from '@nestjs/common';
 import { BillingAdminController } from './billing-admin.controller.js';
 import { BillingAdminService } from './billing-admin.service.js';
@@ -32,6 +33,7 @@ import { WebhooksController } from './webhooks.controller.js';
 @Module({
   controllers: [BillingController, OrdersController, WebhooksController, BillingAdminController, FlagsController],
   providers: [
+    BetaGrantService,
     EntitlementService,
     QuotaService,
     CreditService,
@@ -52,6 +54,6 @@ import { WebhooksController } from './webhooks.controller.js';
     InvoicesService,
     FreeCreditsService,
   ],
-  exports: [EntitlementService, QuotaService, CreditService, FeatureGateService, FeatureFlagService, KillSwitchGuard, BillingJobsService, PaymentProviderRegistry, PaymentsService, SubscriptionsService, OrdersService, ReconciliationService, PromotionsService, InvoicesService, InvoiceProviderRegistry, FreeCreditsService],
+  exports: [BetaGrantService, EntitlementService, QuotaService, CreditService, FeatureGateService, FeatureFlagService, KillSwitchGuard, BillingJobsService, PaymentProviderRegistry, PaymentsService, SubscriptionsService, OrdersService, ReconciliationService, PromotionsService, InvoicesService, InvoiceProviderRegistry, FreeCreditsService],
 })
 export class BillingModule {}

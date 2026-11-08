@@ -3,7 +3,7 @@ import type { FastifyRequest } from 'fastify';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { consentInputSchema, consentSchema, deletionRequestResultSchema, enrollmentInputSchema, enrollmentSchema, programCodeSchema, sessionSchema, userSchema, userUpdateSchema, type EnrollmentInput, type UserUpdate } from '@allingo/schemas';
-import { CurrentUser, type AuthUser } from '../../shared/auth/auth.guard.js';
+import { BetaExempt, CurrentUser, type AuthUser } from '../../shared/auth/auth.guard.js';
 import { NotFound } from '../../shared/http/errors.js';
 import { ApiZod, ZodBody, ZodParams } from '../../shared/http/zod.js';
 import { ConsentsService } from './consents.service.js';
@@ -26,6 +26,7 @@ export class MeController {
     private readonly deletion: DeletionService,
   ) {}
 
+  @BetaExempt()
   @Get()
   @ApiZod({ responses: { 200: userSchema } })
   async me(@CurrentUser() user: AuthUser) {
@@ -34,6 +35,7 @@ export class MeController {
     return this.users.toDto(row);
   }
 
+  @BetaExempt()
   @Patch()
   @ApiZod({ body: userUpdateSchema, responses: { 200: userSchema } })
   async update(@CurrentUser() user: AuthUser, @ZodBody(userUpdateSchema) body: UserUpdate) {
@@ -49,6 +51,7 @@ export class MeController {
     return this.users.toDto(row);
   }
 
+  @BetaExempt()
   @Delete()
   @HttpCode(202)
   @ApiZod({ responses: { 202: deletionRequestResultSchema, 409: 'empty' } })
@@ -57,12 +60,14 @@ export class MeController {
     return { status: 'scheduled' as const, due_at: r.due_at, request_id: r.request_id };
   }
 
+  @BetaExempt()
   @Get('sessions')
   @ApiZod({ responses: { 200: z.array(sessionSchema) } })
   listSessions(@CurrentUser() user: AuthUser) {
     return this.sessions.list(user.id, user.sessionId);
   }
 
+  @BetaExempt()
   @Delete('sessions/:sessionId')
   @HttpCode(204)
   @ApiZod({ responses: { 204: 'empty' } })
@@ -70,12 +75,14 @@ export class MeController {
     await this.sessions.revoke(params.sessionId, user.id);
   }
 
+  @BetaExempt()
   @Get('consents')
   @ApiZod({ responses: { 200: z.array(consentSchema) } })
   listConsents(@CurrentUser() user: AuthUser) {
     return this.consents.list(user.id);
   }
 
+  @BetaExempt()
   @Post('consents')
   @HttpCode(200)
   @ApiZod({ body: consentInputSchema, responses: { 200: consentSchema } })

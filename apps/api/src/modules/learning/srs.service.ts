@@ -339,11 +339,14 @@ export class SrsService {
       const ev: SrsReviewedEvent = { user_id: userId, programs, reviewed: applied, due_now_left: summary.total };
       this.outbox.emitLocal(SRS_REVIEWED_EVENT, ev as unknown as Record<string, unknown>);
     }
-    const nowMs = this.now().getTime();
+    const nowAt = this.now();
+    const nowMs = nowAt.getTime();
     return ids.map((id) => {
       const c = byId.get(id)!;
       const inSession = (c.state === 'learning' || c.state === 'relearning') && c.dueAt.getTime() - nowMs <= SRS_IN_SESSION_MS;
-      return this.toDto(c, payloads.get(id) ?? {}, { duplicate: flags.get(id)?.duplicate ?? true, in_session: inSession });
+      // S12 (fix web S10): trả `preview` (hạn kế tiếp cho từng nút) như GET /me/srs/due – web cập nhật nút mà không gọi lại due
+      const p = previewIntervals(fromStored(this.stored(c)), nowAt, optsBy.get(c.programCode));
+      return this.toDto(c, payloads.get(id) ?? {}, { duplicate: flags.get(id)?.duplicate ?? true, in_session: inSession, preview: { again: p[1].toISOString(), hard: p[2].toISOString(), good: p[3].toISOString(), easy: p[4].toISOString() } });
     });
   }
 

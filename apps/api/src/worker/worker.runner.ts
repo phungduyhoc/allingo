@@ -198,7 +198,7 @@ export class WorkerRunner implements OnModuleInit, OnModuleDestroy {
   private async deadLetter(queue: string, job: Job | undefined, err: Error): Promise<void> {
     if (!job || (job.attemptsMade ?? 0) < (job.opts.attempts ?? 1)) return;
     try {
-      await this.dbs.db.insert(schema.opsJobsDeadletter).values({ queue, jobId: String(job.id), payload: job.data as Record<string, unknown>, error: err.message.slice(0, 1000), attempts: job.attemptsMade });
+      await this.dbs.db.insert(schema.opsJobsDeadletter).values({ queue, jobId: String(job.id), jobName: job.name, payload: job.data as Record<string, unknown>, error: err.message.slice(0, 1000), attempts: job.attemptsMade });
       this.logger.error({ queue, job: job.name, id: job.id }, 'job moved to dead-letter');
     } catch (e) {
       this.logger.error({ err: e }, 'dead-letter insert failed');

@@ -237,3 +237,11 @@ export const OPS_METRICS = {
   eventLoopLag: metrics.gauge('nodejs_eventloop_lag_p99_seconds', 'Độ trễ event loop p99 (giây) trong cửa sổ 10 giây', []),
   info: metrics.gauge('allingo_build_info', 'Thông tin build (giá trị luôn 1)', ['service', 'version', 'env']),
 };
+
+/** S12 – beta kín & hỗ trợ: đăng ký chờ, mời/đổi mã, góp ý, SLA (alert SupportSlaBreached đọc gauge) */
+export const GROWTH_METRICS = {
+  waitlist: metrics.counter('beta_waitlist_signups_total', 'Đăng ký danh sách chờ mới theo chương trình', ['program']),
+  betaInvites: metrics.counter('beta_invites_total', 'Lời mời beta theo kết quả (sent, failed, redeemed)', ['result']),
+  feedback: metrics.counter('feedback_submitted_total', 'Góp ý in-app / báo lỗi câu / ticket theo loại', ['kind']),
+  slaOverdue: metrics.gauge('support_sla_overdue', 'Số mục quá hạn SLA (content_report 48 giờ, support_ticket phản hồi đầu 24 giờ)', ['kind']),
+};

@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { sql } from 'drizzle-orm';
 import { addDays, localDate, zonedDayStart } from '@allingo/planner';
-import { DOMAIN_EVENTS, type ProgramCode, type Stats } from '@allingo/schemas';
+import { DOMAIN_EVENTS, scorePartOf, scoreScaleOf, type ProgramCode, type Stats } from '@allingo/schemas';
 import { ENV, type Env } from '../../config/env.js';
 import { RedisService } from '../../shared/cache/redis.module.js';
 import { CLOCK, type Clock } from '../../shared/clock/clock.module.js';
@@ -31,7 +31,7 @@ type AttemptRow = {
   by_subskill: Breakdown | null;
   by_question_type: Breakdown | null;
   by_skill: Record<string, { correct: number; total: number }> | null;
-  scaled: { listening?: number | null; reading?: number | null } | null;
+  scaled: { listening?: number | null; reading?: number | null; total?: number | null } | null;
 };
 
 export const statsCacheKey = (userId: string, program: string) => `stats:v1:${userId}:${program}`;
@@ -175,9 +175,15 @@ export class StatsService {
     const rows = out.attempts.map((a) => ({ ...a, at: new Date(a.submitted_at).getTime(), scaled_num: a.scaled_score !== null ? Number(a.scaled_score) : null }));
     // Điểm theo thời gian: bài có thang điểm (không tính drill/timed_drill)
     const scored = rows.filter((a) => a.scaled_num !== null && a.mode !== 'drill' && a.mode !== 'timed_drill').sort((x, y) => x.at - y.at);
-    const scoreHistory = scored.map((a) => ({ date: localDate(a.at, tz), at: new Date(a.at).toISOString(), score: a.scaled_num!, listening: numOrNull(a.scaled?.listening), reading: numOrNull(a.scaled?.reading), kind: a.test_set_kind, mode: a.mode, attempt_id: a.id }));
-    const latest = scored.at(-1) ?? null;
-    const trend = scored.filter((a) => a.at >= now - 30 * DAY_MS).map((a) => ({ date: localDate(a.at, tz), score: a.scaled_num! }));
+    // S12 (fix web S10): mỗi điểm ghi `part` + `scale` (mini chỉ Listening → 5–495); ước tính hiện tại/xu hướng chỉ dùng thang tổng
+    const partOf = (a: (typeof scored)[number]) => scorePartOf(a.scaled ? { total: numOrNull(a.scaled.total), listening: numOrNull(a.scaled.listening), reading: numOrNull(a.scaled.reading) } : null);
+    const scoreHistory = scored.map((a) => {
+      const part = partOf(a);
+      return { date: localDate(a.at, tz), at: new Date(a.at).toISOString(), score: a.scaled_num!, listening: numOrNull(a.scaled?.listening), reading: numOrNull(a.scaled?.reading), kind: a.test_set_kind, mode: a.mode, attempt_id: a.id, part, scale: scoreScaleOf(program, part) };
+    });
+    const totals = scored.filter((a) => partOf(a) === 'total');
+    const latest = totals.at(-1) ?? null;
+    const trend = totals.filter((a) => a.at >= now - 30 * DAY_MS).map((a) => ({ date: localDate(a.at, tz), score: a.scaled_num! }));
     // Tổng hợp tương thích (30 bài gần nhất)
     const recent = rows.slice(0, 30);
     const withAcc = (m: Record<string, { correct: number; total: number }>) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, { ...v, accuracy: accuracyPct(v) ?? 0 }]));
@@ -205,7 +211,8 @@ export class StatsService {
       const reviews = reviewsByWeek.get(wk) ?? 0;
       return { week_start: wk, minutes: Math.round((sec + reviews * SRS_REVIEW_SECONDS) / 60), attempts: inWeek.length, reviews };
     });
-    const minutesThisWeek = Math.round(rows.filter((a) => a.at >= now - 7 * DAY_MS).reduce((s, a) => s + (a.time_spent_sec ?? 0), 0) / 60);
+    // S12 (fix web S10): cùng nguồn với minutes_by_week (tuần hiện tại từ thứ Hai giờ người học, bài làm + ôn thẻ) – trước đây 7 ngày trượt, chỉ bài làm
+    const minutesThisWeek = minutesByWeek.at(-1)?.minutes ?? 0;
     const community = await this.community(program, target, latest?.scaled_num ?? null);
     this.logger.debug({ ms: Date.now() - t0, attempts: rows.length, replica: this.store.usesReplica }, 'stats computed');
     return {

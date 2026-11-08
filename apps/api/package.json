@@ -26,7 +26,8 @@
     "test-sets:generate": "node --import @swc-node/register/esm-register scripts/generate-test-set.ts",
     "seed:media": "node --import @swc-node/register/esm-register scripts/seed-media.ts",
     "eval:run": "node --import @swc-node/register/esm-register scripts/eval-run.ts",
-    "push:vapid": "node --import @swc-node/register/esm-register scripts/gen-vapid.ts"
+    "push:vapid": "node --import @swc-node/register/esm-register scripts/gen-vapid.ts",
+    "report:beta": "node --import @swc-node/register/esm-register scripts/report-beta.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.94",

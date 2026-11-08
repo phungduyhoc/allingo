@@ -1,4 +1,5 @@
-import type { DeliveryChannel, NotificationTemplateCode } from '@allingo/schemas';
+import type { DeliveryChannel, NotificationTemplateCode, S12NotificationTemplateCode } from '@allingo/schemas';
+import { S12_TEMPLATES } from './s12-templates.js';
 
 /**
  * Mẫu thông báo đa kênh (Sprint 8) – Handlebars, vi/en, lưu trong repo (TS để build/tsc không cần chép tệp .hbs).
@@ -19,7 +20,7 @@ export interface LocaleTemplate {
 }
 
 export interface TemplateDef {
-  code: NotificationTemplateCode;
+  code: NotificationTemplateCode | S12NotificationTemplateCode;
   category: TemplateCategory;
   /** Kênh mặc định khi không chỉ định */
   channels: DeliveryChannel[];
@@ -374,7 +375,7 @@ const T: Record<NotificationTemplateCode, TemplateDef> = {
 export const NOTIFICATION_TEMPLATES: Readonly<Record<NotificationTemplateCode, TemplateDef>> = T;
 
 export function templateFor(code: string): TemplateDef | null {
-  return (T as Record<string, TemplateDef>)[code] ?? null;
+  return (T as Record<string, TemplateDef>)[code] ?? (S12_TEMPLATES as Record<string, TemplateDef>)[code] ?? null;
 }
 
 /** Layout email (HTML) – CSS inline tối giản, nút, footer (quản lý thông báo + huỷ đăng ký với email không giao dịch) */

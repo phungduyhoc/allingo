@@ -37,7 +37,7 @@ describe('S8 hoá đơn · khuyến mãi · referral · thông báo (integration
   /** Đăng ký qua HTTP với IP/fingerprint riêng (chống lạm dụng referral dựa trên chúng) → client Bearer */
   const register = async (o: { ip?: string; fp?: string; ref?: string; marketing?: boolean } = {}): Promise<Bearer> => {
     const email = `s8-${uniq()}@example.com`;
-    const res = await inject({ method: 'POST', url: '/v1/auth/register', ip: o.ip ?? `10.${Math.floor(Math.random() * 200)}.${Math.floor(Math.random() * 200)}.${Math.floor(Math.random() * 200) + 1}`, headers: o.fp ? { 'x-device-fingerprint': o.fp } : {}, body: { email, password: 'Password123!', display_name: 'Học viên S8', accept_terms: true, referral_code: o.ref, marketing_opt_in: o.marketing } });
+    const res = await inject({ method: 'POST', url: '/v1/auth/register', ip: o.ip ?? `10.${Math.floor(Math.random() * 200)}.${Math.floor(Math.random() * 200)}.${Math.floor(Math.random() * 200) + 1}`, headers: o.fp ? { 'x-device-fingerprint': o.fp } : {}, body: { email, password: 'Hoc-vien#S12-xK9q', display_name: 'Học viên S8', accept_terms: true, referral_code: o.ref, marketing_opt_in: o.marketing } });
     expect(res.statusCode).toBe(201);
     const body = res.json<{ access_token: string; user: { id: string } }>();
     const call: Bearer['call'] = async (method, url, b, headers = {}) => {

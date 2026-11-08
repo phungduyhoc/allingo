@@ -100,7 +100,7 @@ describe('AI jobs S5 (integration)', () => {
 
   it('diagnose_rl: Free → 403 upgrade (seed: ai_diagnose chỉ Pro); attempt chưa chấm → 409', async () => {
     const free = client(app);
-    await free.call('POST', '/auth/register', { email: `s5j-${uniq()}@example.com`, password: 'Password123!', display_name: 'Free', accept_terms: true });
+    await free.call('POST', '/auth/register', { email: `s5j-${uniq()}@example.com`, password: 'Hoc-vien#S12-xK9q', display_name: 'Free', accept_terms: true });
     const attemptId = await doAttempt(free);
     const r = await free.call('POST', `/attempts/${attemptId}/diagnosis`);
     expect(r.status).toBe(403);
@@ -111,7 +111,7 @@ describe('AI jobs S5 (integration)', () => {
 
   it('summary.attempt: bài thứ 3 → learn.notes kind=system_summary (một lần, numeric fidelity); chạy lại → bỏ qua', async () => {
     const u = client(app);
-    const reg = await u.call('POST', '/auth/register', { email: `s5s-${uniq()}@example.com`, password: 'Password123!', display_name: 'Sum', accept_terms: true });
+    const reg = await u.call('POST', '/auth/register', { email: `s5s-${uniq()}@example.com`, password: 'Hoc-vien#S12-xK9q', display_name: 'Sum', accept_terms: true });
     const userId = reg.body.user.id as string;
     const ids = [await doAttempt(u), await doAttempt(u)];
     await wait(300);

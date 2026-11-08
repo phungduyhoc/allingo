@@ -31,7 +31,7 @@ describe('Sprint 10 – sửa lỗi API (integration)', () => {
   };
   const register = async () => {
     const email = `s10fix-${crypto.randomBytes(5).toString('hex')}@example.com`;
-    const r = await call('POST', '/auth/register', { email, password: 'Password123!', display_name: 'Fix', accept_terms: true });
+    const r = await call('POST', '/auth/register', { email, password: 'Hoc-vien#S12-xK9q', display_name: 'Fix', accept_terms: true });
     expect(r.status).toBe(201);
     return { email, id: r.body.user.id as string, token: r.body.access_token as string };
   };

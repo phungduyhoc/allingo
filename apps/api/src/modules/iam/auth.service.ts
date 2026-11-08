@@ -17,6 +17,7 @@ import { TurnstileService } from './turnstile.service.js';
 import { UsersService } from './users.service.js';
 import { WelcomeCreditsService } from './welcome-credits.service.js';
 import { LoginProtectionService, withMinDuration } from './login-protection.service.js';
+import { PasswordPolicyService } from './password/password-policy.js';
 
 export interface RequestMeta {
   ip?: string | null;
@@ -42,6 +43,7 @@ export class AuthService {
     private readonly otp: OtpService,
     private readonly turnstile: TurnstileService,
     private readonly loginProtection: LoginProtectionService,
+    private readonly passwordPolicy: PasswordPolicyService,
   ) {}
 
   async register(input: RegisterInput, meta: RequestMeta): Promise<{ tokens: IssuedTokens; body: AuthTokens }> {
@@ -51,6 +53,8 @@ export class AuthService {
 
   private async registerInner(input: RegisterInput, meta: RequestMeta): Promise<{ tokens: IssuedTokens; body: AuthTokens }> {
     await this.turnstile.assert(input.turnstile_token, meta.ip, 'register');
+    // S12: ≥ PASSWORD_MIN_LENGTH + danh sách mật khẩu lộ (offline; HIBP tuỳ chọn) → 400 issues[].code password_*
+    await this.passwordPolicy.assertAcceptable(input.password, [input.email, input.display_name]);
     const passwordHash = await argon2.hash(input.password, ARGON2_OPTS);
     const guestId = input.guest_token ? await this.jwt.verifyGuestToken(input.guest_token) : null;
     const result = await this.dbs.db.transaction(async (tx) => {

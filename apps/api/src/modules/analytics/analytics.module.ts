@@ -11,6 +11,9 @@ import { FunnelService } from './funnel/funnel.service.js';
 import { ReadStoreService } from './read-store.service.js';
 import { StatsService } from './stats.service.js';
 import { WeeklySummaryService } from './weekly-summary.service.js';
+import { CatalogModule } from '../catalog/index.js';
+import { BetaReportService } from './beta-report.service.js';
+import { ContentStatsService } from './content-stats.service.js';
 
 /**
  * analytics (tầng 4, S10): thống kê dashboard GET /me/stats đọc replica (`DATABASE_URL_REPLICA`, fallback cùng DB READ ONLY) +
@@ -18,9 +21,9 @@ import { WeeklySummaryService } from './weekly-summary.service.js';
  * Ngoại lệ §5.1: được đọc bảng của module khác qua kho đọc; không ghi.
  */
 @Module({
-  imports: [IamModule, TestEngineModule, LearningModule, GrowthModule],
+  imports: [IamModule, TestEngineModule, LearningModule, GrowthModule, CatalogModule],
   controllers: [AnalyticsController],
-  providers: [ReadStoreService, StatsService, FunnelService, WeeklySummaryService, AnalyticsJobsService, { provide: ANALYTICS_SINK, inject: [ENV], useFactory: (env: Env) => createAnalyticsSink(env) }],
-  exports: [StatsService, FunnelService, WeeklySummaryService, AnalyticsJobsService, ANALYTICS_SINK],
+  providers: [ReadStoreService, StatsService, FunnelService, WeeklySummaryService, AnalyticsJobsService, ContentStatsService, BetaReportService, { provide: ANALYTICS_SINK, inject: [ENV], useFactory: (env: Env) => createAnalyticsSink(env) }],
+  exports: [StatsService, FunnelService, WeeklySummaryService, AnalyticsJobsService, ANALYTICS_SINK, ContentStatsService, BetaReportService],
 })
 export class AnalyticsModule {}

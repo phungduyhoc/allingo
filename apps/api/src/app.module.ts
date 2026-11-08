@@ -26,7 +26,7 @@ import { TestEngineModule } from './modules/test-engine/index.js';
 import { LearningModule } from './modules/learning/index.js';
 import { GradingModule } from './modules/grading/index.js';
 import { SpeechModule } from './modules/speech/index.js';
-import { GrowthModule } from './modules/growth/index.js';
+import { BetaGateGuard, GrowthModule } from './modules/growth/index.js';
 import { AnalyticsModule } from './modules/analytics/index.js';
 import { B2bModule } from './modules/b2b/index.js';
 import { AdminModule } from './modules/admin/index.js';
@@ -65,7 +65,8 @@ import { AdminModule } from './modules/admin/index.js';
   controllers: [HealthController, MetricsController],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
-    // S11: thứ tự guard toàn cục – Auth → kill-switch (cờ tắt → 503) → token bucket (429)
+    // S12: beta gate (403 beta_required) ngay sau Auth; S11: thứ tự guard toàn cục – Auth → kill-switch (cờ tắt → 503) → token bucket (429)
+    { provide: APP_GUARD, useExisting: BetaGateGuard },
     { provide: APP_GUARD, useClass: KillSwitchGuard },
     { provide: APP_GUARD, useClass: RateLimitGuard },
     { provide: APP_FILTER, useClass: AppExceptionFilter },

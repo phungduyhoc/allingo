@@ -52,6 +52,8 @@ export async function bootTestApp(): Promise<NestFastifyApplication> {
   process.env.AUTH_MIN_RESPONSE_MS = process.env.AUTH_MIN_RESPONSE_MS ?? '0';
   // S11: token bucket theo người dùng nới rộng trong test chung (test S11 đặt lại = 1) – test cũ tạo nhiều đơn/nộp bài liên tiếp
   process.env.RATE_LIMIT_BUCKET_MULTIPLIER = process.env.RATE_LIMIT_BUCKET_MULTIPLIER ?? '1000';
+  // S12: MFA admin tắt trong test chung (test cũ đổi APP_ENV=staging tạm thời) – s12-admin-ops bật lại = 'true'
+  process.env.ADMIN_MFA_REQUIRED = process.env.ADMIN_MFA_REQUIRED ?? 'false';
   resetEnvCache();
   const env = loadEnv();
   const { createApp } = await import('../../src/bootstrap.js');

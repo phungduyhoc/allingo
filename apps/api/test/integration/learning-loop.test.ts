@@ -160,7 +160,7 @@ describe('learning loop (integration)', () => {
     const guestId = (await api.call('GET', '/me')).body.id;
     api.reset();
     const email = `it-${Date.now()}@example.com`;
-    const r = await api.call('POST', '/auth/register', { email, password: 'Password123', display_name: 'IT User', guest_token: guestToken });
+    const r = await api.call('POST', '/auth/register', { email, password: 'Hoc-vien#S12-xK9q', display_name: 'IT User', guest_token: guestToken });
     expect(r.status).toBe(201);
     expect(r.body.user.is_guest).toBe(false);
     const mine = await api.call('GET', '/me/attempts');
@@ -169,7 +169,7 @@ describe('learning loop (integration)', () => {
     const [guest] = await dbs.db.select({ status: schema.iamUsers.status }).from(schema.iamUsers).where(eq(schema.iamUsers.id, guestId));
     expect(guest?.status).toBe('deleted');
     expect((await api.call('GET', '/me/credits')).body.balance).toBe(300);
-    const dup = await api.call('POST', '/auth/register', { email, password: 'Password123', display_name: 'Dup' });
+    const dup = await api.call('POST', '/auth/register', { email, password: 'Hoc-vien#S12-xK9q', display_name: 'Dup' });
     expect(dup.status).toBe(409);
   });
 

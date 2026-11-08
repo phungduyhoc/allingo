@@ -105,6 +105,42 @@ export class FunnelService {
     return { accepted: ok, reason: ok ? 'ok' : 'disabled' };
   }
 
+  // ------------------------------------------------------------------ S12: sự kiện beta (outbox → PostHog, không PII)
+  @OnEvent('outbox.beta.redeemed')
+  async onBetaRedeemed(ev: { id?: string; payload: { invite_id: string; user_id: string; program?: string; trial?: boolean }; created_at?: Date }): Promise<void> {
+    const p = ev?.payload;
+    if (!p?.user_id) return;
+    await this.emit('beta_redeemed', p.user_id, `beta_redeemed:${p.user_id}`, { program: p.program ?? null, trial: p.trial ?? null }, ev.created_at).catch((err: Error) => this.warn(err, 'beta_redeemed'));
+  }
+
+  @OnEvent('outbox.survey.submitted')
+  async onSurvey(ev: { payload: { user_id: string; kind: string; score?: number; goal?: string }; created_at?: Date }): Promise<void> {
+    const p = ev?.payload;
+    if (!p?.user_id) return;
+    await this.emit('survey_submitted', p.user_id, `survey:${p.user_id}:${p.kind}`, { kind: p.kind, score: typeof p.score === 'number' ? p.score : null, goal: p.goal ?? null }, ev.created_at).catch((err: Error) => this.warn(err, 'survey_submitted'));
+  }
+
+  @OnEvent('outbox.feedback.submitted')
+  async onFeedback(ev: { payload: { feedback_id: string; user_id: string; category: string; has_screenshot?: boolean }; created_at?: Date }): Promise<void> {
+    const p = ev?.payload;
+    if (!p?.user_id) return;
+    await this.emit('feedback_submitted', p.user_id, `feedback:${p.feedback_id}`, { category: p.category, has_screenshot: !!p.has_screenshot }, ev.created_at).catch((err: Error) => this.warn(err, 'feedback_submitted'));
+  }
+
+  @OnEvent('outbox.content_report.created')
+  async onContentReport(ev: { payload: { report_id: string; user_id: string; reason: string }; created_at?: Date }): Promise<void> {
+    const p = ev?.payload;
+    if (!p?.user_id) return;
+    await this.emit('content_reported', p.user_id, `content_report:${p.report_id}`, { reason: p.reason }, ev.created_at).catch((err: Error) => this.warn(err, 'content_reported'));
+  }
+
+  @OnEvent('outbox.support_ticket.created')
+  async onTicket(ev: { payload: { ticket_id: string; user_id: string; category: string }; created_at?: Date }): Promise<void> {
+    const p = ev?.payload;
+    if (!p?.user_id) return;
+    await this.emit('support_ticket_created', p.user_id, `support_ticket:${p.ticket_id}`, { category: p.category }, ev.created_at).catch((err: Error) => this.warn(err, 'support_ticket_created'));
+  }
+
   private warn(err: Error, what: string): void {
     this.logger.warn({ err: err.message.slice(0, 160) }, `funnel ${what} failed`);
   }

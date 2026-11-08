@@ -187,7 +187,7 @@ describe.skipIf(!hasFfmpeg)('media pipeline & TTS (integration)', () => {
 
   it('xoá tài khoản: ảnh người học bị xoá mọi tệp (gốc, webp, thumbnail), hàng media_assets không còn khoá lưu trữ', async () => {
     const api = client(app);
-    const reg = await api.call('POST', '/auth/register', { email: `upl-${uniq()}@example.com`, password: 'Password123!', display_name: 'Uploader', accept_terms: true });
+    const reg = await api.call('POST', '/auth/register', { email: `upl-${uniq()}@example.com`, password: 'Hoc-vien#S12-xK9q', display_name: 'Uploader', accept_terms: true });
     expect(reg.status).toBe(201);
     const png = path.join(tmp, 'note.png');
     await ffmpeg.generateTestMedia(cfg, { kind: 'image', width: 400, height: 300, format: 'png' }, png);

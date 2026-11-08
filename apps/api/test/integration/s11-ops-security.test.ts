@@ -37,7 +37,7 @@ describe('S11 ops & security (integration)', () => {
   const newUser = async () => {
     const api = client(app);
     const email = `s11-${uniq()}@example.com`;
-    const r = await api.call('POST', '/auth/register', { email, password: 'Password123!', display_name: 'S11', accept_terms: true });
+    const r = await api.call('POST', '/auth/register', { email, password: 'Hoc-vien#S12-xK9q', display_name: 'S11', accept_terms: true });
     expect(r.status).toBe(201);
     return { api, id: r.body.user.id as string, email, token: r.body.access_token as string };
   };
@@ -140,9 +140,9 @@ describe('S11 ops & security (integration)', () => {
       expect((await inject({ method: 'POST', url: '/notes', body: note, cookies, headers: { 'sec-fetch-site': 'cross-site' } })).statusCode).toBe(403);
       expect((await inject({ method: 'POST', url: '/notes', body: note, cookies, headers: { origin: 'http://localhost:3000' } })).statusCode).toBe(201);
       expect((await inject({ method: 'POST', url: '/notes', body: note, headers: { origin: 'https://evil.example', authorization: `Bearer ${u.token}` } })).statusCode).toBe(201);
-      const login = await inject({ method: 'POST', url: '/auth/login', body: { email: u.email, password: 'Password123!' }, headers: { origin: 'https://evil.example' } });
+      const login = await inject({ method: 'POST', url: '/auth/login', body: { email: u.email, password: 'Hoc-vien#S12-xK9q' }, headers: { origin: 'https://evil.example' } });
       expect(login.statusCode).toBe(403);
-      expect((await inject({ method: 'POST', url: '/auth/login', body: { email: u.email, password: 'Password123!' }, headers: { origin: 'http://localhost:3000' } })).statusCode).toBe(200);
+      expect((await inject({ method: 'POST', url: '/auth/login', body: { email: u.email, password: 'Hoc-vien#S12-xK9q' }, headers: { origin: 'http://localhost:3000' } })).statusCode).toBe(200);
     });
   });
 
@@ -185,7 +185,7 @@ describe('S11 ops & security (integration)', () => {
     it('10 lần sai → khoá (kể cả mật khẩu đúng) 429 login_locked + audit; email không tồn tại khoá y hệt', async () => {
       const u = await newUser();
       for (let i = 0; i < 10; i++) expect((await inject({ method: 'POST', url: '/auth/login', body: { email: u.email, password: `wrong-${i}-pass` } })).statusCode).toBe(401);
-      const locked = await inject({ method: 'POST', url: '/auth/login', body: { email: u.email, password: 'Password123!' } });
+      const locked = await inject({ method: 'POST', url: '/auth/login', body: { email: u.email, password: 'Hoc-vien#S12-xK9q' } });
       expect(locked.statusCode).toBe(429);
       expect(locked.json().error).toMatchObject({ code: 'rate_limited', details: { reason: 'login_locked' } });
       const audits = await dbs.db.select().from(schema.opsAuditLogs).where(and(eq(schema.opsAuditLogs.action, 'auth.login_locked'), eq(schema.opsAuditLogs.entityId, u.id)));

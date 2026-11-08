@@ -258,6 +258,44 @@ export const envSchema = z.object({
   FLAGS_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(300).default(15),
   // S11 – backpressure hàng đợi: khi grading có ≥ N job chờ → tạm dừng worker notify/analytics tới khi grading ≤ N/2
   QUEUE_BACKPRESSURE_GRADING_DEPTH: z.coerce.number().int().min(1).max(1_000_000).default(200),
+
+  // Sprint 12 – MFA TOTP cho admin/superadmin: auto = bắt buộc ở staging/production (dev/test tắt); true/false ép buộc
+  ADMIN_MFA_REQUIRED: z.enum(['auto', 'true', 'false']).default('auto'),
+  // Khoá mã hoá secret TOTP (AES-256-GCM, dẫn xuất sha256); trống → dẫn xuất từ AUTH_SECRET. Đổi khoá = mọi admin đăng ký lại
+  MFA_ENCRYPTION_KEY: z.string().optional(),
+  MFA_ISSUER: z.string().default('Allingo'),
+  // Step-up MFA còn hiệu lực bao lâu trên một phiên (refresh giữ claim mfa trong khoảng này)
+  MFA_SESSION_MAX_AGE_HOURS: z.coerce.number().int().min(1).max(720).default(12),
+  // Sprint 12 – chính sách mật khẩu: độ dài tối thiểu + danh sách mật khẩu lộ offline (top-N trong repo); HIBP k-anonymity tuỳ chọn
+  PASSWORD_MIN_LENGTH: z.coerce.number().int().min(8).max(64).default(12),
+  PASSWORD_BREACH_CHECK: bool(true),
+  PASSWORD_HIBP_ENABLED: bool(false),
+  PASSWORD_HIBP_URL: z.string().default('https://api.pwnedpasswords.com/range'),
+  PASSWORD_HIBP_TIMEOUT_MS: z.coerce.number().int().min(200).max(10_000).default(1500),
+  // Sprint 12 – phiên bản văn bản pháp lý (placeholder chờ luật sư) – POLICY_VERSION dùng cho terms/privacy
+  REFUND_POLICY_VERSION: z.string().default('2026-11'),
+  VOICE_CONSENT_VERSION: z.string().default('2026-11'),
+  // Sprint 12 – beta kín: lịch gửi mời theo đợt (giờ VN, mỗi ngày) – hạn mức/ngày nằm ở rules.config của ff.growth.beta_gate
+  BETA_INVITE_SEND_HOUR_VN: z.coerce.number().int().min(0).max(23).default(9),
+  // Sprint 12 – job vận hành: content.stats_nightly (giờ VN), cửa sổ dữ liệu (ngày), n tối thiểu để kết luận
+  CONTENT_STATS_HOUR_VN: z.coerce.number().int().min(0).max(23).default(2),
+  CONTENT_STATS_WINDOW_DAYS: z.coerce.number().int().min(7).max(3650).default(365),
+  CONTENT_STATS_MIN_N: z.coerce.number().int().min(1).max(10_000).default(30),
+  // Sprint 12 – ops.retention_cleanup (giờ VN) + chính sách lưu giữ (ngày); ghi âm theo expires_at (90/365 – CLAUDE.md §9)
+  RETENTION_HOUR_VN: z.coerce.number().int().min(0).max(23).default(3),
+  RETENTION_AI_TASKS_DAYS: z.coerce.number().int().min(30).max(3650).default(180),
+  RETENTION_OUTBOX_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
+  RETENTION_NOTIFICATIONS_DAYS: z.coerce.number().int().min(30).max(3650).default(180),
+  RETENTION_AUDIT_DAYS: z.coerce.number().int().min(365).max(3650).default(730),
+  RETENTION_DEADLETTER_DAYS: z.coerce.number().int().min(7).max(3650).default(90),
+  RETENTION_BATCH: z.coerce.number().int().min(10).max(100_000).default(1000),
+  // Sprint 12 – email báo cáo đối soát hằng ngày + báo cáo beta tuần (dấu phẩy; trống → OPS_ALERT_EMAIL)
+  BILLING_REPORT_EMAILS: z.string().optional(),
+  BETA_REPORT_EMAILS: z.string().optional(),
+  // Sprint 12 – PostHog API (đọc số liệu cho pnpm report:beta): personal API key + project id; trống → "chưa có"
+  POSTHOG_API_HOST: z.string().default('https://us.posthog.com'),
+  POSTHOG_PROJECT_ID: z.string().optional(),
+  POSTHOG_PERSONAL_API_KEY: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

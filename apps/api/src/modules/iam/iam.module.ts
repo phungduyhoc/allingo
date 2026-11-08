@@ -14,11 +14,16 @@ import { SessionsService } from './sessions.service.js';
 import { TurnstileService } from './turnstile.service.js';
 import { UsersService } from './users.service.js';
 import { WelcomeCreditsService } from './welcome-credits.service.js';
+import { AdminUsersService } from './admin-users.service.js';
+import { LegalController } from './legal/legal.controller.js';
+import { MfaController } from './mfa/mfa.controller.js';
+import { MfaService } from './mfa/mfa.service.js';
+import { PasswordPolicyService } from './password/password-policy.js';
 
 @Module({
   imports: [BillingModule],
-  controllers: [AuthController, MeController],
-  providers: [AuthService, UsersService, SessionsService, MergeService, EnrollmentsService, ConsentsService, DeletionService, OAuthService, OtpService, TurnstileService, WelcomeCreditsService, LoginProtectionService],
-  exports: [UsersService, EnrollmentsService, SessionsService, DeletionService, OAuthService, OtpService, ConsentsService],
+  controllers: [AuthController, MeController, MfaController, LegalController],
+  providers: [AuthService, UsersService, SessionsService, MergeService, EnrollmentsService, ConsentsService, DeletionService, OAuthService, OtpService, TurnstileService, WelcomeCreditsService, LoginProtectionService, MfaService, PasswordPolicyService, AdminUsersService],
+  exports: [UsersService, EnrollmentsService, SessionsService, DeletionService, OAuthService, OtpService, ConsentsService, MfaService, PasswordPolicyService, AdminUsersService],
 })
 export class IamModule {}

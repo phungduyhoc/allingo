@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
+import { and, isNotNull, lt, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import { PROGRAM_CODES } from '@allingo/schemas';
 import { DbService } from '../../shared/db/db.module.js';
@@ -81,5 +82,33 @@ export class UploadsService {
     const ttl = this.storage.defaultTtlSec;
     const upload_url = await this.storage.presignPut('recordings', key, { contentType: input.mime_type, contentLength: input.size_bytes, ttlSec: ttl });
     return { upload_url, resource_id: id, expires_at: new Date(now.getTime() + ttl * 1000).toISOString() };
+  }
+
+  /**
+   * S12 – ops.retention_cleanup: ghi âm quá `expires_at` (90/365 ngày theo gói – CLAUDE.md §9) → xoá đối tượng S3 rồi xoá hàng;
+   * hàng còn được learn.submissions tham chiếu thì giữ hàng (FK) nhưng xoá tệp + transcript, đánh dấu storage_key `purged/<id>`.
+   */
+  async purgeExpiredRecordings(now: Date, batch: number): Promise<{ deleted: number; purged_files: number; kept_rows: number }> {
+    const rows = await this.dbs.db
+      .select({ id: learnRecordings.id, key: learnRecordings.storageKey })
+      .from(learnRecordings)
+      .where(and(isNotNull(learnRecordings.expiresAt), lt(learnRecordings.expiresAt, now)))
+      .limit(batch);
+    let purged = 0;
+    let deleted = 0;
+    let kept = 0;
+    for (const r of rows) {
+      if (!r.key.startsWith('purged/')) {
+        if (await this.storage.deleteObject('recordings', r.key)) purged++;
+      }
+      const res = (await this.dbs.db.execute(sql`delete from learn.recordings where id = ${r.id} and not exists (select 1 from learn.submissions s where s.recording_id = ${r.id}) returning id`)) as unknown as unknown[];
+      if (res.length) deleted++;
+      else {
+        kept++;
+        await this.dbs.db.execute(sql`update learn.recordings set storage_key = ${`purged/${r.id}`}, transcript = null, expires_at = null where id = ${r.id}`);
+      }
+    }
+    if (rows.length) this.logger.info({ deleted, purged_files: purged, kept_rows: kept }, 'expired recordings purged');
+    return { deleted, purged_files: purged, kept_rows: kept };
   }
 }

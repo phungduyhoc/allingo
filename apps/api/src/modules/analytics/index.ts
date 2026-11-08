@@ -7,3 +7,8 @@ export { AnalyticsJobsService, ANALYTICS_TICK_MS } from './analytics-jobs.servic
 export { FunnelService } from './funnel/funnel.service.js';
 export { ANALYTICS_SINK, MemoryAnalyticsSink, NoopAnalyticsSink, PostHogSink, createAnalyticsSink, deterministicUuid, hashUserId, analyticsSalt, type AnalyticsSink, type FunnelCapture, type FetchLike } from './funnel/analytics-sink.js';
 export { COHORT_MIN_SIZE, accuracyPct, compareAccuracy, lastWeekStarts, mondayOf, percentileOf, sumCells, targetBucket } from './stats-calc.js';
+// S12
+export { ContentStatsService } from './content-stats.service.js';
+export { pointBiserial, recommendQuestion, STATS_THRESHOLDS, type ItemObservation } from './content-stats.js';
+export { BetaReportService } from './beta-report.service.js';
+export { computeBetaKpis, renderBetaReport, isoWeekRange, isoWeekOf, npsSummary, fetchPostHogSummary, GATE2_TARGETS, type BetaKpis } from './beta-report.js';

@@ -15,11 +15,14 @@ import { ContentWorkflowService } from './content-workflow.service.js';
 import { InternalContentController, InternalTokenGuardFactory } from './internal-content.controller.js';
 import { MiniTestService } from './mini-test.service.js';
 import { SearchService } from './search/search.service.js';
+import { ContentReportsController, InternalContentReportsController } from './content-reports.controller.js';
+import { ContentReportsService } from './content-reports.service.js';
+import { QuestionStatsService } from './question-stats.service.js';
 
 @Module({
   imports: [BillingModule, AiGatewayModule, IamModule, SpeechModule],
-  controllers: [CatalogController, InternalContentController, AdminContentController, AdminTestSetsController],
-  providers: [CatalogQueryService, ContentPublishService, ContentWorkflowService, ContentAiCheckService, ContentGenerationService, SearchService, InternalTokenGuardFactory, MiniTestService, DictionaryService],
-  exports: [CatalogQueryService, ContentPublishService, ContentWorkflowService, ContentGenerationService, SearchService, MiniTestService, DictionaryService],
+  controllers: [CatalogController, InternalContentController, AdminContentController, AdminTestSetsController, ContentReportsController, InternalContentReportsController],
+  providers: [CatalogQueryService, ContentPublishService, ContentWorkflowService, ContentAiCheckService, ContentGenerationService, SearchService, InternalTokenGuardFactory, MiniTestService, DictionaryService, ContentReportsService, QuestionStatsService],
+  exports: [CatalogQueryService, ContentPublishService, ContentWorkflowService, ContentGenerationService, SearchService, MiniTestService, DictionaryService, ContentReportsService, QuestionStatsService],
 })
 export class CatalogModule {}

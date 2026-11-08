@@ -4,7 +4,7 @@ import { ApiTags } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { OAUTH_PROVIDERS, authTokensSchema, guestSessionSchema, loginInputSchema, oauthInputSchema, otpRequestInputSchema, otpRequestResultSchema, otpVerifyInputSchema, refreshInputSchema, registerInputSchema, type LoginInput, type OAuthInput, type OtpRequestInput, type OtpVerifyInput, type RegisterInput } from '@allingo/schemas';
-import { ACCESS_COOKIE, CurrentUser, Public, REFRESH_COOKIE, type AuthUser } from '../../shared/auth/auth.guard.js';
+import { ACCESS_COOKIE, BetaExempt, CurrentUser, Public, REFRESH_COOKIE, type AuthUser } from '../../shared/auth/auth.guard.js';
 import { ApiZod, ZodBody, ZodParams, ZodValidationPipe } from '../../shared/http/zod.js';
 import { AuthService, type RequestMeta } from './auth.service.js';
 import { OAuthService } from './oauth/oauth.service.js';
@@ -17,6 +17,7 @@ type Req = FastifyRequest & { cookies?: Record<string, string | undefined> };
 
 @ApiTags('Auth')
 @Controller('auth')
+@BetaExempt()
 export class AuthController {
   constructor(
     private readonly auth: AuthService,

@@ -51,9 +51,9 @@ describe('content workflow (integration)', () => {
     // Biên tập viên: đăng ký rồi được admin cấp vai trò editor (claims vai trò có hiệu lực ở lần đăng nhập kế tiếp)
     editorApi = editor();
     const email = `editor-${token}@example.com`;
-    const reg = await editorApi.call('POST', '/auth/register', { email, password: 'Password123!', display_name: 'Editor', accept_terms: true });
+    const reg = await editorApi.call('POST', '/auth/register', { email, password: 'Hoc-vien#S12-xK9q', display_name: 'Editor', accept_terms: true });
     expect((await adminApi.call('POST', `/admin/users/${reg.body.user.id}/roles`, { role_code: 'editor' })).status).toBe(200);
-    expect((await editorApi.call('POST', '/auth/login', { email, password: 'Password123!' })).body.user.roles).toContain('editor');
+    expect((await editorApi.call('POST', '/auth/login', { email, password: 'Hoc-vien#S12-xK9q' })).body.user.roles).toContain('editor');
     learnerApi = client(app);
     await learnerApi.call('POST', '/auth/guest', {});
   });

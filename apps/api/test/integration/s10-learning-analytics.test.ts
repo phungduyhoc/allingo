@@ -31,7 +31,7 @@ describe('Sprint 10 – SRS, sổ lỗi, thống kê, phễu (integration)', () 
 
   const inject = (opts: InjectOptions) => app.getHttpAdapter().getInstance().inject(opts);
   const register = async (extra: Record<string, unknown> = {}): Promise<Api> => {
-    const res = await inject({ method: 'POST', url: '/v1/auth/register', body: { email: `s10-${uniq()}@example.com`, password: 'Password123!', display_name: 'Học viên S10', accept_terms: true, ...extra } });
+    const res = await inject({ method: 'POST', url: '/v1/auth/register', body: { email: `s10-${uniq()}@example.com`, password: 'Hoc-vien#S12-xK9q', display_name: 'Học viên S10', accept_terms: true, ...extra } });
     expect(res.statusCode).toBe(201);
     const b = res.json<{ access_token: string; user: { id: string } }>();
     return {
@@ -444,7 +444,7 @@ describe('Sprint 10 – SRS, sổ lỗi, thống kê, phễu (integration)', () 
       const sink = app.get<MemoryAnalyticsSink>(ANALYTICS_SINK);
       sink.clear();
       const email = `s10-attr-${uniq()}@example.com`;
-      const res = await inject({ method: 'POST', url: '/v1/auth/register', body: { email, password: 'Password123!', display_name: 'Attr', accept_terms: true, attribution: { utm_source: 'facebook', utm_medium: 'cpc', utm_campaign: 'beta-toeic', referrer: 'https://www.google.com/search?q=toeic+ai', landing_path: '/toeic?utm_source=facebook&gclid=abc', first_seen_at: new Date(Date.now() - 3_600_000).toISOString() } } });
+      const res = await inject({ method: 'POST', url: '/v1/auth/register', body: { email, password: 'Hoc-vien#S12-xK9q', display_name: 'Attr', accept_terms: true, attribution: { utm_source: 'facebook', utm_medium: 'cpc', utm_campaign: 'beta-toeic', referrer: 'https://www.google.com/search?q=toeic+ai', landing_path: '/toeic?utm_source=facebook&gclid=abc', first_seen_at: new Date(Date.now() - 3_600_000).toISOString() } } });
       expect(res.statusCode).toBe(201);
       const userId = res.json<{ user: { id: string } }>().user.id;
       const [row] = await dbs.db.select({ a: schema.iamUsers.attribution }).from(schema.iamUsers).where(eq(schema.iamUsers.id, userId));

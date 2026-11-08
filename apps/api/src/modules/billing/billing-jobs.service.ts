@@ -11,7 +11,8 @@ import { InvoicesService } from './invoices/invoices.service.js';
 import { OrdersService } from './orders.service.js';
 import { PaymentsService } from './payments.service.js';
 import { vnDateTime } from './payments/crypto.js';
-import { ReconciliationService } from './reconciliation.service.js';
+import { ReconciliationService, reconciliationEmail } from './reconciliation.service.js';
+import { MailerService } from '../../shared/notify/mailer.service.js';
 import { SubscriptionsService } from './subscriptions.service.js';
 
 /** Chu kỳ (giây) của từng job billing trong bộ lập lịch */
@@ -52,6 +53,7 @@ export class BillingJobsService implements OnModuleInit, OnApplicationBootstrap,
     private readonly reconciliation: ReconciliationService,
     private readonly freeCredits: FreeCreditsService,
     private readonly invoices: InvoicesService,
+    private readonly mailer: MailerService,
   ) {}
 
   onModuleInit(): void {
@@ -78,8 +80,11 @@ export class BillingJobsService implements OnModuleInit, OnApplicationBootstrap,
         return this.subscriptions.grantMonthlyDue(now);
       case 'credit.expire':
         return this.credits.expireDue(now);
-      case 'billing.reconcile':
-        return this.reconciliation.daily(now);
+      case 'billing.reconcile': {
+        const r = await this.reconciliation.daily(now);
+        const emailed = await this.emailReconcileReport(r);
+        return { runs: r.runs, mismatched: r.mismatched, skipped: r.skipped, emailed };
+      }
       case 'credit.grant_free_monthly': {
         const r = await this.freeCredits.grantDue(now);
         return { users: r.users, credits: r.credits, skipped: r.skipped };
@@ -87,6 +92,19 @@ export class BillingJobsService implements OnModuleInit, OnApplicationBootstrap,
       case 'invoice.retry':
         return this.invoices.retryDue(now);
     }
+  }
+
+  /**
+   * S12: gửi báo cáo đối soát hằng ngày tới BILLING_REPORT_EMAILS (dấu phẩy; trống → OPS_ALERT_EMAIL). Không có người nhận
+   * hoặc chưa có cổng nào → bỏ qua. Trả số email đã gửi.
+   */
+  async emailReconcileReport(r: Awaited<ReturnType<ReconciliationService['daily']>>): Promise<number> {
+    const to = (this.env.BILLING_REPORT_EMAILS || this.env.OPS_ALERT_EMAIL || '').split(',').map((x) => x.trim()).filter(Boolean);
+    if (!to.length || !r.details.length) return 0;
+    const msg = reconciliationEmail(r, this.env.WEB_PUBLIC_URL.replace(/\/+$/, ''));
+    let sent = 0;
+    for (const addr of to) if ((await this.mailer.send({ to: addr, subject: msg.subject, text: msg.text, html: msg.html, tags: { kind: 'billing_reconcile' } })).delivered) sent++;
+    return sent;
   }
 
   startScheduler(role: 'api' | 'worker'): void {

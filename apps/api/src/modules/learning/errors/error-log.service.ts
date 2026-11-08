@@ -183,6 +183,9 @@ export class ErrorLogService {
     const list = versionIds.map((id) => loaded.get(id)).filter((x): x is NonNullable<typeof x> => !!x);
     const publics = await this.catalog.toPublic(list.map((q) => ({ ...q, group_key: q.passage?.id ?? null, order_no: 1 })), { revealTranscript: true });
     const publicByVersion = new Map(list.map((q, i) => [q.question_version_id, publics[i]!]));
+    // S12 (fix web S10): Part 1–4 – chữ được đọc trong audio (stem rỗng trong nội dung) → transcript như Review
+    const transcripts = await this.catalog.transcripts(list);
+    const transcriptByVersion = new Map(list.map((q) => [q.question_version_id, transcripts.get(q.question_id) ?? null]));
     const answers = await this.attempts.answersByIds(userId, rows.map((r) => r.attemptAnswerId).filter((x): x is string => !!x));
     const cards = await this.srs.cardIdsByRef(userId, 'error', rows.map((r) => r.id));
     return rows.map((r) => {
@@ -196,6 +199,7 @@ export class ErrorLogService {
         reason_auto: (r.reasonAuto as Record<string, unknown> | null) ?? {},
         reason_override: (r.reasonOverride) ?? null,
         question: r.questionVersionId ? (publicByVersion.get(r.questionVersionId) ?? null) : null,
+        transcript_highlight: r.questionVersionId ? (transcriptByVersion.get(r.questionVersionId) ?? null) : null,
         question_id: r.questionId ?? null,
         question_version_id: r.questionVersionId ?? null,
         section_code: ra.evidence?.section ?? q?.section_code ?? null,

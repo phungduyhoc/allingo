@@ -81,3 +81,21 @@ export class CsrfRejected extends AppError {
     super('forbidden', 'Cross-site request rejected', HttpStatus.FORBIDDEN, { reason: 'csrf_origin_mismatch' });
   }
 }
+/**
+ * 403 `beta_required` (S12): beta kín bật (`ff.growth.beta_gate`) và người gọi chưa có quyền beta.
+ * `details = { message_key: 'errors.beta_required', redeem_path: '/beta/redeem' }` – web hiện màn nhập mã mời.
+ */
+export class BetaRequired extends AppError {
+  constructor() {
+    super('beta_required', 'Closed beta: an invitation code is required', HttpStatus.FORBIDDEN, { message_key: 'errors.beta_required', redeem_path: '/beta/redeem' });
+  }
+}
+/**
+ * 403 `mfa_required` (S12): admin/superadmin gọi endpoint quản trị khi phiên chưa xác minh TOTP (step-up).
+ * `details = { enrolled?, enroll_path, verify_path }` – chưa đăng ký → enroll + confirm; đã đăng ký → verify.
+ */
+export class MfaRequired extends AppError {
+  constructor(details: Record<string, unknown> = {}) {
+    super('mfa_required', 'Multi-factor authentication required for this operation', HttpStatus.FORBIDDEN, { enroll_path: '/auth/mfa/totp/enroll', verify_path: '/auth/mfa/verify', ...details });
+  }
+}

@@ -55,7 +55,7 @@ describe('S7 billing (integration)', () => {
 
   const newUser = async () => {
     const api = client(app);
-    const r = await api.call('POST', '/auth/register', { email: `s7-${uniq()}@example.com`, password: 'Password123!', display_name: 'S7', accept_terms: true });
+    const r = await api.call('POST', '/auth/register', { email: `s7-${uniq()}@example.com`, password: 'Hoc-vien#S12-xK9q', display_name: 'S7', accept_terms: true });
     expect(r.status).toBe(201);
     return { api, id: r.body.user.id as string };
   };

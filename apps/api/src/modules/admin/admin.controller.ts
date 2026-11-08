@@ -10,6 +10,7 @@ import { Forbidden, NotFound } from '../../shared/http/errors.js';
 import { ApiZod, ZodBody, ZodParams, ZodQuery } from '../../shared/http/zod.js';
 import { AiGatewayService } from '../ai-gateway/index.js';
 import { UsersService } from '../iam/index.js';
+import { BetaService } from '../growth/index.js';
 
 const userParam = z.object({ userId: z.uuid() });
 
@@ -24,6 +25,7 @@ export class AdminController {
     private readonly users: UsersService,
     private readonly dbs: DbService,
     private readonly audit: AuditService,
+    private readonly beta: BetaService,
   ) {}
 
   /**
@@ -42,6 +44,8 @@ export class AdminController {
       else await this.users.revokeRole(tx, { userId: p.userId, roleCode: body.role_code, programCode: body.program_code ?? null });
       await this.audit.log({ action: body.action === 'grant' ? 'user.role_granted' : 'user.role_revoked', actorUserId: actor.id, actorRole: actor.roles.join(','), entityType: 'user', entityId: p.userId, after: { role: body.role_code, program: body.program_code ?? null }, ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null }, tx);
     });
+    // S12: vai trò beta_tester đổi → xoá cache quyền beta gate
+    if (body.role_code === 'beta_tester') await this.beta.invalidateAccess(p.userId);
     return { user_id: p.userId, roles: await this.users.getRoles(p.userId) };
   }
 

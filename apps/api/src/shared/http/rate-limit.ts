@@ -39,6 +39,12 @@ export const RATE_BUCKETS = {
   register_ip: { capacity: 60, refill: 60, perSeconds: 3600, by: 'ip' },
   webhook_ip: { capacity: 120, refill: 120, perSeconds: 60, by: 'ip' },
   uploads: { capacity: 30, refill: 30, perSeconds: 600, by: 'user' },
+  // S12 – beta & phản hồi: đăng ký chờ theo IP (công khai), đổi mã mời (chống dò mã), góp ý/báo lỗi/ticket, MFA
+  waitlist_ip: { capacity: 20, refill: 20, perSeconds: 3600, by: 'ip' },
+  beta_redeem: { capacity: 10, refill: 10, perSeconds: 600, by: 'user' },
+  feedback: { capacity: 10, refill: 10, perSeconds: 600, by: 'user' },
+  support: { capacity: 10, refill: 10, perSeconds: 3600, by: 'user' },
+  mfa: { capacity: 10, refill: 10, perSeconds: 600, by: 'user' },
 } as const satisfies Record<string, BucketConfig>;
 export type BucketName = keyof typeof RATE_BUCKETS;
 

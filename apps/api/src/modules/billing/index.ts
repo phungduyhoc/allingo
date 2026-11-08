@@ -29,3 +29,6 @@ export { EInvoiceError, splitVat, vndInWords, stripVietnamese, type EInvoiceProv
 export { buildSimplePdf, isStructurallyValidPdf } from './invoices/minimal-pdf.js';
 export { FreeCreditsService, freeMonthlyRefId } from './free-credits.service.js';
 export { evaluatePromotion, isNewUser, type PromotionRow } from './pricing.js';
+// S12
+export { BetaGrantService, type BetaGrantResult } from './beta-grant.service.js';
+export { reconciliationEmail, type DailyReconDetail } from './reconciliation.service.js';

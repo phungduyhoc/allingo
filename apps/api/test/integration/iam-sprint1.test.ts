@@ -70,7 +70,7 @@ describe('iam sprint 1 (integration)', () => {
     it('email đã có tài khoản mật khẩu → 409 link_required; gửi kèm mật khẩu đúng → liên kết, sai → 401', async () => {
       const api = client(app);
       const email = `link-${uniq()}@example.com`;
-      const reg = await api.call('POST', '/auth/register', { email, password: 'Password123!', display_name: 'Link User', accept_terms: true });
+      const reg = await api.call('POST', '/auth/register', { email, password: 'Hoc-vien#S12-xK9q', display_name: 'Link User', accept_terms: true });
       expect(reg.status).toBe(201);
       const userId = reg.body.user.id;
       api.reset();
@@ -81,7 +81,7 @@ describe('iam sprint 1 (integration)', () => {
       const fbUid = `fb-${uniq()}`;
       const bad = await api.call('POST', '/auth/oauth/facebook', { id_token: `mock:${fbUid}:${email}:FB Name`, link_password: 'wrong-pass' });
       expect(bad.status).toBe(401);
-      const ok = await api.call('POST', '/auth/oauth/facebook', { id_token: `mock:${fbUid}:${email}:FB Name`, link_password: 'Password123!' });
+      const ok = await api.call('POST', '/auth/oauth/facebook', { id_token: `mock:${fbUid}:${email}:FB Name`, link_password: 'Hoc-vien#S12-xK9q' });
       expect(ok.status).toBe(200);
       expect(ok.body.linked).toBe(true);
       expect(ok.body.user.id).toBe(userId);
@@ -91,7 +91,7 @@ describe('iam sprint 1 (integration)', () => {
     it('email chưa xác minh không được dùng để khớp tài khoản; provider tắt → 503', async () => {
       const api = client(app);
       const email = `unv-${uniq()}@example.com`;
-      await api.call('POST', '/auth/register', { email, password: 'Password123!', display_name: 'U', accept_terms: true });
+      await api.call('POST', '/auth/register', { email, password: 'Hoc-vien#S12-xK9q', display_name: 'U', accept_terms: true });
       api.reset();
       const r = await api.call('POST', '/auth/apple', {});
       expect(r.status).toBe(404);
@@ -170,12 +170,12 @@ describe('iam sprint 1 (integration)', () => {
     it('refresh token dùng lại → thu hồi toàn bộ phiên + audit', async () => {
       const api = client(app);
       const email = `reuse-${uniq()}@example.com`;
-      const reg = await api.call('POST', '/auth/register', { email, password: 'Password123!', display_name: 'R', accept_terms: true }, { 'x-client': 'mobile' });
+      const reg = await api.call('POST', '/auth/register', { email, password: 'Hoc-vien#S12-xK9q', display_name: 'R', accept_terms: true }, { 'x-client': 'mobile' });
       const rt1 = reg.body.refresh_token as string;
       const userId = reg.body.user.id as string;
       // Phiên thứ hai (web) để kiểm tra bị thu hồi theo
       const api2 = client(app);
-      const login2 = await api2.call('POST', '/auth/login', { email, password: 'Password123!' });
+      const login2 = await api2.call('POST', '/auth/login', { email, password: 'Hoc-vien#S12-xK9q' });
       expect(login2.status).toBe(200);
 
       const r1 = await api.call('POST', '/auth/refresh', { refresh_token: rt1 }, { 'x-client': 'mobile' });
@@ -199,9 +199,9 @@ describe('iam sprint 1 (integration)', () => {
     it('GET /me/sessions liệt kê và DELETE thu hồi phiên khác', async () => {
       const a = client(app);
       const email = `sess-${uniq()}@example.com`;
-      await a.call('POST', '/auth/register', { email, password: 'Password123!', display_name: 'S', accept_terms: true });
+      await a.call('POST', '/auth/register', { email, password: 'Hoc-vien#S12-xK9q', display_name: 'S', accept_terms: true });
       const b = client(app);
-      await b.call('POST', '/auth/login', { email, password: 'Password123!' });
+      await b.call('POST', '/auth/login', { email, password: 'Hoc-vien#S12-xK9q' });
       const list = await a.call('GET', '/me/sessions');
       expect(list.body).toHaveLength(2);
       const other = list.body.find((s: { current: boolean }) => !s.current);
@@ -215,9 +215,9 @@ describe('iam sprint 1 (integration)', () => {
   describe('consents', () => {
     it('đăng ký với accept_terms=false → 400; cấp marketing rồi thu hồi; không thu hồi được terms', async () => {
       const api = client(app);
-      const bad = await api.call('POST', '/auth/register', { email: `c-${uniq()}@example.com`, password: 'Password123!', display_name: 'C', accept_terms: false });
+      const bad = await api.call('POST', '/auth/register', { email: `c-${uniq()}@example.com`, password: 'Hoc-vien#S12-xK9q', display_name: 'C', accept_terms: false });
       expect(bad.status).toBe(400);
-      const ok = await api.call('POST', '/auth/register', { email: `c-${uniq()}@example.com`, password: 'Password123!', display_name: 'C', accept_terms: true, marketing_opt_in: true });
+      const ok = await api.call('POST', '/auth/register', { email: `c-${uniq()}@example.com`, password: 'Hoc-vien#S12-xK9q', display_name: 'C', accept_terms: true, marketing_opt_in: true });
       expect(ok.status).toBe(201);
       const list = await api.call('GET', '/me/consents');
       expect(list.body.map((c: { type: string }) => c.type).sort()).toEqual(['marketing', 'privacy', 'terms']);
@@ -237,7 +237,7 @@ describe('iam sprint 1 (integration)', () => {
     it('DELETE /me → 202 due_at, phiên bị thu hồi, purge ẩn danh hoá nhưng giữ ledger và attempts', async () => {
       const api = client(app);
       const email = `del-${uniq()}@example.com`;
-      const reg = await api.call('POST', '/auth/register', { email, password: 'Password123!', display_name: 'Del Me', accept_terms: true });
+      const reg = await api.call('POST', '/auth/register', { email, password: 'Hoc-vien#S12-xK9q', display_name: 'Del Me', accept_terms: true });
       const userId = reg.body.user.id as string;
       const ledgerBefore = await dbs.db.select().from(schema.billingCreditLedger).where(eq(schema.billingCreditLedger.userId, userId));
       expect(ledgerBefore.length).toBeGreaterThan(0);
@@ -246,7 +246,7 @@ describe('iam sprint 1 (integration)', () => {
       expect(del.body.status).toBe('scheduled');
       expect(del.body.request_id).toBeTruthy();
       expect((await api.call('GET', '/me')).status).toBe(401);
-      expect((await api.call('POST', '/auth/login', { email, password: 'Password123!' })).status).toBe(401);
+      expect((await api.call('POST', '/auth/login', { email, password: 'Hoc-vien#S12-xK9q' })).status).toBe(401);
 
       const purged = await app.get(DeletionService).purgeDue();
       expect(purged).toBeGreaterThanOrEqual(1);
@@ -269,7 +269,7 @@ describe('iam sprint 1 (integration)', () => {
       expect(outbox).toHaveLength(1);
       // Yêu cầu lần 2 khi đã có yêu cầu đang chờ → 409 (tạo user khác để kiểm tra nhánh)
       const api2 = client(app);
-      await api2.call('POST', '/auth/register', { email: `del2-${uniq()}@example.com`, password: 'Password123!', display_name: 'D2', accept_terms: true });
+      await api2.call('POST', '/auth/register', { email: `del2-${uniq()}@example.com`, password: 'Hoc-vien#S12-xK9q', display_name: 'D2', accept_terms: true });
       // Tắt purge tức thời bằng cách gọi 2 lần liên tiếp trước khi purge chạy
       expect((await api2.call('DELETE', '/me')).status).toBe(202);
     });
@@ -281,7 +281,7 @@ describe('iam sprint 1 (integration)', () => {
       const login = await admin.call('POST', '/auth/login', { email: 'admin@allingo.dev', password: 'Allingo@2026' });
       expect(login.status).toBe(200);
       const learner = client(app);
-      const reg = await learner.call('POST', '/auth/register', { email: `t-${uniq()}@example.com`, password: 'Password123!', display_name: 'T', accept_terms: true });
+      const reg = await learner.call('POST', '/auth/register', { email: `t-${uniq()}@example.com`, password: 'Hoc-vien#S12-xK9q', display_name: 'T', accept_terms: true });
       const targetId = reg.body.user.id as string;
       expect((await learner.call('POST', `/admin/users/${targetId}/roles`, { role_code: 'teacher' })).status).toBe(403);
       const grant = await admin.call('POST', `/admin/users/${targetId}/roles`, { role_code: 'teacher', program_code: 'toeic' });
@@ -293,7 +293,7 @@ describe('iam sprint 1 (integration)', () => {
       expect(revoke.body.roles).not.toContain('teacher');
       expect((await audits('user.role_granted')).some((a) => a.entityId === targetId)).toBe(true);
       // Vai trò mới có hiệu lực ở lần đăng nhập/refresh kế tiếp (claims trong access token)
-      const reg2 = await learner.call('POST', '/auth/login', { email: reg.body.user.email, password: 'Password123!' });
+      const reg2 = await learner.call('POST', '/auth/login', { email: reg.body.user.email, password: 'Hoc-vien#S12-xK9q' });
       expect(reg2.body.user.roles).not.toContain('teacher');
     });
   });

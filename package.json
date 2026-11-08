@@ -29,6 +29,7 @@
     "schemas:gen-ai": "pnpm --filter @allingo/schemas gen-ai",
     "eval:build": "pnpm --filter @allingo/api eval:build",
     "eval:run": "pnpm --filter @allingo/api eval:run",
+    "report:beta": "pnpm --filter @allingo/api report:beta",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -38,5 +39,12 @@
     "prettier": "^3.6.2",
     "turbo": "^2.11.10",
     "typescript": "~5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "dompurify@<3.4.17": "3.4.17",
+      "zod@<4.6.6": "4.6.7",
+      "happy-dom@<21.0.4": "21.0.4"
+    }
   }
 }

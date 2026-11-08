@@ -137,25 +137,48 @@ export class ReconciliationService {
   }
 
   /** Job billing.reconcile: hôm qua (giờ VN), mọi cổng khả dụng; không ghi đè lần chạy đã có (vd CSV tải tay) */
-  async daily(now: Date = new Date(this.clock.now())): Promise<{ runs: number; mismatched: number; skipped: number }> {
+  async daily(now: Date = new Date(this.clock.now())): Promise<{ runs: number; mismatched: number; skipped: number; for_date: string; details: DailyReconDetail[] }> {
     const forDate = vnDate(new Date(now.getTime() - 86_400_000));
     let runs = 0;
     let mismatched = 0;
     let skipped = 0;
+    const details: DailyReconDetail[] = [];
     for (const p of this.providers.listAvailable()) {
       const [exists] = await this.dbs.db.select({ id: billingReconciliationRuns.id }).from(billingReconciliationRuns).where(and(eq(billingReconciliationRuns.provider, p.dbProvider), sql`${billingReconciliationRuns.forDate} = ${forDate}::date`)).limit(1);
       if (exists) {
         skipped++;
+        details.push({ provider: p.code, status: 'skipped', mismatches: 0, run_id: exists.id, error: null });
         continue;
       }
       try {
         const r = await this.run({ provider: p.code, for_date: forDate, source: 'query' }, null);
         runs++;
         if (r.status === 'mismatched') mismatched++;
+        details.push({ provider: p.code, status: r.status, mismatches: r.mismatches.length, run_id: r.id, error: null });
       } catch (err) {
         this.logger.warn({ provider: p.code, err: (err as Error).message.slice(0, 200) }, 'daily reconciliation failed');
+        details.push({ provider: p.code, status: 'error', mismatches: 0, run_id: null, error: (err as Error).message.slice(0, 200) });
       }
     }
-    return { runs, mismatched, skipped };
+    return { runs, mismatched, skipped, for_date: forDate, details };
   }
+}
+
+export interface DailyReconDetail {
+  provider: string;
+  status: string;
+  mismatches: number;
+  run_id: string | null;
+  error: string | null;
+}
+
+/** S12: nội dung email báo cáo đối soát hằng ngày (không PII – chỉ cổng, trạng thái, số lệch, id lần chạy) */
+export function reconciliationEmail(r: { for_date: string; runs: number; mismatched: number; skipped: number; details: DailyReconDetail[] }, adminUrl: string): { subject: string; text: string; html: string } {
+  const ok = r.mismatched === 0 && !r.details.some((d) => d.status === 'error');
+  const subject = `[Allingo billing] Đối soát ${r.for_date}: ${ok ? 'khớp' : `${r.mismatched} cổng lệch${r.details.some((d) => d.status === 'error') ? ', có lỗi' : ''}`}`;
+  const rows = r.details.map((d) => `${d.provider.padEnd(8)} ${d.status.padEnd(10)} lệch=${d.mismatches}${d.run_id ? ` run=${d.run_id}` : ''}${d.error ? ` lỗi=${d.error}` : ''}`);
+  const text = [`Đối soát thanh toán ngày ${r.for_date} (giờ VN)`, `Lần chạy: ${r.runs}, lệch: ${r.mismatched}, bỏ qua (đã có): ${r.skipped}`, '', ...rows, '', `Chi tiết + CSV: ${adminUrl}/admin/billing/reconciliations`, 'Runbook: docs/runbooks/payments.md'].join('\n');
+  const esc = (x: string) => x.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+  const html = `<h1>Đối soát ${esc(r.for_date)}</h1><p>Lần chạy: <strong>${r.runs}</strong> · lệch: <strong>${r.mismatched}</strong> · bỏ qua: ${r.skipped}</p><table border="1" cellpadding="4"><tr><th>Cổng</th><th>Trạng thái</th><th>Số lệch</th><th>Run</th></tr>${r.details.map((d) => `<tr><td>${esc(d.provider)}</td><td>${esc(d.status)}${d.error ? ` – ${esc(d.error)}` : ''}</td><td>${d.mismatches}</td><td>${esc(d.run_id ?? '')}</td></tr>`).join('')}</table><p><a href="${esc(adminUrl)}/admin/billing/reconciliations">Mở trang đối soát</a></p>`;
+  return { subject, text, html };
 }
