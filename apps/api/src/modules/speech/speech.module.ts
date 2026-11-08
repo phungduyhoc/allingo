@@ -16,7 +16,7 @@ import { TtsController } from './tts.controller.js';
  */
 export function createSpeechProvider(env: Env): SpeechProvider {
   if (env.SPEECH_PROVIDER === 'azure') {
-    if (env.AZURE_SPEECH_KEY && env.AZURE_SPEECH_REGION) return new AzureSpeechProvider({ key: env.AZURE_SPEECH_KEY, region: env.AZURE_SPEECH_REGION });
+    if (env.AZURE_SPEECH_KEY && env.AZURE_SPEECH_REGION) return new AzureSpeechProvider({ key: env.AZURE_SPEECH_KEY, region: env.AZURE_SPEECH_REGION, maxRetries: env.AZURE_SPEECH_MAX_RETRIES });
     if (env.APP_ENV === 'production') throw new Error('SPEECH_PROVIDER=azure requires AZURE_SPEECH_KEY and AZURE_SPEECH_REGION');
     getLogger({ component: 'speech' }).warn('SPEECH_PROVIDER=azure but AZURE_SPEECH_KEY/REGION missing → using mock provider');
   }

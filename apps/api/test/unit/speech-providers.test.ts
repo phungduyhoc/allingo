@@ -12,6 +12,7 @@ import {
   MOCK_MS_PER_WORD,
   parseAssessmentResponse,
   pronunciationBandFromPa,
+  retryDelayMs,
   SpeechProviderError,
   ttsTextHash,
   wavDurationMs,
@@ -24,13 +25,13 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'allingo-speech-unit-'));
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 /** fetch giả ghi lại request (không gọi mạng) */
-function fakeFetch(respond: (url: string, init: Parameters<FetchLike>[1]) => { status: number; body: Buffer | string }) {
+function fakeFetch(respond: (url: string, init: Parameters<FetchLike>[1]) => { status: number; body: Buffer | string; headers?: Record<string, string> }) {
   const calls: Array<{ url: string; init: Parameters<FetchLike>[1] }> = [];
   const fn: FetchLike = (url, init) => {
     calls.push({ url, init });
     const r = respond(url, init);
     const buf = typeof r.body === 'string' ? Buffer.from(r.body) : r.body;
-    return Promise.resolve({ ok: r.status < 400, status: r.status, arrayBuffer: () => Promise.resolve(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer), text: () => Promise.resolve(buf.toString('utf8')) });
+    return Promise.resolve({ ok: r.status < 400, status: r.status, headers: { get: (n: string) => r.headers?.[n.toLowerCase()] ?? null }, arrayBuffer: () => Promise.resolve(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer), text: () => Promise.resolve(buf.toString('utf8')) });
   };
   return { fn, calls };
 }
@@ -101,10 +102,51 @@ describe('AzureSpeechProvider (REST, fetch giả)', () => {
     expect(buildSsml('a', 'en-US-JennyNeural', 'en-US')).toContain('<voice name="en-US-JennyNeural">a</voice>');
   });
 
-  it('TTS lỗi HTTP 401 → SpeechProviderError(http_error); thiếu khoá → not_configured', async () => {
-    const p = new AzureSpeechProvider({ key: 'bad', region: 'eastus', fetch: fakeFetch(() => ({ status: 401, body: 'unauthorized' })).fn });
+  it('TTS lỗi HTTP 401 → SpeechProviderError(http_error), không thử lại; thiếu khoá → not_configured', async () => {
+    const f = fakeFetch(() => ({ status: 401, body: 'unauthorized' }));
+    const sleeps: number[] = [];
+    const p = new AzureSpeechProvider({ key: 'bad', region: 'eastus', fetch: f.fn, sleep: async (ms) => void sleeps.push(ms) });
     await expect(p.synthesize('hello', 'en-US-JennyNeural', 'en-US')).rejects.toMatchObject({ reason: 'http_error', status: 401 });
+    expect(f.calls).toHaveLength(1);
+    expect(sleeps).toEqual([]);
     expect(() => new AzureSpeechProvider({ key: '', region: 'eastus' })).toThrow(SpeechProviderError);
+  });
+
+  it('429 (F0 20 giao dịch/60 s) → chờ theo Retry-After rồi thử lại thành công; 503 cũng thử lại', async () => {
+    const audio = Buffer.alloc(600, 1);
+    let n = 0;
+    const f = fakeFetch(() => {
+      n++;
+      if (n === 1) return { status: 429, body: 'too many', headers: { 'retry-after': '2' } };
+      if (n === 2) return { status: 503, body: 'busy' };
+      return { status: 200, body: audio };
+    });
+    const sleeps: number[] = [];
+    const p = new AzureSpeechProvider({ key: 'k', region: 'southeastasia', fetch: f.fn, sleep: async (ms) => void sleeps.push(ms) });
+    await expect(p.synthesize('hello', 'en-US-JennyNeural', 'en-US')).resolves.toMatchObject({ mime: 'audio/mpeg' });
+    expect(f.calls).toHaveLength(3);
+    expect(sleeps[0]).toBe(2250);
+    expect(sleeps[1]).toBeGreaterThanOrEqual(5000); // lần thử thứ 2 không Retry-After → backoff 10 s, jitter nửa trên
+    expect(sleeps[1]).toBeLessThanOrEqual(10_000);
+  });
+
+  it('429 liên tục quá maxRetries → SpeechProviderError(http_error, 429) sau maxRetries + 1 lần gọi', async () => {
+    const f = fakeFetch(() => ({ status: 429, body: 'too many' }));
+    const sleeps: number[] = [];
+    const p = new AzureSpeechProvider({ key: 'k', region: 'southeastasia', fetch: f.fn, maxRetries: 2, sleep: async (ms) => void sleeps.push(ms) });
+    await expect(p.synthesize('hello', 'en-US-JennyNeural', 'en-US')).rejects.toMatchObject({ reason: 'http_error', status: 429 });
+    expect(f.calls).toHaveLength(3);
+    expect(sleeps).toHaveLength(2);
+  });
+
+  it('retryDelayMs: Retry-After (giây, trần 120 s) hoặc backoff 5 s × 2^n trần 60 s, jitter nửa trên', () => {
+    expect(retryDelayMs('5', 0)).toBe(5250);
+    expect(retryDelayMs('999', 0)).toBe(120_250);
+    expect(retryDelayMs(null, 0, () => 0)).toBe(2500);
+    expect(retryDelayMs(null, 0, () => 1)).toBe(5000);
+    expect(retryDelayMs(undefined, 3, () => 1)).toBe(40_000);
+    expect(retryDelayMs('', 10, () => 1)).toBe(60_000);
+    expect(retryDelayMs('abc', 1, () => 0)).toBe(5000);
   });
 
   it('Pronunciation Assessment: header base64 JSON + content-type WAV 16 kHz; phân tích NBest (điểm lồng)', async () => {

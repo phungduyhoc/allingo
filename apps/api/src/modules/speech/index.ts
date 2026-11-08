@@ -14,7 +14,7 @@ export {
   type PronunciationWord,
 } from './speech-provider.js';
 export { MockSpeechProvider, MOCK_MS_PER_WORD, wavDurationMs } from './providers/mock-speech.provider.js';
-export { AzureSpeechProvider, buildSsml, parseAssessmentResponse, pronunciationAssessmentHeader, type FetchLike } from './providers/azure-speech.provider.js';
+export { AzureSpeechProvider, buildSsml, parseAssessmentResponse, pronunciationAssessmentHeader, retryDelayMs, type FetchLike } from './providers/azure-speech.provider.js';
 export { pronunciationBandFromPa, type PronunciationBand } from './pronunciation.js';
 export { TtsService, ttsTextHash, type TtsResult } from './tts.service.js';
 export { MediaAssetsService, type CreateUploadInput, type CreateUploadResult, type MediaAssetView } from './media/media-assets.service.js';

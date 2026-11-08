@@ -158,6 +158,8 @@ export const envSchema = z.object({
   SPEECH_PROVIDER: z.enum(['mock', 'azure']).default('mock'),
   AZURE_SPEECH_KEY: z.string().optional(),
   AZURE_SPEECH_REGION: z.string().optional(),
+  /** Số lần thử lại khi Azure trả 429/503 (F0: 20 giao dịch TTS/60 s); script seed:media tự nâng lên 10 */
+  AZURE_SPEECH_MAX_RETRIES: z.coerce.number().int().min(0).max(20).default(3),
 
   // Sprint 7 – thanh toán (ADR-0012 webhook-first). Danh sách cổng bật; cổng thiếu credential → `unavailable` (không liệt kê cho client).
   // mock chỉ hoạt động khi APP_ENV ≠ production.

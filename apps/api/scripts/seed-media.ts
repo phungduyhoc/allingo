@@ -15,7 +15,7 @@ import path from 'node:path';
 import { and, eq, like, ne } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import { listeningMediaSources, type ScriptSegment, type SeedMediaSource } from '@allingo/db/seed';
-import { loadEnv } from '../src/config/env.js';
+import { loadEnv, resetEnvCache } from '../src/config/env.js';
 import { DbService } from '../src/shared/db/db.module.js';
 import { StorageService } from '../src/shared/storage/storage.module.js';
 import { TtsService, ffmpeg } from '../src/modules/speech/index.js';
@@ -23,6 +23,10 @@ import { withScriptContext } from '../src/cli/script-context.js';
 
 const { catalogMediaAssets } = schema;
 const force = process.argv.includes('--force');
+// Gói Azure F0 chỉ 20 giao dịch TTS/60 s (bộ demo ≈ 340 lời gọi) → cho phép thử lại nhiều hơn mặc định của API; chạy lại
+// không --force sẽ tiếp tục từ asset chưa `ready` (đoạn đã sinh nằm trong cache TTS)
+process.env.AZURE_SPEECH_MAX_RETRIES ??= '10';
+resetEnvCache();
 
 /** Giọng Azure Neural theo accent; M1/M2 và W1/W2 khác giọng. Người dẫn (N) cố định en-US. */
 const VOICES: Record<ScriptSegment['accent'], { locale: string; M1: string; M2: string; W1: string; W2: string }> = {
@@ -227,7 +231,7 @@ try {
           .where(eq(catalogMediaAssets.id, row.id));
       }
       done++;
-      if (done % 20 === 0) process.stdout.write(`… ${done}/${rows.length}\n`);
+      if (done % 5 === 0) process.stdout.write(`… ${done}/${rows.length}\n`);
     }
     process.stdout.write(
       `✔ seed media: ${done} asset sẵn sàng, bỏ qua ${skipped} (provider TTS: ${tts.providerName})\n`,

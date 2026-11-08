@@ -1,7 +1,24 @@
+import { getLogger } from '../../../shared/telemetry/logger.js';
 import { baseMime } from '../../../shared/storage/storage.module.js';
 import { normalizeScript, SpeechProviderError, type AudioInput, type PronunciationAssessment, type PronunciationWord, type SpeechProvider, type SynthesisResult } from '../speech-provider.js';
 
-export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string | Buffer | Uint8Array; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; arrayBuffer(): Promise<ArrayBuffer>; text(): Promise<string> }>;
+export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string | Buffer | Uint8Array; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; headers?: { get(name: string): string | null }; arrayBuffer(): Promise<ArrayBuffer>; text(): Promise<string> }>;
+
+/** 429 (vượt hạn mức – F0 chỉ 20 giao dịch/60 s cho TTS) và 503 (thiếu tài nguyên tạm thời) → thử lại */
+const RETRYABLE_STATUS = new Set([429, 503]);
+
+/**
+ * Thời gian chờ trước lần thử lại thứ `attempt` (0-based): theo `Retry-After` (giây) nếu có, tối đa 120 s;
+ * không có → backoff luỹ thừa 5 s, 10 s, 20 s… trần 60 s, jitter nửa trên (tránh dồn cùng lúc).
+ */
+export function retryDelayMs(retryAfter: string | null | undefined, attempt: number, random: () => number = Math.random): number {
+  const sec = retryAfter != null && retryAfter.trim() !== '' ? Number(retryAfter) : Number.NaN;
+  if (Number.isFinite(sec) && sec >= 0) return Math.min(sec, 120) * 1000 + 250;
+  const base = Math.min(60_000, 5_000 * 2 ** attempt);
+  return Math.round(base / 2 + random() * (base / 2));
+}
+
+const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Định dạng đầu ra TTS khớp pipeline media: MP3 48 kbps mono 24 kHz */
 export const AZURE_TTS_FORMAT = 'audio-24khz-48kbitrate-mono-mp3';
@@ -75,7 +92,7 @@ export class AzureSpeechProvider implements SpeechProvider {
   readonly name = 'azure' as const;
 
   constructor(
-    private readonly opts: { key: string; region: string; timeoutMs?: number; fetch?: FetchLike },
+    private readonly opts: { key: string; region: string; timeoutMs?: number; fetch?: FetchLike; maxRetries?: number; sleep?: (ms: number) => Promise<void> },
   ) {
     if (!opts.key || !opts.region) throw new SpeechProviderError('not_configured', 'AZURE_SPEECH_KEY/AZURE_SPEECH_REGION missing');
   }
@@ -85,17 +102,26 @@ export class AzureSpeechProvider implements SpeechProvider {
   }
 
   private async call(url: string, headers: Record<string, string>, body: string | Buffer) {
-    const signal = AbortSignal.timeout(this.opts.timeoutMs ?? 30_000);
-    let res: Awaited<ReturnType<FetchLike>>;
-    try {
-      res = await this.fetcher(url, { method: 'POST', headers: { 'Ocp-Apim-Subscription-Key': this.opts.key, 'User-Agent': 'allingo-api', ...headers }, body, signal });
-    } catch (err) {
-      const e = err as Error;
-      if (e.name === 'TimeoutError' || e.name === 'AbortError') throw new SpeechProviderError('timeout', 'Azure Speech request timed out');
-      throw new SpeechProviderError('http_error', `Azure Speech request failed: ${e.message}`);
+    const maxRetries = this.opts.maxRetries ?? 3;
+    for (let attempt = 0; ; attempt++) {
+      const signal = AbortSignal.timeout(this.opts.timeoutMs ?? 30_000);
+      let res: Awaited<ReturnType<FetchLike>>;
+      try {
+        res = await this.fetcher(url, { method: 'POST', headers: { 'Ocp-Apim-Subscription-Key': this.opts.key, 'User-Agent': 'allingo-api', ...headers }, body, signal });
+      } catch (err) {
+        const e = err as Error;
+        if (e.name === 'TimeoutError' || e.name === 'AbortError') throw new SpeechProviderError('timeout', 'Azure Speech request timed out');
+        throw new SpeechProviderError('http_error', `Azure Speech request failed: ${e.message}`);
+      }
+      if (res.ok) return res;
+      if (RETRYABLE_STATUS.has(res.status) && attempt < maxRetries) {
+        const delayMs = retryDelayMs(res.headers?.get('retry-after'), attempt);
+        getLogger({ component: 'speech.azure' }).warn({ status: res.status, attempt: attempt + 1, max_retries: maxRetries, delay_ms: delayMs }, 'azure speech throttled – retrying');
+        await (this.opts.sleep ?? defaultSleep)(delayMs);
+        continue;
+      }
+      throw new SpeechProviderError('http_error', `Azure Speech HTTP ${res.status}`, res.status);
     }
-    if (!res.ok) throw new SpeechProviderError('http_error', `Azure Speech HTTP ${res.status}`, res.status);
-    return res;
   }
 
   async synthesize(text: string, voice: string, locale: string): Promise<SynthesisResult> {
