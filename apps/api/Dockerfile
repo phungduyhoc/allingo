@@ -14,7 +14,7 @@
 # Giai đoạn: base → deps (pnpm fetch + install --offline, cache store) → build (tsc, pnpm deploy --prod)
 #            → runtime (node:22-alpine, non-root, chỉ node_modules prod + dist + migrations)
 # =============================================================================
-ARG NODE_VERSION=22.12.0
+ARG NODE_VERSION=22.23.4
 ARG PNPM_VERSION=10.28.0
 
 # ---------- base -------------------------------------------------------------
@@ -74,6 +74,8 @@ RUN --mount=type=cache,id=allingo-pnpm-store,target=/pnpm/store \
 
 # ---------- runtime ----------------------------------------------------------
 FROM node:${NODE_VERSION}-alpine AS runtime
+# Vá gói hệ điều hành của base image (Trivy chặn CRITICAL/HIGH – vd. openssl, musl, zlib) giữa các bản node mới
+RUN apk upgrade --no-cache
 ARG APP_ENTRY=dist/main.js
 ENV NODE_ENV=production \
     APP_ENV=production \

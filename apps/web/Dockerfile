@@ -13,7 +13,7 @@
 # Lưu ý: NEXT_PUBLIC_* được Next inline lúc build → mỗi môi trường build một image riêng (tag theo env),
 # hoặc chấp nhận cùng giá trị cho dev/staging. Image không chứa secret.
 # =============================================================================
-ARG NODE_VERSION=22.12.0
+ARG NODE_VERSION=22.23.4
 ARG PNPM_VERSION=10.28.0
 
 # ---------- base -------------------------------------------------------------
@@ -80,6 +80,8 @@ RUN pnpm --filter "@allingo/web..." run build \
 
 # ---------- runtime ----------------------------------------------------------
 FROM node:${NODE_VERSION}-alpine AS runtime
+# Vá gói hệ điều hành của base image (Trivy chặn CRITICAL/HIGH – vd. openssl, musl, zlib) giữa các bản node mới
+RUN apk upgrade --no-cache
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \

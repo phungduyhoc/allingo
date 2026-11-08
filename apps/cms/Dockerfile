@@ -19,7 +19,7 @@
 # 3. importMap.js (src/app/(payload)/admin/importMap.js) đã commit; nếu đổi component admin, chạy
 #    `pnpm --filter @allingo/cms generate:importmap` trước khi build.
 # =============================================================================
-ARG NODE_VERSION=22.12.0
+ARG NODE_VERSION=22.23.4
 ARG PNPM_VERSION=10.28.0
 
 # ---------- base -------------------------------------------------------------
@@ -87,6 +87,8 @@ RUN --mount=type=cache,id=allingo-pnpm-store,target=/pnpm/store \
 
 # ---------- runtime ----------------------------------------------------------
 FROM node:${NODE_VERSION}-alpine AS runtime
+# Vá gói hệ điều hành của base image (Trivy chặn CRITICAL/HIGH – vd. openssl, musl, zlib) giữa các bản node mới
+RUN apk upgrade --no-cache
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     CMS_PORT=3001 \

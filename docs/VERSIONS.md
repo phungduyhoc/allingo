@@ -2,7 +2,7 @@
 
 | Thành phần | Phiên bản | Ghi chú |
 | --- | --- | --- |
-| Node.js | 22.x LTS (>= 22.12) | `require(esm)` dùng cho gói ESM trong NestJS |
+| Node.js | 22.x LTS (>= 22.12; image Docker ghim `22.23.4-alpine`, 08/11/2026) | `require(esm)` dùng cho gói ESM trong NestJS; image cũ 22.12 mang CVE openssl/musl/zlib (Trivy) |
 | pnpm | 10.28.0 | `packageManager` trong package.json |
 | Turborepo | 2.11.x | |
 | TypeScript | 5.9.3 | Ghim theo ADR-0021 (TS 7 chưa dùng) |
