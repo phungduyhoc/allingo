@@ -17,6 +17,7 @@ import { AudioPlayer } from '@/features/attempt/audio-player';
 import { formatAnswer } from '@/lib/format-answer';
 import { ExplainPanel } from './explain-panel';
 import { NoteEditor } from '@/features/notes/note-editor';
+import { ReportQuestionButton } from '@/features/content-report/report-question-button';
 import { useOptionalTutor } from '@/features/tutor/tutor-provider';
 import { useFlag } from '@/features/flags/flags-provider';
 import { Transcript } from './transcript';
@@ -309,6 +310,8 @@ export function ReviewItemCard({
             {tt('askQuestion')}
           </Button>
         ) : null}
+        {/* S12: báo lỗi câu theo phiên bản đã làm – ẩn khi đang có bài thi exam (Exam Mode) */}
+        <ReportQuestionButton questionVersionId={item.question.question_version_id} number={number} hidden={examLocked} />
         <NoteEditor
           key={item.note?.id ?? 'none'}
           note={item.note ?? null}

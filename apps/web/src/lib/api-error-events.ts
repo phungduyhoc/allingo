@@ -1,6 +1,7 @@
 import { ApiError } from '@allingo/api-client';
 import { parseFeatureDisabled, type FeatureDisabledInfo } from './flags';
 import { notifyQuotaExceeded } from './quota';
+import { notifyBetaRequired } from './beta';
 
 /**
  * Lỗi API dùng chung cho mọi màn (S11): 429 `rate_limited` (giới hạn tốc độ toàn cục theo IP / token bucket theo route / khoá đăng
@@ -51,6 +52,8 @@ function emit<T>(name: string, detail: T): void {
  */
 export function notifyApiError(err: unknown): void {
   notifyQuotaExceeded(err);
+  // S12: 403 `beta_required` → listener trong layout (app) chuyển tới /beta (trừ trang được miễn)
+  notifyBetaRequired(err);
   const rl = parseRateLimited(err);
   if (rl) emit<RateLimitInfo>(RATE_LIMITED_EVENT, rl);
   const fd = parseFeatureDisabled(err);

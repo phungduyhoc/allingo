@@ -177,11 +177,11 @@ export function AuthForm({ mode }: { mode: Mode }) {
                 />
                 <span>
                   {t('acceptTermsPrefix')}{' '}
-                  <Link href="/terms" className="font-semibold text-primary underline-offset-4 hover:underline">
+                  <Link href="/legal/terms" className="font-semibold text-primary underline-offset-4 hover:underline">
                     {t('terms')}
                   </Link>{' '}
                   {t('and')}{' '}
-                  <Link href="/privacy" className="font-semibold text-primary underline-offset-4 hover:underline">
+                  <Link href="/legal/privacy" className="font-semibold text-primary underline-offset-4 hover:underline">
                     {t('privacy')}
                   </Link>
                 </span>

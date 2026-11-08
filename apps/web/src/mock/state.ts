@@ -1,6 +1,7 @@
 import type { AnswerInput, AttemptAiDiagnosis, AttemptMode, AttemptResult, Enrollment, Explanation, Note, NotificationPreferences, PlanAdjustProposal, PlanSettings, PlanTask, ReconciliationRun, RefusalCode, TutorCitation, User } from '@allingo/schemas';
 import type { DiagnosticState } from '@allingo/scoring';
 import type { MockPromotion } from './billing-fixtures';
+import type { MockS12State } from './s12';
 
 /** Trạng thái "máy chủ" giả lập, lưu localStorage để tải lại trang vẫn giữ phiên/nháp */
 
@@ -279,6 +280,8 @@ export interface MockState {
   analyticsEvents: Array<{ event: string; consent: boolean; anonymous_id: string; path: string | null; at: string }>;
   /** S10: đăng ký chờ (không lưu email) */
   waitlist: Array<{ program: string; locale: string; at: string }>;
+  /** S12: beta, phản hồi, hỗ trợ, MFA, admin vận hành (khởi tạo lười trong s12.ts) */
+  s12?: MockS12State;
 }
 
 /** S10 – thẻ SRS giả lập */

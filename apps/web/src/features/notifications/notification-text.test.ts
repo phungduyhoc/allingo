@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createTranslator } from 'next-intl';
 import { messages } from '@allingo/i18n';
-import { NOTIFICATION_TEMPLATE_CODES, type NotificationItem } from '@allingo/schemas';
+import { NOTIFICATION_TEMPLATE_CODES, S12_NOTIFICATION_TEMPLATE_CODES, type NotificationItem } from '@allingo/schemas';
 import { notificationText, resolveNotificationHref, templateParams, TEMPLATE_REQUIRED_PARAMS, type Translator } from './notification-text';
 
 const tr = (locale: 'vi' | 'en'): Translator => createTranslator({ locale, messages: messages[locale], namespace: 'notifications', timeZone: 'Asia/Ho_Chi_Minh' }) as unknown as Translator;
@@ -26,7 +26,7 @@ describe('dịch thông báo theo template_code', () => {
   it('mọi mã NOTIFICATION_TEMPLATE_CODES có bản dịch vi/en (title + body) và khai báo tham số', () => {
     for (const locale of ['vi', 'en'] as const) {
       const t = tr(locale);
-      for (const code of NOTIFICATION_TEMPLATE_CODES) {
+      for (const code of [...NOTIFICATION_TEMPLATE_CODES, ...S12_NOTIFICATION_TEMPLATE_CODES]) {
         expect(t.has(`templates.${code}.title`), `${locale}:${code}`).toBe(true);
         expect(t.has(`templates.${code}.body`), `${locale}:${code}`).toBe(true);
         expect(TEMPLATE_REQUIRED_PARAMS[code]).toBeDefined();
@@ -98,5 +98,19 @@ describe('resolveNotificationHref', () => {
     expect(resolveNotificationHref('//evil.com')).toBeNull();
     expect(resolveNotificationHref('javascript:alert(1)')).toBeNull();
     expect(resolveNotificationHref(null)).toBeNull();
+  });
+
+  it('S12: support.reply (+credit bù), content.report_resolved (đã sửa / đã xem), link ticket giữ nguyên', () => {
+    const vi = tr('vi');
+    const reply = base({ template_code: 'support.reply', category: 'system', url: '/support/tickets/9a0c6f50-8f2e-4f7a-9d55-0d0d6a1c2b3e', payload: { data: { ticket_id: '9a0c6f50-8f2e-4f7a-9d55-0d0d6a1c2b3e', subject: 'Mất audio Part 3', credits: 200 }, locale: 'en' } });
+    expect(notificationText(reply, vi, 'vi')).toMatchObject({ title: 'Hỗ trợ đã trả lời: Mất audio Part 3', body: 'Đã cộng 200 credit vào tài khoản của bạn.', source: 'web' });
+    const noCredit = base({ template_code: 'support.reply', payload: { data: { subject: 'Hỏi gói Pro', credits: 0 } } });
+    expect(notificationText(noCredit, tr('en'), 'en').body).toBe('Tap to view and reply.');
+    const fixed = base({ template_code: 'content.report_resolved', category: 'learning', payload: { data: { report_id: 'x', fixed: true } } });
+    expect(notificationText(fixed, vi, 'vi').body).toContain('đã được sửa');
+    const seen = base({ template_code: 'content.report_resolved', payload: { data: { report_id: 'x', fixed: false } } });
+    expect(notificationText(seen, vi, 'vi').body).toContain('Biên tập viên đã xem');
+    expect(resolveNotificationHref('/support/tickets/9a0c6f50-8f2e-4f7a-9d55-0d0d6a1c2b3e')).toBe('/support/tickets/9a0c6f50-8f2e-4f7a-9d55-0d0d6a1c2b3e');
+    expect(resolveNotificationHref('/beta?code=ALG-ABCD-2345')).toBe('/beta?code=ALG-ABCD-2345');
   });
 });

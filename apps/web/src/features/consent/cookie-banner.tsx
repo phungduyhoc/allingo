@@ -61,7 +61,7 @@ export function CookieBanner() {
           <Cookie className="mt-0.5 size-4 shrink-0 text-accent-foreground dark:text-accent" aria-hidden />
           <span>
             {t('text')}{' '}
-            <Link href="/privacy" className="font-medium text-foreground underline underline-offset-4">
+            <Link href="/legal/privacy" className="font-medium text-foreground underline underline-offset-4">
               {t('policy')}
             </Link>
             {state ? <span className="ml-1">{t(state.analytics ? 'currentAccepted' : 'currentRejected')}</span> : null}

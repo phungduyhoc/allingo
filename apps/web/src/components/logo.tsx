@@ -16,7 +16,8 @@ export function LogoMark({ className }: { className?: string }) {
 export function Logo({ href = '/', className, withTagline = false }: { href?: '/' | '/toeic/dashboard'; className?: string; withTagline?: boolean }) {
   const t = useTranslations('common');
   return (
-    <Link href={href} className={cn('inline-flex items-center gap-2.5 rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40', className)} aria-label={t('appName')}>
+    // S12 (axe label-content-name-mismatch): tên truy cập = chữ hiển thị (tên + khẩu hiệu), không ghi đè bằng aria-label
+    <Link href={href} className={cn('inline-flex items-center gap-2.5 rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40', className)}>
       <LogoMark />
       <span className="flex flex-col leading-none">
         <span className="text-lg font-extrabold tracking-tight text-navy dark:text-foreground">{t('appName')}</span>

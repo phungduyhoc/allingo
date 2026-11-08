@@ -10,6 +10,7 @@ import { PracticeFeedback, type FeedbackEntry } from './practice-feedback';
 import { QuestionRenderer } from './question-renderer';
 import { QuestionStem } from './question-stem';
 import { isAnswered } from './attempt-state';
+import { ReportQuestionButton } from '@/features/content-report/report-question-button';
 
 /** Trạng thái nghe của câu trong Exam Mode (chuỗi phát một lần) */
 export type ListenStatus = 'upcoming' | 'playing' | 'played';
@@ -136,6 +137,10 @@ export function QuestionBlock({ question, number, total, answer, flagged, curren
             </Button>
           ) : null}
           <PracticeFeedback feedback={feedback} checking={practice.checking} online={practice.online} />
+          {/* S12: báo lỗi câu – chỉ Practice/drill (Exam Mode không có khối practice) */}
+          <div className="mt-3 flex justify-end">
+            <ReportQuestionButton questionVersionId={question.question_version_id} number={number} />
+          </div>
         </>
       ) : null}
 

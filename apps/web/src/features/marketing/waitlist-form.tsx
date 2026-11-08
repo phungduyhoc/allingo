@@ -73,7 +73,7 @@ export function WaitlistForm({ program }: { program: WaitlistInput['program'] })
         <input type="checkbox" className="mt-1 size-4" checked={consent} onChange={(e) => setConsent(e.target.checked)} data-testid="waitlist-consent" />
         <span>
           {t('consent')}{' '}
-          <Link href="/privacy" className="underline underline-offset-4">
+          <Link href="/legal/privacy" className="underline underline-offset-4">
             {t('privacy')}
           </Link>
         </span>

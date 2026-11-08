@@ -2,15 +2,19 @@ import { useLocale, useTranslations } from 'next-intl';
 import { ConsentSettingsButton } from '@/features/consent/cookie-banner';
 import { LogoMark } from './logo';
 
-/** Chân trang marketing: liên kết (TOEIC, blog, bảng giá, giới thiệu, liên hệ, điều khoản, bảo mật), "Cài đặt cookie" (S10), nhãn hiệu */
+/** Chân trang marketing: liên kết (TOEIC, blog, bảng giá, giới thiệu, liên hệ, pháp lý S12, beta kín), "Cài đặt cookie" (S10), nhãn hiệu */
 const LINKS = [
   ['/toeic', 'toeic'],
   ['/blog', 'blog'],
   ['/pricing', 'pricing'],
   ['/about', 'about'],
   ['/contact', 'contact'],
-  ['/terms', 'terms'],
-  ['/privacy', 'privacy'],
+  // S12: văn bản pháp lý /legal/* + trang beta kín
+  ['/legal/terms', 'terms'],
+  ['/legal/privacy', 'privacy'],
+  ['/legal/refund', 'refund'],
+  ['/legal/voice-consent', 'voice'],
+  ['/beta', 'beta'],
 ] as const;
 
 export function SiteFooter() {

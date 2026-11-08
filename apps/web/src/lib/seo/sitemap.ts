@@ -22,8 +22,11 @@ export const MARKETING_PATHS: StaticEntry[] = [
   { path: '/blog', changeFrequency: 'daily', priority: 0.8 },
   { path: '/about', changeFrequency: 'monthly', priority: 0.4 },
   { path: '/contact', changeFrequency: 'yearly', priority: 0.3 },
-  { path: '/terms', changeFrequency: 'yearly', priority: 0.2 },
-  { path: '/privacy', changeFrequency: 'yearly', priority: 0.2 },
+  // S12: văn bản pháp lý ở /legal/* (/terms, /privacy chuyển hướng vĩnh viễn)
+  { path: '/legal/terms', changeFrequency: 'yearly', priority: 0.2 },
+  { path: '/legal/privacy', changeFrequency: 'yearly', priority: 0.2 },
+  { path: '/legal/refund', changeFrequency: 'yearly', priority: 0.2 },
+  { path: '/legal/voice-consent', changeFrequency: 'yearly', priority: 0.2 },
 ];
 
 export function buildSitemap(input: { base: string; pages?: StaticEntry[]; posts: Array<{ slug: string; updatedAt?: string | null; publishedAt?: string | null }>; now?: Date }): MetadataRoute.Sitemap {

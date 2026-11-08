@@ -411,7 +411,7 @@ export function CheckoutPage() {
                 />
                 <span>
                   {t('termsPrefix')}{' '}
-                  <Link href="/terms" className="font-semibold text-primary underline-offset-4 hover:underline" target="_blank">
+                  <Link href="/legal/terms" className="font-semibold text-primary underline-offset-4 hover:underline" target="_blank">
                     {t('terms')}
                   </Link>
                   {t('termsSuffix')}

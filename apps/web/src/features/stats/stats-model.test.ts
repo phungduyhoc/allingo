@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Stats } from '@allingo/schemas';
-import { accuracyRows, forecastView, percentileValue, scoreSeries, weekSummary } from './stats-model';
+import { accuracyRows, forecastView, latestSkillScore, percentileValue, scoreSeries, weekSummary } from './stats-model';
 
 const cell = (correct: number, total: number, accuracy: number | null) => ({ correct, total, accuracy });
 
@@ -32,5 +32,15 @@ describe('mô hình thống kê', () => {
     const base = { recommendation: 'x', computed_at: 'x', label: 'preliminary_estimate', model_version: 'linreg-v0', target: 700, exam_date: null, horizon_date: '2026-12-08', points_used: 0, scale: { min: 10, max: 990 }, current_estimate: null, slope_per_week: null, ci_low: null, ci_high: null, ready_date: null, on_track: null } as const;
     expect(forecastView({ ...base, predicted_score: null, status: 'insufficient_data', recommendation_code: 'need_data' })).toEqual({ kind: 'insufficient', code: 'need_data' });
     expect(forecastView({ ...base, predicted_score: 650, ci_low: 600, ci_high: 700, on_track: false, status: 'ok', recommendation_code: 'increase_practice', points_used: 3 })).toMatchObject({ kind: 'ok', predicted: 650, low: 600, high: 700, onTrack: false, target: 700 });
+  });
+});
+
+describe('S12 (SPEC-ISSUES S142): điểm kỹ năng sau đề mini một kỹ năng', () => {
+  const pt = (at: string, part: 'total' | 'listening' | 'reading' | undefined, score: number) => ({ date: at.slice(0, 10), at, score, listening: null, reading: null, kind: 'mini', mode: 'exam', attempt_id: '00000000-0000-4000-8000-000000000001', ...(part ? { part } : {}) });
+  it('lấy điểm Listening/Reading gần nhất; không có `part` (API cũ) → null', () => {
+    expect(latestSkillScore({ score_history: [pt('2026-11-01T01:00:00Z', 'reading', 310.4), pt('2026-11-03T01:00:00Z', 'listening', 285)] })).toEqual({ part: 'listening', score: 285, at: '2026-11-03T01:00:00Z' });
+    expect(latestSkillScore({ score_history: [pt('2026-11-01T01:00:00Z', 'total', 620)] })).toBeNull();
+    expect(latestSkillScore({ score_history: [pt('2026-11-01T01:00:00Z', undefined, 300)] })).toBeNull();
+    expect(latestSkillScore({ score_history: [] })).toBeNull();
   });
 });

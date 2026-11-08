@@ -16,6 +16,7 @@ import { QuotaLeft, ResetHint } from '@/features/quota/quota-ui';
 import { quotaOf } from '@/lib/quota';
 import { DashboardTutorCard } from '@/features/tutor/tutor-entry';
 import { TodayCard } from '@/features/plan/today-card';
+import { SurveyPrompts } from '@/features/surveys/survey-prompts';
 import { AccuracyCard, CommunityCard, ErrorsToReviewCard, ForecastCard, KpiGrid, ScoreCard, VocabDueCard, WeekSummaryCard } from '@/features/stats/stats-cards';
 
 const PROGRAM = 'toeic';
@@ -45,6 +46,11 @@ export function DashboardPage() {
           </>
         }
       />
+
+      {/* S12: NPS ngày 7/14 + nhắc khảo sát beta (trong luồng trang, dựng khi rảnh; không hiện khi Exam Mode) */}
+      <Deferred fallback={null}>
+        <SurveyPrompts />
+      </Deferred>
 
       {/* Chỉ số chính (tiêu đề ẩn giữ thứ tự h1 → h2 → h3 của thẻ – Lighthouse a11y "heading-order") */}
       <h2 className="sr-only">{t('statsTitle')}</h2>

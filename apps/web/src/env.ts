@@ -21,6 +21,17 @@ function oneOf<T extends string>(name: string, value: string | undefined, allowe
   return v as T;
 }
 
+/** URL https tuỳ chọn (link cộng đồng) – trống/sai → null (ẩn link, không làm hỏng trang) */
+function optionalHttps(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const u = new URL(value.trim());
+    return u.protocol === 'https:' ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 function rate(value: string | undefined): number {
   const n = value ? Number(value) : 1;
   return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 1;
@@ -41,4 +52,7 @@ export const env = {
   /** Tỉ lệ lấy mẫu lỗi / Web Vitals (0–1, mặc định 1) */
   sentrySampleRate: rate(process.env.NEXT_PUBLIC_SENTRY_SAMPLE_RATE),
   sentryVitalsSampleRate: rate(process.env.NEXT_PUBLIC_SENTRY_VITALS_SAMPLE_RATE),
+  /** S12: kênh phản hồi cộng đồng beta (nhóm Zalo / Discord) – trống thì ẩn */
+  communityZaloUrl: optionalHttps(process.env.NEXT_PUBLIC_COMMUNITY_ZALO_URL),
+  communityDiscordUrl: optionalHttps(process.env.NEXT_PUBLIC_COMMUNITY_DISCORD_URL),
 } as const;

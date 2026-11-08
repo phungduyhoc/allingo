@@ -11,7 +11,7 @@ import { CardSkeleton, ErrorState } from '@/components/states';
 import { getErrors, getForecast } from '@/lib/s10-api';
 import { PROGRAM } from '@/features/plan/queries';
 import { useSrsCounts } from '@/features/flashcards/queries';
-import { accuracyRows, forecastView, percentileValue, scoreSeries, weekSeries, weekSummary } from './stats-model';
+import { accuracyRows, forecastView, latestSkillScore, percentileValue, scoreSeries, weekSeries, weekSummary } from './stats-model';
 
 // Biểu đồ tải lười: recharts không vào JS trang đầu (chunk riêng, chỉ phía client)
 const chartLoading = () => <Skeleton className="h-56 w-full" />;
@@ -46,6 +46,7 @@ export function KpiGrid({ stats }: { stats: Stats }) {
   const ts = useTranslations('stats');
   const tc = useTranslations('common');
   const fmt = useFormatter();
+  const latestSkill = stats.current_estimate === null ? latestSkillScore(stats) : null;
   return (
     <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6">
       <Kpi title={t('estimateTitle')} icon={Target} hint={stats.target !== null ? t('estimateTarget', { target: stats.target }) : t('estimateNoTarget')}>
@@ -56,8 +57,16 @@ export function KpiGrid({ stats }: { stats: Stats }) {
             </span>
             <Badge variant="gold">{tc('estimated')}</Badge>
           </span>
+        ) : latestSkill ? (
+          // S12 (SPEC-ISSUES S142): sau đề mini một kỹ năng – hiện điểm kỹ năng đó + nói rõ cần đề L&R để có điểm tổng
+          <span className="block space-y-1" data-testid="estimate-skill">
+            <span className="block text-base leading-snug font-bold text-navy dark:text-foreground">{t('estimateSkillOnly', { part: latestSkill.part, score: latestSkill.score })}</span>
+            <span className="block text-xs leading-snug font-normal text-muted-foreground">{t('estimateNeedsBoth')}</span>
+          </span>
         ) : (
-          <span className="block text-sm leading-snug font-medium text-muted-foreground">{t('estimateNone')}</span>
+          <span className="block text-sm leading-snug font-medium text-muted-foreground" data-testid="estimate-none">
+            {t('estimateNone')}
+          </span>
         )}
       </Kpi>
       <Kpi title={t('streakTitle')} icon={Flame} accent={stats.streak.current > 0} hint={t('streakLongest', { count: stats.streak.longest })} testId="kpi-streak">

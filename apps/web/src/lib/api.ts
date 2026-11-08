@@ -1,6 +1,8 @@
 import { createApiClient, postJsonOrSse, type ApiClient } from '@allingo/api-client';
 import { env } from '@/env';
 import { pageTraceparent } from './telemetry/trace';
+import { recordResponseTrace } from './telemetry/last-trace';
+import { createMfaStepUpMiddleware } from './mfa-step-up';
 
 /** Sự kiện phát ra khi refresh token thất bại → AuthGate đưa người dùng về trang chủ */
 export const UNAUTHORIZED_EVENT = 'allingo:unauthorized';
@@ -61,15 +63,24 @@ export async function normalizeErrorResponse(res: Response): Promise<Response> {
   return new Response(JSON.stringify({ ...(body ?? {}), error: { ...err, details, trace_id: traceId } }), { status: res.status, statusText: res.statusText, headers });
 }
 
-/** fetch dùng cho mọi lời gọi API: fetch thật hoặc mock (nạp lười, chỉ ở client) + traceparent + chuẩn hoá lỗi 429/503 */
+/**
+ * fetch dùng cho mọi lời gọi API: fetch thật hoặc mock (nạp lười, chỉ ở client) + traceparent + chuẩn hoá lỗi 429/503.
+ * S12: ghi `X-Trace-Id` của phản hồi (góp ý in-app tự gắn trace gần nhất – `telemetry/last-trace.ts`).
+ */
 export function getApiFetch(): typeof fetch {
   if (!USE_MOCK) {
-    return async (input, init) => normalizeErrorResponse(await fetch(...withTraceparent(input, init)));
+    return async (input, init) => {
+      const res = await fetch(...withTraceparent(input, init));
+      recordResponseTrace(res);
+      return normalizeErrorResponse(res);
+    };
   }
   return async (input, init) => {
     mockFetchPromise ??= import('@/mock/mock-fetch').then((m) => m.createMockFetch());
     const f = await mockFetchPromise;
-    return normalizeErrorResponse(await f(...withTraceparent(input, init)));
+    const res = await f(...withTraceparent(input, init));
+    recordResponseTrace(res);
+    return normalizeErrorResponse(res);
   };
 }
 
@@ -98,6 +109,9 @@ export function getApi(): ApiClient {
       return request;
     },
   });
+  // S12: 403 `mfa_required` ở endpoint quản trị → hộp thoại step-up (layout (app)) → gửi lại request một lần
+  const apiFetch = getApiFetch();
+  client.use(createMfaStepUpMiddleware({ fetch: (req) => apiFetch(req) }));
   return client;
 }
 

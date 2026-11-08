@@ -26,7 +26,8 @@
     "notFoundDesc": "Đường dẫn không tồn tại hoặc đã bị đổi.",
     "goHome": "Về trang chủ",
     "openMenu": "Mở menu",
-    "skipToContent": "Bỏ qua tới nội dung"
+    "skipToContent": "Bỏ qua tới nội dung",
+    "dataTable": "Bảng dữ liệu"
   },
   "nav": {
     "home": "Trang chủ",
@@ -72,7 +73,11 @@
       "app": "Điều hướng chính",
       "appMobile": "Điều hướng nhanh",
       "account": "Tài khoản và ngôn ngữ"
-    }
+    },
+    "support": "Hỗ trợ",
+    "admin": "Quản trị",
+    "security": "Bảo mật",
+    "feedback": "Góp ý"
   },
   "landing": {
     "heroTitle": "Ngoại ngữ cho tất cả",
@@ -198,7 +203,7 @@
     "xpTitle": "Điểm kinh nghiệm",
     "xpThisWeek": "+{count} tuần này",
     "estimateTitle": "Điểm ước tính",
-    "estimateNone": "Làm một đề để có điểm ước tính",
+    "estimateNone": "Làm một đề có cả Listening và Reading để có điểm tổng ước tính",
     "estimateTarget": "Mục tiêu {target}",
     "estimateNoTarget": "Chưa đặt mục tiêu",
     "minutesThisWeek": "{count} phút học tuần này",
@@ -237,7 +242,9 @@
     "trendEmpty": "Làm thêm đề để thấy xu hướng.",
     "statsTitle": "Chỉ số học tập",
     "statsLink": "Thống kê chi tiết",
-    "insightsTitle": "Nhận định & dự báo"
+    "insightsTitle": "Nhận định & dự báo",
+    "estimateSkillOnly": "Gần nhất: {part, select, listening {Listening} reading {Reading} other {Kỹ năng}} {score}/495",
+    "estimateNeedsBoth": "Đề mini một kỹ năng chỉ cho điểm kỹ năng đó; điểm tổng (10–990) cần đề có cả Listening và Reading."
   },
   "testSets": {
     "title": "Đề thi TOEIC",
@@ -626,7 +633,12 @@
       "targetScore": "Điểm từ 10 đến 990",
       "dailyMinutes": "Từ 10 đến 240 phút"
     },
-    "notificationsLink": "Cài đặt thông báo"
+    "notificationsLink": "Cài đặt thông báo",
+    "securityTitle": "Bảo mật & hỗ trợ",
+    "securityDesc": "Xác minh hai lớp cho tài khoản quản trị, liên hệ đội hỗ trợ.",
+    "securityLink": "Bảo mật tài khoản",
+    "supportLink": "Trung tâm hỗ trợ",
+    "adminOpsLink": "Quản trị vận hành"
   },
   "errors": {
     "title": "Có lỗi xảy ra",
@@ -645,7 +657,9 @@
       "internal": "Lỗi hệ thống. Thử lại sau.",
       "network": "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.",
       "ai_failed": "AI chưa tạo được kết quả. Lượt dùng đã được hoàn lại – thử lại nhé.",
-      "ai_timeout": "AI phản hồi quá lâu. Lượt dùng đã được hoàn lại – thử lại nhé."
+      "ai_timeout": "AI phản hồi quá lâu. Lượt dùng đã được hoàn lại – thử lại nhé.",
+      "beta_required": "Allingo đang beta kín – bạn cần mã mời để dùng tính năng này.",
+      "mfa_required": "Thao tác quản trị cần xác minh hai lớp (mã từ ứng dụng xác thực)."
     },
     "upgrade": "Nâng cấp Pro",
     "relogin": "Đăng nhập lại",
@@ -663,7 +677,9 @@
       "waitMinutes": "Thử lại sau {minutes, plural, =1 {1 phút} other {# phút}}.",
       "waitUnknown": "Vui lòng chờ một lát rồi thử lại.",
       "ready": "Bạn có thể thử lại."
-    }
+    },
+    "betaCta": "Nhập mã mời",
+    "mfaCta": "Bật xác minh hai lớp"
   },
   "offline": {
     "title": "Bạn đang ngoại tuyến",
@@ -716,13 +732,35 @@
       "Nội dung do AI tạo có thể sai sót; hãy kiểm tra lại với giáo viên khi cần.",
       "Gói trả phí, hoàn tiền và credit AI tuân theo chính sách giá công bố tại thời điểm mua."
     ],
-    "privacyTitle": "Chính sách bảo mật",
+    "privacyTitle": "Chính sách quyền riêng tư",
     "privacyBody": [
       "Chúng tôi thu thập email/số điện thoại, tiến độ học, bài làm, ghi âm (khi bạn đồng ý xử lý giọng nói) để cung cấp dịch vụ.",
       "Bài viết và ghi âm được lưu trong kho riêng, chỉ truy cập qua đường dẫn ký có thời hạn, tự xoá sau 90 ngày (Free) hoặc 365 ngày (Pro).",
       "Nội dung gửi tới mô hình AI không kèm họ tên, email hay số điện thoại.",
       "Bạn có thể tải xuống hoặc yêu cầu xoá tài khoản trong Cài đặt; việc xoá hoàn tất trong 72 giờ, hồ sơ thanh toán được giữ ở dạng ẩn danh theo quy định.",
       "Chúng tôi tuân thủ Nghị định 13/2023/NĐ-CP về bảo vệ dữ liệu cá nhân."
+    ],
+    "draftPending": "Bản nháp chờ luật sư duyệt",
+    "draftPendingDesc": "Nội dung đang được pháp chế rà soát và có thể thay đổi trước khi Allingo mở bán công khai.",
+    "approved": "Đã duyệt",
+    "meta": "Phiên bản {version} · hiệu lực từ {date}",
+    "consentNote": "Văn bản này cần sự đồng ý của bạn khi sử dụng tính năng liên quan.",
+    "otherDocs": "Văn bản khác",
+    "refundTitle": "Chính sách hoàn tiền",
+    "refundBody": [
+      "Gói Pro theo tháng/năm có thể huỷ gia hạn bất cứ lúc nào trong Tài khoản → Thanh toán; bạn vẫn dùng Pro tới hết kỳ đã trả.",
+      "Yêu cầu hoàn tiền trong 7 ngày kể từ lần thanh toán đầu tiên nếu bạn chưa dùng quá 20 % hạn mức AI của kỳ – gửi yêu cầu qua trang Hỗ trợ.",
+      "Credit AI đã dùng không được hoàn; credit khuyến mãi/beta không quy đổi thành tiền.",
+      "Khi hoàn tiền, hoá đơn điện tử được điều chỉnh theo quy định và quyền Pro kết thúc ngay.",
+      "Lỗi hệ thống làm mất lượt dùng sẽ được đội hỗ trợ cấp credit bù sau khi xác minh."
+    ],
+    "voiceTitle": "Đồng ý xử lý dữ liệu giọng nói",
+    "voiceBody": [
+      "Tính năng luyện nói, shadowing và chấm phát âm (sắp ra mắt) cần ghi âm giọng nói của bạn.",
+      "Ghi âm được lưu trong kho riêng, chỉ truy cập qua đường dẫn ký có thời hạn và tự xoá sau 90 ngày (Free) hoặc 365 ngày (Pro).",
+      "Giọng nói được gửi tới nhà cung cấp nhận dạng/chấm điểm phát âm chỉ để tạo kết quả cho bạn; không dùng để huấn luyện mô hình.",
+      "Bạn có thể rút lại đồng ý bất cứ lúc nào trong Cài đặt; các ghi âm đã có sẽ bị xoá trong 72 giờ.",
+      "Việc xử lý tuân theo Nghị định 13/2023/NĐ-CP về bảo vệ dữ liệu cá nhân (dữ liệu sinh trắc học là dữ liệu nhạy cảm)."
     ]
   },
   "practice": {
@@ -1175,6 +1213,24 @@
         "invoice_failed": {
           "title": "Hoá đơn điện tử thất bại",
           "body": "{op} đơn {order} – {attempts} lần, mã {error}."
+        }
+      },
+      "support": {
+        "reply": {
+          "title": "Hỗ trợ đã trả lời: {subject}",
+          "body": "{credits, plural, =0 {Bấm để xem và trả lời.} other {Đã cộng # credit vào tài khoản của bạn.}}"
+        }
+      },
+      "content": {
+        "report_resolved": {
+          "title": "Báo lỗi câu hỏi đã được xử lý",
+          "body": "{fixed, select, yes {Câu hỏi bạn báo đã được sửa. Cảm ơn bạn!} other {Biên tập viên đã xem báo cáo của bạn. Cảm ơn bạn!}}"
+        }
+      },
+      "beta": {
+        "invite": {
+          "title": "Mời tham gia beta kín",
+          "body": "Mã mời Allingo của bạn đã sẵn sàng – nhập mã để nhận Pro dùng thử và credit AI."
         }
       }
     },
@@ -2548,7 +2604,10 @@
       "about": "Giới thiệu",
       "contact": "Liên hệ",
       "terms": "Điều khoản",
-      "privacy": "Bảo mật"
+      "privacy": "Quyền riêng tư",
+      "refund": "Hoàn tiền",
+      "voice": "Đồng ý giọng nói",
+      "beta": "Beta kín"
     },
     "etsTitle": "Tuyên bố không liên kết",
     "etsBody": "TOEIC® là nhãn hiệu đã đăng ký của ETS (Educational Testing Service). Allingo là sản phẩm độc lập, không liên kết, không được ETS tài trợ hay chứng thực. Toàn bộ câu hỏi luyện tập do Allingo tự biên soạn theo định dạng đề công khai; điểm hiển thị là ước tính, không phải điểm chính thức.",
@@ -2783,6 +2842,820 @@
           "body": "Yêu cầu xoá hoặc xuất dữ liệu được xử lý theo Chính sách bảo mật; bạn cũng có thể tự gửi yêu cầu trong Cài đặt."
         }
       ]
+    }
+  },
+  "legalFooter": {
+    "label": "Pháp lý",
+    "terms": "Điều khoản",
+    "privacy": "Quyền riêng tư",
+    "refund": "Hoàn tiền",
+    "voice": "Đồng ý giọng nói",
+    "support": "Hỗ trợ",
+    "trademark": "TOEIC® là nhãn hiệu của ETS. Allingo không liên kết với hoặc được ETS chứng thực; đề luyện do Allingo tự biên soạn, điểm hiển thị là ước tính."
+  },
+  "beta": {
+    "metaTitle": "Beta kín",
+    "badge": "Beta kín TOEIC",
+    "title": "Allingo đang mở beta kín cho 300 người học đầu tiên",
+    "subtitle": "Nhập mã mời trong email để mở khoá toàn bộ ứng dụng luyện TOEIC Listening & Reading với AI. Chưa có mã? Đăng ký danh sách chờ – chúng tôi gửi mời theo đợt mỗi ngày.",
+    "perksLabel": "Quyền lợi người dùng beta",
+    "perkPro": "Pro dùng thử {days} ngày",
+    "perkProDesc": "Mọi đề đầy đủ, lộ trình mọi tuần, phân tích AI.",
+    "perkCredits": "{credits, number} credit AI",
+    "perkCreditsDesc": "Giải thích chi tiết, gia sư, dịch câu dài.",
+    "perkTwoWeeks": "Đồng hành 2 tuần",
+    "perkTwoWeeksDesc": "Khảo sát ngắn ngày 7 và 14 để cải thiện sản phẩm.",
+    "perkSupport": "Hỗ trợ trong 24 giờ",
+    "perkSupportDesc": "Góp ý, báo lỗi câu hỏi và ticket hỗ trợ ngay trong app.",
+    "perksNote": "Quyền lợi thực tế hiển thị sau khi kích hoạt mã (theo cấu hình đợt beta).",
+    "loading": "Đang kiểm tra quyền truy cập…",
+    "loadError": "Chưa tải được trạng thái beta. Thử tải lại trang.",
+    "signInTitle": "Đã có mã mời?",
+    "signInDesc": "Tạo tài khoản (hoặc đăng nhập) rồi nhập mã – mã trong email được giữ lại cho bạn.",
+    "guestTitle": "Tạo tài khoản để kích hoạt mã",
+    "guestDesc": "Bạn đang dùng tài khoản khách. Đăng ký miễn phí – tiến độ luyện thử được giữ nguyên – rồi nhập mã mời.",
+    "signUp": "Đăng ký",
+    "logIn": "Đăng nhập",
+    "redeemTitle": "Nhập mã mời",
+    "redeemDesc": "Mã dạng ALG-XXXX-XXXX, dùng một lần, có trong email mời.",
+    "redeemDescGateOff": "Beta đang mở cho tài khoản của bạn. Nếu có mã mời, nhập để nhận Pro dùng thử và credit AI.",
+    "codeLabel": "Mã mời",
+    "codePlaceholder": "ALG-XXXX-XXXX",
+    "codeHint": "Không phân biệt chữ hoa/thường; có thể bỏ dấu gạch.",
+    "codeAmbiguous": "Mã không dùng số 0, 1 hay chữ I, L, O – kiểm tra lại email nhé.",
+    "redeemSubmit": "Kích hoạt",
+    "redeemErrors": {
+      "invalid": "Mã không đúng, đã hết hạn hoặc đã bị thu hồi. Kiểm tra lại email mời hoặc liên hệ hỗ trợ.",
+      "used": "Mã này đã được một tài khoản khác sử dụng.",
+      "alreadyBeta": "Tài khoản của bạn đã kích hoạt một mã mời khác.",
+      "guest": "Tài khoản khách không kích hoạt được mã – vui lòng đăng ký.",
+      "rateLimited": "Bạn đã thử quá nhiều lần. Đợi khoảng 10 phút rồi thử lại.",
+      "network": "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.",
+      "generic": "Chưa kích hoạt được mã. Thử lại sau ít phút."
+    },
+    "redeemedTitle": "Kích hoạt thành công!",
+    "alreadyRedeemedTitle": "Mã đã được kích hoạt cho tài khoản này",
+    "redeemedDesc": "Chào mừng bạn đến với beta kín Allingo.",
+    "trialLabel": "Gói Pro",
+    "trialUntil": "Dùng thử tới {date}",
+    "trialSkipped": "Bạn đang có Pro – chỉ cộng credit",
+    "creditsLabel": "Credit AI",
+    "creditsGranted": "+{credits} (số dư {balance})",
+    "startSurvey": "Bắt đầu khảo sát 1 phút",
+    "goLearn": "Vào học",
+    "hasAccessTitle": "Bạn đã có quyền truy cập beta",
+    "hasAccessInvite": "Mã mời của bạn đã được kích hoạt.",
+    "hasAccessOther": "Tài khoản của bạn được cấp quyền truy cập.",
+    "noCodeTitle": "Chưa có mã mời?",
+    "noCodeDesc": "Đăng ký danh sách chờ TOEIC – mỗi ngày chúng tôi gửi tối đa 50 lời mời.",
+    "needHelp": "Gặp vấn đề với mã mời?",
+    "contactSupport": "Liên hệ hỗ trợ"
+  },
+  "betaOnboarding": {
+    "metaTitle": "Bắt đầu beta",
+    "title": "Chào mừng bạn đến beta kín",
+    "subtitle": "Ba bước ngắn để Allingo hiểu mục tiêu của bạn.",
+    "progressLabel": "Tiến độ bắt đầu",
+    "steps": {
+      "survey": "Khảo sát",
+      "tour": "Hướng dẫn",
+      "community": "Kênh phản hồi"
+    },
+    "surveyTitle": "5 câu hỏi nhanh",
+    "surveyDesc": "Câu trả lời giúp chúng tôi đánh giá beta – không chia sẻ cho bên thứ ba.",
+    "q": {
+      "goal": "1. Mục tiêu chính khi luyện TOEIC?",
+      "examDate": "2. Ngày thi dự kiến",
+      "score": "3. Điểm TOEIC L&R hiện tại (ước chừng)",
+      "devices": "4. Bạn học trên thiết bị nào? (chọn nhiều)",
+      "minutes": "5. Mỗi ngày bạn dành bao nhiêu thời gian?"
+    },
+    "goals": {
+      "job": "Xin việc",
+      "graduation": "Chuẩn đầu ra",
+      "study_abroad": "Du học",
+      "promotion": "Thăng tiến",
+      "self_improvement": "Tự nâng cao",
+      "other": "Khác"
+    },
+    "goalNoteLabel": "Mục tiêu khác",
+    "goalNotePlaceholder": "Ví dụ: chuyển ngành, học bổng…",
+    "noExamDate": "Chưa có ngày thi",
+    "noScore": "Chưa biết",
+    "scoreHint": "Thang 10–990; chưa thi lần nào thì chọn \"Chưa biết\".",
+    "devices": {
+      "android": "Điện thoại Android",
+      "ios": "iPhone",
+      "desktop": "Máy bàn",
+      "laptop": "Laptop",
+      "tablet": "Máy tính bảng"
+    },
+    "minutesOption": "{minutes} phút",
+    "surveySubmit": "Gửi khảo sát",
+    "errors": {
+      "goal": "Chọn một mục tiêu.",
+      "examDate": "Chọn ngày thi hoặc đánh dấu \"Chưa có ngày thi\".",
+      "examDatePast": "Ngày thi phải sau hôm nay.",
+      "score": "Nhập điểm từ 10 đến 990 hoặc chọn \"Chưa biết\".",
+      "devices": "Chọn ít nhất một thiết bị.",
+      "form": "Kiểm tra lại các câu trả lời."
+    },
+    "tourDuration": "≈ 60 giây",
+    "tourProgress": "Thẻ {current}/{total}",
+    "tourSkip": "Bỏ qua",
+    "tourBack": "Trước",
+    "tourNext": "Tiếp",
+    "tourDone": "Xong",
+    "tour": {
+      "plan": {
+        "title": "Hôm nay & Lộ trình",
+        "body": "Mỗi ngày Allingo gợi ý vài việc ngắn theo ngày thi và điểm yếu của bạn. Bấm một việc là vào học ngay."
+      },
+      "tests": {
+        "title": "Đề đúng định dạng",
+        "body": "Làm đề mini hoặc đầy đủ ở Exam Mode (bấm giờ, nghe một lần) hoặc Practice (xem đáp án ngay). Kết quả có chẩn đoán theo Part."
+      },
+      "ai": {
+        "title": "Giải thích AI & gia sư",
+        "body": "Ở trang Xem lại, mỗi câu có giải thích song ngữ và nút Hỏi gia sư. Tính năng AI bị khoá khi đang thi để đảm bảo công bằng."
+      },
+      "feedback": {
+        "title": "Góp ý & báo lỗi",
+        "body": "Nút Góp ý ở đầu trang gửi kèm ảnh màn hình; nút Báo lỗi câu hỏi ở từng câu. Đội ngũ phản hồi trong 24–48 giờ."
+      }
+    },
+    "communityTitle": "Kênh phản hồi của beta",
+    "communityDesc": "Tham gia cộng đồng để nhận tin cập nhật, hỏi đáp và gặp gỡ người học khác.",
+    "community": {
+      "zalo": "Nhóm Zalo beta",
+      "discord": "Discord Allingo"
+    },
+    "opensNewTab": "(mở tab mới)",
+    "feedbackHint": "Gặp lỗi hay có ý tưởng? Bấm \"Góp ý\" ở thanh trên cùng bất cứ lúc nào – chúng tôi đọc mọi góp ý.",
+    "finish": "Bắt đầu học",
+    "replayTour": "Xem lại hướng dẫn"
+  },
+  "security": {
+    "title": "Bảo mật tài khoản",
+    "subtitle": "Xác minh hai lớp (TOTP) bảo vệ thao tác quản trị khi mật khẩu bị lộ.",
+    "back": "Cài đặt",
+    "mfaTitle": "Xác minh hai lớp (ứng dụng xác thực)",
+    "mfaDesc": "Mã 6 số đổi mỗi 30 giây từ Google Authenticator, Microsoft Authenticator, 1Password… Bắt buộc cho thao tác quản trị trên môi trường thật.",
+    "required": "Bắt buộc với tài khoản của bạn",
+    "factEnrolled": "Đã bật",
+    "factSession": "Phiên này",
+    "factRecovery": "Mã khôi phục còn lại",
+    "yes": "Đã bật",
+    "no": "Chưa bật",
+    "pending": "Đang đăng ký dở",
+    "verified": "Đã xác minh",
+    "notVerified": "Chưa xác minh",
+    "notApplicable": "Hiện chỉ tài khoản quản trị cần và dùng được xác minh hai lớp. Tài khoản người học được bảo vệ bằng mật khẩu mạnh, thu hồi phiên từ xa và mã OTP.",
+    "enroll": "Bật xác minh hai lớp",
+    "continueEnroll": "Tiếp tục đăng ký (tạo khoá mới)",
+    "stepApp": "Mở ứng dụng xác thực trên điện thoại",
+    "stepAppDesc": "Chọn \"Thêm tài khoản\" → \"Nhập khoá thiết lập\" (hoặc mở liên kết trên chính điện thoại).",
+    "stepKey": "Nhập khoá thiết lập",
+    "stepKeyDesc": "Loại theo thời gian, {digits} số, {period} giây. Khoá chỉ hiện một lần – không chia sẻ cho ai.",
+    "copySecret": "Sao chép khoá",
+    "copyLink": "Sao chép liên kết otpauth",
+    "openApp": "Mở trong ứng dụng",
+    "stepCode": "Nhập mã 6 số ứng dụng hiển thị",
+    "codeLabel": "Mã 6 số",
+    "confirm": "Xác nhận & bật",
+    "copied": "Đã sao chép",
+    "copyFailed": "Trình duyệt chặn sao chép – hãy chọn và sao chép thủ công.",
+    "codesTitle": "Mã khôi phục",
+    "codesDesc": "Dùng một mã khi mất điện thoại; mỗi mã chỉ dùng được một lần.",
+    "codesOnce": "Chỉ hiển thị một lần",
+    "codesOnceDesc": "Lưu vào trình quản lý mật khẩu hoặc in ra giấy trước khi đóng. Allingo không thể xem lại các mã này.",
+    "copyAll": "Sao chép tất cả",
+    "download": "Tải tệp .txt",
+    "codesFileHeader": "Mã khôi phục xác minh hai lớp Allingo – mỗi mã dùng một lần. Giữ bí mật.",
+    "codesSaved": "Tôi đã lưu các mã khôi phục ở nơi an toàn",
+    "codesDone": "Xong",
+    "lowCodes": "Bạn sắp hết mã khôi phục – tạo bộ mã mới bên dưới.",
+    "verifyLabel": "Mã 6 số để xác minh phiên này",
+    "verifySession": "Xác minh phiên",
+    "verifiedToast": "Phiên đã được xác minh hai lớp",
+    "regenTitle": "Tạo lại mã khôi phục",
+    "regenDesc": "Bộ mã cũ sẽ vô hiệu ngay. Cần mã 6 số hiện tại từ ứng dụng.",
+    "regen": "Tạo bộ mã mới",
+    "otherTitle": "Quyền riêng tư & hỗ trợ",
+    "otherDesc": "Yêu cầu xoá dữ liệu, mất quyền truy cập hoặc nghi ngờ tài khoản bị xâm nhập – liên hệ hỗ trợ.",
+    "contactSupport": "Liên hệ hỗ trợ",
+    "privacyLink": "Chính sách quyền riêng tư",
+    "errors": {
+      "invalid": "Mã không đúng hoặc đã dùng. Đợi mã mới rồi thử lại.",
+      "locked": "Nhập sai quá nhiều lần – thử lại sau 15 phút.",
+      "alreadyEnrolled": "Xác minh hai lớp đã được bật cho tài khoản này.",
+      "notEnrolled": "Tài khoản chưa bật xác minh hai lớp.",
+      "forbidden": "Tài khoản của bạn không dùng được tính năng này.",
+      "generic": "Chưa thực hiện được. Thử lại sau ít phút."
+    }
+  },
+  "mfaStepUp": {
+    "title": "Xác minh hai lớp",
+    "desc": "Thao tác quản trị cần xác minh lại phiên. Nhập mã 6 số từ ứng dụng xác thực – thao tác sẽ tự tiếp tục.",
+    "notEnrolledDesc": "Thao tác quản trị cần xác minh hai lớp nhưng tài khoản chưa bật. Bật trong Cài đặt → Bảo mật rồi thử lại.",
+    "codeLabel": "Mã 6 số",
+    "recoveryLabel": "Mã khôi phục",
+    "useRecovery": "Dùng mã khôi phục",
+    "useTotp": "Dùng mã từ ứng dụng",
+    "verify": "Xác minh & tiếp tục",
+    "cancel": "Huỷ",
+    "enrollCta": "Bật xác minh hai lớp",
+    "errors": {
+      "invalid": "Mã không đúng hoặc đã dùng.",
+      "locked": "Sai quá 5 lần – thử lại sau 15 phút.",
+      "notEnrolled": "Tài khoản chưa bật xác minh hai lớp.",
+      "generic": "Chưa xác minh được. Thử lại."
+    }
+  },
+  "feedback": {
+    "button": "Góp ý",
+    "title": "Góp ý cho Allingo",
+    "desc": "Báo lỗi, đề xuất tính năng hay bất cứ điều gì – đội ngũ đọc mọi góp ý trong 1 ngày làm việc.",
+    "category": "Loại góp ý",
+    "categories": {
+      "bug": "Lỗi",
+      "idea": "Ý tưởng",
+      "content_error": "Lỗi nội dung",
+      "ux": "Khó dùng",
+      "performance": "Chậm / giật",
+      "other": "Khác"
+    },
+    "message": "Nội dung",
+    "messagePlaceholder": "Bạn đang làm gì, điều gì xảy ra, bạn mong đợi điều gì?",
+    "count": "{count}/{max}",
+    "screenshot": "Ảnh màn hình (không bắt buộc)",
+    "chooseImage": "Chọn ảnh",
+    "pasteHint": "hoặc dán ảnh (Ctrl/⌘ + V) vào hộp thoại",
+    "previewAlt": "Ảnh màn hình đính kèm",
+    "removeImage": "Bỏ ảnh",
+    "imageErrors": {
+      "type": "Chỉ nhận ảnh PNG, JPEG hoặc WebP.",
+      "size": "Ảnh tối đa 8 MB.",
+      "empty": "Tệp ảnh trống."
+    },
+    "contextNote": "Gửi kèm tự động: trang {page}, phiên bản ứng dụng và trình duyệt rút gọn. Không gửi email hay số điện thoại.",
+    "contextTrace": "Mã truy vết lỗi gần nhất: {trace}…",
+    "submit": "Gửi góp ý",
+    "uploading": "Đang tải ảnh…",
+    "sending": "Đang gửi…",
+    "cancel": "Huỷ",
+    "close": "Đóng",
+    "thanks": "Cảm ơn bạn đã góp ý!",
+    "thanksDesc": "Mã góp ý #{id}. Nếu cần trao đổi thêm, hãy mở yêu cầu ở trang Hỗ trợ.",
+    "errors": {
+      "message_short": "Viết ít nhất 3 ký tự.",
+      "message_long": "Tối đa 4.000 ký tự.",
+      "category": "Chọn loại góp ý."
+    }
+  },
+  "contentReport": {
+    "button": "Báo lỗi câu hỏi",
+    "buttonLabel": "Báo lỗi câu hỏi {number}",
+    "buttonSent": "Đã báo lỗi",
+    "title": "Báo lỗi câu hỏi",
+    "titleNumber": "Báo lỗi câu {number}",
+    "desc": "Đội nội dung xem và sửa trong {hours} giờ. Bạn nhận thông báo khi báo cáo được xử lý.",
+    "reason": "Lỗi gì?",
+    "reasons": {
+      "wrong_answer": "Đáp án sai",
+      "typo": "Lỗi chính tả / ngữ pháp",
+      "unclear": "Đề bài không rõ",
+      "audio_issue": "Lỗi audio",
+      "image_issue": "Lỗi hình ảnh",
+      "translation": "Bản dịch sai",
+      "explanation_wrong": "Giải thích sai",
+      "other": "Khác"
+    },
+    "message": "Mô tả (không bắt buộc)",
+    "messagePlaceholder": "Ví dụ: đáp án đúng phải là C vì…",
+    "submit": "Gửi báo lỗi",
+    "cancel": "Huỷ",
+    "close": "Đóng",
+    "thanks": "Cảm ơn bạn đã báo lỗi!",
+    "duplicate": "Bạn đã báo lỗi câu này – báo cáo đang được xử lý.",
+    "slaLine": "Hạn xử lý: {date}."
+  },
+  "surveys": {
+    "npsTitle": "Bạn có sẵn lòng giới thiệu Allingo cho bạn bè không?",
+    "npsQuestion": "Mức độ sẵn lòng giới thiệu, từ 0 (không bao giờ) đến 10 (chắc chắn)",
+    "npsDescD7": "Một tuần dùng beta – cho chúng tôi biết cảm nhận của bạn (chưa tới 30 giây).",
+    "npsDescD14": "Hai tuần dùng beta – cảm nhận của bạn giúp quyết định bước tiếp theo.",
+    "scaleLow": "0 – Không bao giờ",
+    "scaleHigh": "10 – Chắc chắn",
+    "reasonPromoter": "Điều bạn thích nhất là gì?",
+    "reasonPassive": "Điều gì sẽ khiến bạn chấm 10?",
+    "reasonDetractor": "Điều gì khiến bạn chưa hài lòng?",
+    "reasonPlaceholder": "Không bắt buộc",
+    "submit": "Gửi",
+    "later": "Để sau",
+    "thanks": "Cảm ơn bạn! Phản hồi của bạn đã được ghi nhận.",
+    "onboardingTitle": "Khảo sát beta (1 phút)",
+    "onboardingDesc": "5 câu hỏi giúp chúng tôi đánh giá beta.",
+    "onboardingCta": "Làm ngay"
+  },
+  "support": {
+    "title": "Trung tâm hỗ trợ",
+    "ticketTitle": "Yêu cầu hỗ trợ",
+    "subtitle": "Gửi yêu cầu – đội hỗ trợ phản hồi lần đầu trong {hours} giờ, qua email và thông báo trong app.",
+    "guestTitle": "Đăng ký để gửi yêu cầu hỗ trợ",
+    "guestDesc": "Tài khoản khách chưa gửi được yêu cầu. Đăng ký miễn phí (tiến độ được giữ) hoặc dùng trang Liên hệ.",
+    "newTitle": "Gửi yêu cầu mới",
+    "newDesc": "Mô tả vấn đề càng cụ thể càng tốt (thời điểm, đề, thiết bị).",
+    "category": "Chủ đề",
+    "categories": {
+      "account": "Tài khoản",
+      "billing": "Thanh toán",
+      "exam": "Làm bài / chấm điểm",
+      "content": "Nội dung đề",
+      "technical": "Kỹ thuật",
+      "other": "Khác"
+    },
+    "subject": "Tiêu đề",
+    "message": "Nội dung",
+    "messagePlaceholder": "Chuyện gì đã xảy ra? Bạn đã thử những gì?",
+    "attachTrace": "Đính kèm mã truy vết lỗi gần nhất ({trace}…) để kỹ thuật tra nhanh",
+    "attachAttempt": "Gắn với bài làm #{id}",
+    "submit": "Gửi yêu cầu",
+    "errors": {
+      "subject": "Tiêu đề 3–200 ký tự.",
+      "message": "Nội dung ít nhất 3 ký tự.",
+      "form": "Kiểm tra lại thông tin."
+    },
+    "otherChannels": "Kênh khác",
+    "hintFeedback": "Góp ý nhanh: nút \"Góp ý\" ở thanh trên cùng (kèm ảnh màn hình).",
+    "hintReport": "Câu hỏi sai đáp án/chính tả: nút \"Báo lỗi câu hỏi\" ở trang xem lại.",
+    "refundLink": "Chính sách hoàn tiền",
+    "privacyLink": "Quyền riêng tư & xoá dữ liệu",
+    "myTickets": "Yêu cầu của tôi",
+    "emptyTitle": "Chưa có yêu cầu nào",
+    "emptyDesc": "Yêu cầu bạn gửi sẽ hiện ở đây cùng trạng thái xử lý.",
+    "status": {
+      "open": "Đang xử lý",
+      "waiting_user": "Chờ bạn phản hồi",
+      "resolved": "Đã giải quyết",
+      "closed": "Đã đóng"
+    },
+    "sla": {
+      "pending": "Phản hồi trong {hours} giờ",
+      "overdue": "Đang ưu tiên xử lý",
+      "overdueAdmin": "Quá hạn {hours} giờ",
+      "responded": "Đã phản hồi"
+    },
+    "backToList": "Tất cả yêu cầu",
+    "createdAt": "Gửi lúc {date}",
+    "threadLabel": "Hội thoại",
+    "author": {
+      "user": "Bạn",
+      "agent": "Đội hỗ trợ Allingo",
+      "system": "Hệ thống"
+    },
+    "replyLabel": "Trả lời",
+    "send": "Gửi trả lời",
+    "reopenNote": "Yêu cầu đã giải quyết – trả lời sẽ mở lại yêu cầu.",
+    "closedNote": "Yêu cầu đã đóng và không nhận thêm trả lời.",
+    "newTicketLink": "Gửi yêu cầu mới"
+  },
+  "adminOps": {
+    "forbiddenTitle": "Không có quyền truy cập",
+    "forbiddenDesc": "Trang này chỉ dành cho quản trị viên.",
+    "navLabel": "Mục quản trị",
+    "sections": {
+      "overview": {
+        "nav": "Tổng quan",
+        "title": "Quản trị vận hành",
+        "desc": "Sức khoẻ hệ thống, SLA hỗ trợ và lối vào các mục quản trị beta."
+      },
+      "beta": {
+        "nav": "Beta",
+        "title": "Beta kín",
+        "desc": "Danh sách chờ, lời mời theo đợt (≤ 50/ngày) và báo cáo KPI tuần."
+      },
+      "feedback": {
+        "nav": "Góp ý",
+        "title": "Góp ý in-app",
+        "desc": "Góp ý kèm ảnh màn hình và mã truy vết – phân loại trong 1 ngày làm việc."
+      },
+      "content": {
+        "nav": "Nội dung",
+        "title": "Nội dung",
+        "desc": "Báo lỗi câu hỏi (SLA 48 giờ) và thống kê câu: tỉ lệ đúng, độ phân biệt, đề xuất retire."
+      },
+      "support": {
+        "nav": "Hỗ trợ",
+        "title": "Ticket hỗ trợ",
+        "desc": "Phản hồi đầu trong 24 giờ, trả lời qua email + in-app, cấp credit bù."
+      },
+      "users": {
+        "nav": "Người dùng",
+        "title": "Người dùng",
+        "desc": "Tìm, xem hồ sơ (đã che PII), khoá/mở khoá, yêu cầu xoá, xem như người dùng (chỉ đọc)."
+      },
+      "ai": {
+        "nav": "AI",
+        "title": "Chất lượng AI",
+        "desc": "👍/👎 theo phiên bản prompt, chi phí và mẫu bị guardrail từ chối."
+      },
+      "system": {
+        "nav": "Hệ thống",
+        "title": "Hệ thống",
+        "desc": "Hàng đợi, dead-letter + replay, partition, outbox và cờ tính năng."
+      },
+      "audit": {
+        "nav": "Nhật ký",
+        "title": "Nhật ký kiểm toán",
+        "desc": "Tra mọi hành động quản trị và hệ thống theo người thực hiện, hành động, đối tượng, thời gian."
+      },
+      "billing": {
+        "nav": "Thanh toán",
+        "title": "Thanh toán",
+        "desc": "Billing admin."
+      }
+    },
+    "status": "Trạng thái",
+    "actions": "Thao tác",
+    "createdAt": "Thời điểm",
+    "email": "Email (đã che)",
+    "locale": "Ngôn ngữ",
+    "user": "Người dùng",
+    "select": "Chọn",
+    "yes": "Có",
+    "no": "Không",
+    "empty": "Không có dữ liệu.",
+    "apply": "Áp dụng",
+    "from": "Từ ngày",
+    "to": "Đến ngày",
+    "save": "Lưu",
+    "saved": "Đã lưu",
+    "cancel": "Huỷ",
+    "close": "Đóng",
+    "copied": "Đã sao chép",
+    "reasonMin": "Bắt buộc, ít nhất {min} ký tự – ghi vào nhật ký kiểm toán.",
+    "overview": {
+      "ticketsOverdue": "Ticket quá hạn SLA",
+      "reportsOverdue": "Báo lỗi câu quá hạn",
+      "betaToday": "Hôm nay đã gửi {sent}/{limit} lời mời",
+      "open": "Mở",
+      "openSection": "Mở {section}"
+    },
+    "beta": {
+      "tabs": {
+        "waitlist": "Danh sách chờ",
+        "invites": "Lời mời",
+        "report": "Báo cáo tuần"
+      },
+      "counts": "Số lượng theo trạng thái",
+      "program": "Chương trình",
+      "source": "Nguồn",
+      "marketing": "Đồng ý tiếp thị",
+      "waitStatus": {
+        "waiting": "Đang chờ",
+        "invited": "Đã mời",
+        "joined": "Đã tham gia",
+        "removed": "Đã gỡ"
+      },
+      "inviteStatus": {
+        "queued": "Chờ gửi",
+        "sent": "Đã gửi",
+        "redeemed": "Đã dùng",
+        "revoked": "Đã thu hồi",
+        "expired": "Hết hạn",
+        "failed": "Gửi lỗi"
+      },
+      "selectPage": "Chọn {count} người đang chờ",
+      "selectRow": "Chọn {email}",
+      "batch": "Tên đợt",
+      "queueSelected": "Xếp hàng mời ({count})",
+      "queueEmails": "Xếp hàng mời {count} email",
+      "confirmQueueTitle": "Xếp hàng {count} lời mời?",
+      "confirmQueueDesc": "Lời mời vào đợt \"{batch}\" và được gửi tự động lúc 09:00 (giờ VN) trong hạn mức mỗi ngày, hoặc khi bấm \"Gửi ngay\". Email đã có lời mời còn hiệu lực sẽ bị bỏ qua.",
+      "queuedToast": "Đã xếp hàng {queued} lời mời (bỏ qua {skipped}) – đợt {batch}",
+      "emailTitle": "Mời theo email",
+      "emailDesc": "Dán danh sách email (mỗi dòng một email, tối đa 500) cho đối tác/nội bộ chưa có trong danh sách chờ.",
+      "emailPlaceholder": "ten@vidu.vn",
+      "invalidEmails": "Email không hợp lệ: {list}",
+      "todaySent": "Đã gửi hôm nay",
+      "todayLimit": "Hạn mức/ngày",
+      "todayRemaining": "Còn lại hôm nay",
+      "sendNow": "Gửi ngay",
+      "sendHint": "Gửi các lời mời đang chờ theo thứ tự xếp hàng.",
+      "sendLimit": "Số lời mời tối đa",
+      "confirmSendTitle": "Gửi lời mời ngay?",
+      "confirmSendDesc": "Email mời được gửi ngay (không thu hồi được email đã gửi). Hạn mức còn lại hôm nay: {remaining}.",
+      "sendDone": "Đã chạy gửi mời ({mode})",
+      "sentAt": "Gửi lúc",
+      "expiresAt": "Hết hạn",
+      "redeemedAt": "Dùng lúc",
+      "attempts": "Lần gửi",
+      "revoke": "Thu hồi",
+      "revoked": "Đã thu hồi lời mời",
+      "confirmRevokeTitle": "Thu hồi lời mời?",
+      "confirmRevokeDesc": "Mã mời của {email} sẽ không dùng được nữa. Muốn mời lại phải tạo lời mời mới (mã mới).",
+      "week": "Tuần ISO",
+      "weekHint": "Để trống = tuần trước (giờ VN).",
+      "simulated": "DỮ LIỆU GIẢ LẬP",
+      "noPosthog": "PostHog: chưa có",
+      "markdown": "Báo cáo (Markdown)",
+      "kpi": {
+        "testers": "Tester",
+        "invites": "Mời {sent} · đã dùng {redeemed}",
+        "activation": "Kích hoạt (chẩn đoán ≤ 24 giờ)",
+        "target": "Mục tiêu ≥ {target}",
+        "d7": "Giữ chân D7",
+        "retention": "D1 {d1} · D14 {d14}",
+        "nps": "NPS",
+        "responses": "{count} phản hồi",
+        "thumbs": "Tỉ lệ 👍 giải thích",
+        "engagement": "Câu/tester",
+        "engagementHint": "{sessions} phiên/người · {explains} giải thích/người",
+        "cost": "Chi phí AI/tester",
+        "crashFree": "Crash-free",
+        "notConnected": "Chưa nối Sentry Release Health"
+      },
+      "weekPlaceholder": "2026-W45"
+    },
+    "feedback": {
+      "category": "Loại",
+      "message": "Nội dung",
+      "page": "Trang",
+      "trace": "Trace",
+      "screenshot": "Ảnh",
+      "open": "Mở ảnh",
+      "processing": "Đang xử lý",
+      "setStatus": "Đổi trạng thái góp ý",
+      "status": {
+        "new": "Mới",
+        "triaged": "Đã phân loại",
+        "done": "Đã xử lý",
+        "wontfix": "Không xử lý"
+      }
+    },
+    "content": {
+      "tabs": {
+        "reports": "Báo lỗi câu hỏi",
+        "stats": "Thống kê câu"
+      },
+      "status": {
+        "open": "Mở",
+        "confirmed": "Xác nhận lỗi",
+        "rejected": "Từ chối",
+        "fixed": "Đã sửa"
+      },
+      "overdue": "Quá hạn",
+      "overdueOnly": "Chỉ quá hạn",
+      "overdueBadge": "Quá hạn",
+      "question": "Câu hỏi",
+      "reason": "Lý do",
+      "message": "Mô tả",
+      "reportsForQuestion": "Số báo cáo câu này",
+      "sla": "Hạn SLA",
+      "handle": "Xử lý",
+      "handleTitle": "Xử lý báo lỗi câu hỏi",
+      "handleDesc": "Người báo nhận thông báo in-app khi trạng thái là Xác nhận lỗi, Đã sửa hoặc Từ chối. Sửa nội dung câu trong CMS (phiên bản mới qua quy trình 2 lớp).",
+      "note": "Ghi chú xử lý (không bắt buộc)",
+      "notePlaceholder": "Ví dụ: đã sửa đáp án ở phiên bản 2",
+      "resolved": "Đã cập nhật báo lỗi",
+      "computedAt": "Tính lúc",
+      "recompute": "Tính lại thống kê",
+      "recomputeTitle": "Chạy lại content.stats_nightly?",
+      "recomputeDesc": "Tính lại p-value và độ phân biệt cho mọi câu từ bài làm 365 ngày (đọc replica). Có thể mất vài chục giây.",
+      "recomputed": "Đã chạy tính lại thống kê",
+      "recommendation": "Đề xuất",
+      "rec": {
+        "retire": "Nên retire",
+        "review": "Cần xem lại",
+        "ok": "Ổn",
+        "insufficient_data": "Chưa đủ dữ liệu"
+      },
+      "reasons": {
+        "too_hard": "quá khó",
+        "too_easy": "quá dễ",
+        "low_discrimination": "phân biệt thấp",
+        "very_low_discrimination": "phân biệt rất thấp",
+        "negative_discrimination": "phân biệt âm",
+        "many_open_reports": "nhiều báo lỗi mở",
+        "many_confirmed_reports": "nhiều báo lỗi đã xác nhận"
+      },
+      "section": "Part",
+      "sort": "Sắp xếp",
+      "sortBy": {
+        "discrimination": "Độ phân biệt",
+        "p_value": "Tỉ lệ đúng",
+        "reports": "Số báo lỗi",
+        "n": "Số lượt",
+        "avg_time": "Thời gian TB"
+      },
+      "minN": "n tối thiểu",
+      "pValue": "Tỉ lệ đúng",
+      "discrimination": "Phân biệt",
+      "avgTime": "Thời gian TB",
+      "reportsCol": "Báo lỗi mở/tổng",
+      "seconds": "{s} giây"
+    },
+    "support": {
+      "priority": "Ưu tiên",
+      "priorities": {
+        "low": "Thấp",
+        "normal": "Thường",
+        "high": "Cao",
+        "urgent": "Khẩn"
+      },
+      "category": "Chủ đề",
+      "search": "Từ khoá tiêu đề",
+      "searchPlaceholder": "audio, thanh toán…",
+      "subject": "Tiêu đề",
+      "lastMessage": "Tin cuối",
+      "pick": "Chọn một ticket để xem hội thoại và trả lời.",
+      "context": "Ngữ cảnh kỹ thuật",
+      "assignMe": "Nhận xử lý",
+      "assignedToMe": "Bạn đang xử lý",
+      "closedNoReply": "Ticket đã đóng – không gửi thêm trả lời.",
+      "reply": "Trả lời người dùng",
+      "channels": "Kênh",
+      "channel": {
+        "inapp": "Trong app",
+        "email": "Email"
+      },
+      "after": "Trạng thái sau khi gửi",
+      "grantCredit": "Cấp credit bù cùng lúc",
+      "delta": "Số credit",
+      "note": "Ghi chú (bắt buộc)",
+      "notePlaceholder": "Ví dụ: bù lỗi audio Part 3",
+      "send": "Gửi trả lời",
+      "replied": "Đã gửi trả lời",
+      "repliedCredit": "Đã gửi trả lời và cộng {delta} credit",
+      "confirmCreditTitle": "Cấp {delta} credit bù?",
+      "confirmCreditDesc": "Credit được cộng ngay cho {name} (ledger admin_adjust, ghi audit). Ghi chú: \"{note}\".",
+      "errMessage": "Nhập nội dung trả lời.",
+      "errDelta": "Số credit từ 1 đến 100.000.",
+      "errNote": "Ghi chú ít nhất 3 ký tự.",
+      "errChannels": "Chọn ít nhất một kênh.",
+      "errForm": "Kiểm tra lại thông tin."
+    },
+    "users": {
+      "query": "Email, tên hoặc ID",
+      "queryPlaceholder": "ten@vidu.vn hoặc tiền tố",
+      "role": "Vai trò",
+      "status": {
+        "active": "Hoạt động",
+        "suspended": "Đã khoá",
+        "pending_deletion": "Chờ xoá",
+        "deleted": "Đã xoá"
+      },
+      "privacyNote": "Kết quả che email/SĐT; chuỗi tìm kiếm không ghi vào nhật ký (chỉ ghi hành động tìm).",
+      "typeToSearch": "Nhập ít nhất 2 ký tự hoặc chọn bộ lọc để tìm.",
+      "name": "Tên hiển thị",
+      "guest": "Khách",
+      "pick": "Chọn một người dùng để xem hồ sơ.",
+      "betaTester": "Beta tester",
+      "noPhone": "không có SĐT",
+      "sessions": "Phiên đang hoạt động",
+      "credits": "Số dư credit",
+      "lastSeen": "Hoạt động gần nhất",
+      "providers": "Đăng nhập bằng",
+      "password": "Mật khẩu/OTP",
+      "beta": "Beta",
+      "betaSince": "Tester từ {date}",
+      "deletion": "Yêu cầu xoá",
+      "subscriptions": "Gói",
+      "attempts": "Bài làm gần đây",
+      "orders": "Đơn hàng",
+      "tickets": "Ticket hỗ trợ",
+      "lock": "Khoá tài khoản",
+      "unlock": "Mở khoá",
+      "impersonate": "Xem như người dùng",
+      "requestDeletion": "Yêu cầu xoá dữ liệu",
+      "auditLink": "Nhật ký người dùng",
+      "privilegedNote": "Tài khoản quản trị: không thể xem như người dùng; khoá/xoá cần superadmin.",
+      "reason": "Lý do",
+      "reasonPlaceholder": "Ví dụ: ticket #1a2b3c4d – người dùng yêu cầu",
+      "lockedToast": "Đã khoá tài khoản – thu hồi {sessions} phiên",
+      "unlockedToast": "Đã mở khoá tài khoản",
+      "deletionToast": "Đã lên lịch xoá dữ liệu – hoàn tất trước {date}",
+      "confirm": {
+        "lock": {
+          "title": "Khoá tài khoản {name}?",
+          "desc": "Mọi phiên đăng nhập bị thu hồi ngay; người dùng không đăng nhập được cho tới khi mở khoá.",
+          "cta": "Khoá tài khoản"
+        },
+        "unlock": {
+          "title": "Mở khoá tài khoản {name}?",
+          "desc": "Người dùng đăng nhập lại được ngay.",
+          "cta": "Mở khoá"
+        },
+        "deletion": {
+          "title": "Xoá dữ liệu của {name}?",
+          "desc": "Chỉ thực hiện khi người dùng yêu cầu và đã xác minh danh tính qua ticket. Dữ liệu bị xoá trong 72 giờ – KHÔNG khôi phục được.",
+          "cta": "Lên lịch xoá",
+          "ack": "Tôi đã xác minh danh tính người yêu cầu và hiểu thao tác này không đảo ngược được."
+        },
+        "impersonate": {
+          "title": "Xem như {name}?",
+          "desc": "Token CHỈ ĐỌC 10 phút; mọi request được ghi audit. Chỉ dùng để điều tra ticket – không thao tác thay người dùng.",
+          "cta": "Bắt đầu xem"
+        }
+      },
+      "imp": {
+        "banner": "Đang xem như {name} – CHỈ ĐỌC",
+        "left": "còn {m}:{s}",
+        "expired": "Phiên xem đã hết hạn.",
+        "exit": "Thoát chế độ xem",
+        "readOnly": "Chế độ chỉ đọc",
+        "readOnlyDesc": "Dữ liệu tải bằng token riêng (không dùng phiên của bạn). API chặn mọi thao tác ghi và trang quản trị; email/SĐT được che.",
+        "views": "Dữ liệu của người dùng",
+        "view": {
+          "profile": "Hồ sơ",
+          "stats": "Thống kê",
+          "attempts": "Bài làm",
+          "entitlements": "Quyền & hạn mức",
+          "credits": "Credit",
+          "tickets": "Ticket"
+        }
+      },
+      "mfa": "MFA"
+    },
+    "ai": {
+      "task": "Tác vụ",
+      "version": "Prompt",
+      "tasks": "Số tác vụ",
+      "outcome": "Kết quả",
+      "outcomeLine": "{ok} ok · {refused} từ chối · {failed} lỗi",
+      "feedback": "Đánh giá",
+      "ratio": "Tỉ lệ 👍",
+      "cost": "Chi phí",
+      "qualityTitle": "Chất lượng theo phiên bản prompt",
+      "targetNote": "Mục tiêu GATE-2: tỉ lệ 👍 giải thích ≥ 80 %. 👎 gồm \"không hữu ích\" và \"sai\".",
+      "refusalsTitle": "Mẫu bị guardrail từ chối",
+      "reason": "Lý do",
+      "inputRef": "Tham chiếu (không nội dung)"
+    },
+    "system": {
+      "tabs": {
+        "status": "Trạng thái",
+        "dead-letters": "Dead-letter",
+        "flags": "Cờ tính năng"
+      },
+      "redis": "Redis",
+      "healthy": "Hoạt động",
+      "down": "Mất kết nối",
+      "dlqUnreplayed": "DLQ chưa replay",
+      "dlqHint": "Tổng {total} · 24 giờ qua {day}",
+      "slaOverdue": "Quá hạn SLA",
+      "slaHint": "{tickets} ticket · {reports} báo lỗi câu",
+      "outbox": "Outbox chưa phát",
+      "outboxHint": "Cũ nhất {sec} giây",
+      "partitionsMissing": "Thiếu partition: {list}",
+      "queues": "Hàng đợi BullMQ",
+      "queue": "Hàng đợi",
+      "waiting": "Chờ",
+      "active": "Đang chạy",
+      "delayed": "Hẹn giờ",
+      "failed": "Lỗi",
+      "oldest": "Chờ lâu nhất",
+      "partitions": "Độ phủ partition",
+      "monthsAhead": "đủ {n} tháng tới",
+      "job": "Job",
+      "replayedFilter": "Replay",
+      "notReplayed": "Chưa replay",
+      "replayedOnly": "Đã replay",
+      "failedAt": "Lỗi lúc",
+      "error": "Lỗi",
+      "attempts": "Số lần",
+      "replays": "Đã replay",
+      "replay": "Replay",
+      "dlqEmpty": "Không có job dead-letter. 🎉",
+      "confirmReplayTitle": "Replay job này?",
+      "confirmReplayDesc": "Job {job} ({id}) được chạy lại với cùng jobId (idempotent). Kiểm tra nguyên nhân lỗi trước khi replay.",
+      "replayed": "Đã replay ({mode})",
+      "replayFailed": "Replay lỗi: {error}",
+      "noHandler": "Job này không có trình xử lý để replay.",
+      "flagsDesc": "Bật/tắt có hiệu lực trên mọi máy chủ trong < 60 giây. Kill-switch tắt → API trả 503 và giao diện ẩn tính năng.",
+      "public": "Công khai",
+      "internal": "Nội bộ",
+      "hasRules": "có luật/allowlist",
+      "updated": "Cập nhật",
+      "toggleFlag": "Bật/tắt {key}",
+      "confirmOnTitle": "Bật {key}?",
+      "confirmOffTitle": "Tắt {key}?",
+      "confirmFlagDesc": "Thay đổi áp dụng cho mọi người dùng ngay lập tức và được ghi audit.",
+      "turnOn": "Bật",
+      "turnOff": "Tắt"
+    },
+    "audit": {
+      "action": "Hành động",
+      "actor": "Người thực hiện",
+      "entityType": "Loại đối tượng",
+      "entityId": "ID đối tượng",
+      "entity": "Đối tượng",
+      "details": "Chi tiết",
+      "show": "Xem trước/sau",
+      "before": "Trước",
+      "after": "Sau",
+      "hint": "Hành động kết thúc bằng \".\" hoặc \"*\" là tìm theo tiền tố (vd. user. hoặc beta.*). Mặc định 30 ngày gần nhất."
     }
   }
 }

@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { Bell, CreditCard, Gift, ShieldCheck } from 'lucide-react';
+import { Bell, CreditCard, Gift, KeyRound, LifeBuoy, ShieldCheck } from 'lucide-react';
 import { isAdmin } from '@/features/admin/is-admin';
 import {
   Alert,
@@ -98,6 +98,24 @@ export function SettingsPage() {
           </CardContent>
         </Card>
 
+        {/* S12: bảo mật tài khoản (MFA TOTP cho quản trị) + hỗ trợ */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>{t('securityTitle')}</CardTitle>
+            <CardDescription>{t('securityDesc')}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Link href="/settings/security" className={buttonVariants({ variant: 'outline' })} data-testid="settings-security-link">
+              <KeyRound aria-hidden />
+              {t('securityLink')}
+            </Link>
+            <Link href="/support" className={buttonVariants({ variant: 'outline' })} data-testid="settings-support-link">
+              <LifeBuoy aria-hidden />
+              {t('supportLink')}
+            </Link>
+          </CardContent>
+        </Card>
+
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>{tb('settingsTitle')}</CardTitle>
@@ -116,10 +134,16 @@ export function SettingsPage() {
               </Link>
             </FeatureGate>
             {isAdmin(me.data) ? (
-              <Link href="/admin/billing" className={buttonVariants({ variant: 'outline' })} data-testid="settings-admin-link">
-                <ShieldCheck aria-hidden />
-                {tb('settingsAdmin')}
-              </Link>
+              <>
+                <Link href="/admin" className={buttonVariants({ variant: 'outline' })} data-testid="settings-admin-ops-link">
+                  <ShieldCheck aria-hidden />
+                  {t('adminOpsLink')}
+                </Link>
+                <Link href="/admin/billing" className={buttonVariants({ variant: 'outline' })} data-testid="settings-admin-link">
+                  <ShieldCheck aria-hidden />
+                  {tb('settingsAdmin')}
+                </Link>
+              </>
             ) : null}
           </CardContent>
         </Card>

@@ -12,6 +12,8 @@ export type KnownErrorCode =
   | 'rate_limited'
   | 'exam_mode_locked'
   | 'feature_disabled'
+  | 'beta_required'
+  | 'mfa_required'
   | 'ai_failed'
   | 'ai_timeout'
   | 'internal'
@@ -29,6 +31,9 @@ const KNOWN: ReadonlySet<string> = new Set<KnownErrorCode>([
   'rate_limited',
   'exam_mode_locked',
   'feature_disabled',
+  // S12: beta kín (cần mã mời) + step-up MFA cho thao tác quản trị
+  'beta_required',
+  'mfa_required',
   // Mã của sự kiện SSE `error` từ AI Gateway (Sprint 5)
   'ai_failed',
   'ai_timeout',

@@ -1,4 +1,4 @@
-import { correctAnswerOf, grade, isAnswered, type AttemptMode, type Forecast, type Stats } from '@allingo/schemas';
+import { correctAnswerOf, grade, isAnswered, scorePartOf, type AttemptMode, type Forecast, type Stats } from '@allingo/schemas';
 import { MOCK_DICTIONARY, type MockDictEntry } from './dictionary';
 import { MOCK_SUBSKILL_OF_TAG, type MockQuestion } from './fixtures';
 import { MOCK_VOCAB_LIST } from './learning-plan';
@@ -317,7 +317,12 @@ export function s10Mock<R>(d: S10Deps<R>) {
       .sort((x, y) => (x.submitted_at ?? '').localeCompare(y.submitted_at ?? ''));
     const score_history = graded
       .filter((a) => a.result?.scaled_score !== null && a.result?.scaled_score !== undefined)
-      .map((a) => ({ date: (a.submitted_at ?? '').slice(0, 10), at: a.submitted_at ?? nowIso(), score: a.result!.scaled_score!, listening: a.result?.scaled?.listening ?? null, reading: a.result?.scaled?.reading ?? null, kind: a.mode === 'diagnostic' ? 'diagnostic' : 'mini', mode: a.mode, attempt_id: a.id }));
+      .map((a) => {
+        // S12 (A212 – như API): mỗi điểm có `part` (total | listening | reading) + thang; mini một kỹ năng 5–495
+        const part = scorePartOf(a.result?.scaled ?? null);
+        return { date: (a.submitted_at ?? '').slice(0, 10), at: a.submitted_at ?? nowIso(), score: a.result!.scaled_score!, listening: a.result?.scaled?.listening ?? null, reading: a.result?.scaled?.reading ?? null, kind: a.mode === 'diagnostic' ? 'diagnostic' : 'mini', mode: a.mode, attempt_id: a.id, part, scale: part === 'total' ? { min: 10, max: 990 } : { min: 5, max: 495 } };
+      });
+    const totals = score_history.filter((p) => p.part === 'total');
     const cell = () => ({ correct: 0, total: 0, accuracy: null as number | null });
     const bySection: Record<string, { current: ReturnType<typeof cell>; previous: ReturnType<typeof cell>; delta: number | null }> = {};
     const bySub: typeof bySection = {};
@@ -360,7 +365,8 @@ export function s10Mock<R>(d: S10Deps<R>) {
     const errs = Object.values(state.errorLog).filter((e) => e.user_id === u.id);
     const byKind: Record<string, number> = {};
     for (const e of errs.filter((x) => !x.resolved)) byKind[e.reason_override ?? e.kind_auto] = (byKind[e.reason_override ?? e.kind_auto] ?? 0) + 1;
-    const est = score_history.length ? score_history[score_history.length - 1]!.score : null;
+    // S12: ước tính hiện tại / phân vị chỉ từ điểm thang TỔNG (đề có cả L + R)
+    const est = totals.length ? totals[totals.length - 1]!.score : null;
     const percentile = est === null ? null : Math.round(((COMMUNITY_SAMPLE.filter((s) => s < est).length + COMMUNITY_SAMPLE.filter((s) => s === est).length / 2) / COMMUNITY_SAMPLE.length) * 1000) / 10;
     return {
       score_history,
@@ -372,12 +378,14 @@ export function s10Mock<R>(d: S10Deps<R>) {
       generated_at: nowIso(),
       cached: false,
       minutes_this_week: minutes_by_week[7]?.minutes ?? 0,
+      current_estimate: est,
     };
   };
 
   const forecastOf = (u: MockUserRecord, program: string): Forecast => {
     const ex = statsExtras(u, program);
-    const hist = ex.score_history ?? [];
+    // S12: dự báo chỉ dùng điểm thang tổng
+    const hist = (ex.score_history ?? []).filter((h) => !h.part || h.part === 'total');
     const enrollment = (state.enrollments[u.id] ?? []).find((e) => e.program === program);
     const target = enrollment?.target_score ?? null;
     const examDate = enrollment?.exam_date ?? null;

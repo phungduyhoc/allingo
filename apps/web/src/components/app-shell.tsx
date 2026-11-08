@@ -16,6 +16,8 @@ import { SubscriptionBanner } from '@/features/billing/subscription-banner';
 import { isAdmin } from '@/features/admin/is-admin';
 import { useFlag } from '@/features/flags/flags-provider';
 import type { FlagKey } from '@/lib/flags';
+import { FeedbackButton } from '@/features/feedback/feedback-button';
+import { AppFooter } from './app-footer';
 
 /**
  * S9: "Hôm nay" + "Lộ trình" lên đầu; Cài đặt chuyển thành nút biểu tượng trên header. S10: thêm "Từ vựng" + "Sổ lỗi" (8 mục):
@@ -89,23 +91,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-1 sm:gap-2">
               <LocaleSwitcher className="hidden h-9 w-auto sm:block" />
               <ThemeToggle />
+              {/* S12: góp ý in-app (ẩn khi Exam Mode) */}
+              {user ? <FeedbackButton /> : null}
               {user && isAdmin(user) ? (
                 <Link
-                  href="/admin/billing"
-                  aria-label={t('adminBilling')}
-                  title={t('adminBilling')}
+                  href="/admin"
+                  aria-label={t('admin')}
+                  title={t('admin')}
                   className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'hidden sm:inline-flex', pathname.startsWith('/admin') && 'bg-secondary')}
-                  data-testid="nav-admin-billing"
+                  data-testid="nav-admin"
                 >
                   <ShieldCheck aria-hidden />
                 </Link>
               ) : null}
+              {/* Mobile: Thanh toán vào qua Cài đặt (giữ header không tràn ở 360 px khi thêm nút Góp ý) */}
               {user ? (
                 <Link
                   href="/account/billing"
                   aria-label={t('billing')}
                   title={t('billing')}
-                  className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), pathname.startsWith('/account') && 'bg-secondary')}
+                  className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'hidden sm:inline-flex', pathname.startsWith('/account') && 'bg-secondary')}
                   data-testid="nav-billing"
                 >
                   <CreditCard aria-hidden />
@@ -168,9 +173,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         ) : null}
         <SubscriptionBanner />
 
-        <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 pb-24 sm:px-6 md:pb-10">
+        <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 md:pb-10">
           {children}
         </main>
+        {/* S12: liên kết pháp lý + hỗ trợ + tuyên bố không liên kết ETS (đệm dưới cho thanh điều hướng mobile) */}
+        <AppFooter />
 
         {/* Điều hướng dưới cho mobile */}
         <nav

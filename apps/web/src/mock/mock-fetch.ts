@@ -35,6 +35,7 @@ import { billingRoutes } from './billing';
 import { growthRoutes, referralHooks } from './growth';
 import { learningPlanMock } from './learning-plan';
 import { s10Mock } from './s10';
+import { s12Mock } from './s12';
 import { MOCK_DIAGNOSTIC_QUESTIONS, MOCK_DIAGNOSTIC_SET } from './diagnostic-fixtures';
 
 /**
@@ -48,8 +49,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const nowIso = () => new Date().toISOString();
 const uuid = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
 
+/** S12: mọi phản hồi có `X-Trace-Id` như API (góp ý in-app tự gắn trace gần nhất) */
+const mockTraceId = () => `mock${Math.random().toString(16).slice(2, 14).padEnd(12, '0')}`;
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
-  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } });
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'X-Trace-Id': mockTraceId(), ...headers } });
 const empty = (status: number) => new Response(null, { status });
 const error = (status: number, code: string, message: string, details?: Record<string, unknown>) =>
   json(status, { error: { code, message, details, trace_id: `mock-${uuid().slice(0, 8)}` } });
@@ -551,7 +554,29 @@ export function createMockFetch(): typeof fetch {
     openExamId: (userId) => Object.values(state.attempts).find((a) => a.user_id === userId && a.status === 'in_progress' && a.mode === 'exam')?.id ?? null,
   });
 
+  // S12: beta kín, khảo sát/NPS, góp ý + ảnh, báo lỗi câu, hỗ trợ, pháp lý, MFA, admin vận hành (đặt TRƯỚC S10: đè /waitlist)
+  const s12 = s12Mock<Route>({
+    state,
+    persist,
+    route,
+    json,
+    error,
+    uuid,
+    nowIso,
+    requireUser,
+    currentUser,
+    publicUser,
+    flagOn: (key) => mockFlagOn(key),
+    isPro,
+    questionByVersion: (qv) => {
+      const q = allQuestions().find((x) => x.question_version_id === qv);
+      return q ? { question_id: q.question_id, section_code: q.section_code, stem: q.content.stem ?? null, external_ref: null } : undefined;
+    },
+  });
+
   const routes: Route[] = [
+    // --------------------------------------------------------------------- S12
+    ...s12.routes,
     // --------------------------------------------------------------------- auth
     route('POST', '/auth/guest', () => {
       const user = makeUser({ is_guest: true, guest_token: `guest_${uuid()}` });
@@ -1169,7 +1194,7 @@ export function createMockFetch(): typeof fetch {
     route('GET', '/admin/flags', () => {
       const u = currentUser();
       if (!u?.roles.includes('admin')) return error(u ? 403 : 401, u ? 'forbidden' : 'unauthorized', 'Admin only');
-      const keys = [...new Set([...PUBLIC_FLAG_KEYS, ...Object.keys(state.flags)])].sort();
+      const keys = [...new Set([...PUBLIC_FLAG_KEYS, 'ff.growth.beta_gate', ...Object.keys(state.flags)])].sort();
       return json(200, { data: keys.map((key) => ({ key, enabled: mockFlagOn(key), rules: {}, updated_at: nowIso(), public: (PUBLIC_FLAG_KEYS as readonly string[]).includes(key) })) });
     }),
   ];
@@ -1205,12 +1230,25 @@ export function createMockFetch(): typeof fetch {
     if (killed && !mockFlagOn(killed)) {
       return json(503, { error: { code: 'feature_disabled', message: 'Feature is disabled', details: { flag: killed, message_key: 'errors.feature_disabled', retry_after_sec: 60 }, trace_id: `mock-${uuid().slice(0, 8)}` } }, { 'Retry-After': '60' });
     }
+    // S12: token impersonate (chỉ đọc), tài khoản bị khoá, step-up MFA /admin/*, beta gate – như guard toàn cục của API
+    const guarded = s12.guard(method, path, req.headers, body);
+    if (guarded instanceof Response) return guarded;
     for (const r of routes) {
       if (r.method !== method) continue;
       const m = r.pattern.exec(path);
       if (!m) continue;
       const params: Record<string, string> = {};
       r.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1] ?? '')));
+      if (guarded?.asUser) {
+        // Xem như người dùng: chạy handler GET với phiên của người đó rồi trả lại phiên admin
+        const prev = state.sessionUserId;
+        state.sessionUserId = guarded.asUser;
+        try {
+          return await r.handler({ url, params, body, method, locale, headers: req.headers });
+        } finally {
+          state.sessionUserId = prev;
+        }
+      }
       return r.handler({ url, params, body, method, locale, headers: req.headers });
     }
     return error(404, 'not_found', `No mock route for ${method} ${path}`);
@@ -1225,6 +1263,8 @@ export function createMockFetch(): typeof fetch {
         state.flags[key] = { enabled };
         persist();
       },
+      // S12 E2E: mã mời trong "hộp thư giả", bật step-up MFA admin, ép NPS đến hạn, thêm job dead-letter
+      ...s12.hooks,
       request: async (method: string, path: string, body?: unknown) => {
         const res = await mockFetch(`${env.apiUrl}${path}`, { method, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': uuid() }, body: body === undefined ? undefined : JSON.stringify(body) });
         const text = await res.text();

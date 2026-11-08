@@ -26,7 +26,7 @@ describe('sitemap', () => {
 
   it('mặc định gồm landing, chương trình, blog, giới thiệu, pháp lý', () => {
     const urls = buildSitemap({ base: BASE, posts: [] }).map((e) => e.url);
-    for (const p of ['/vi', '/vi/toeic', '/vi/ielts', '/vi/jlpt', '/vi/hsk', '/vi/pricing', '/vi/blog', '/vi/about', '/vi/contact', '/vi/terms', '/vi/privacy', '/en/blog']) expect(urls).toContain(`${BASE}${p}`);
+    for (const p of ['/vi', '/vi/toeic', '/vi/ielts', '/vi/jlpt', '/vi/hsk', '/vi/pricing', '/vi/blog', '/vi/about', '/vi/contact', '/vi/legal/terms', '/vi/legal/privacy', '/vi/legal/refund', '/vi/legal/voice-consent', '/en/blog']) expect(urls).toContain(`${BASE}${p}`);
   });
 
   it('canonical + hreflang (x-default = vi)', () => {

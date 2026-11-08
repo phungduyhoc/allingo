@@ -51,6 +51,17 @@ export function scoreSeries(s: Pick<Stats, 'score_history' | 'trend_30d'>): Scor
   return (s.trend_30d ?? []).map((p) => ({ date: p.date, at: p.date, score: p.score, listening: null, reading: null, kind: null }));
 }
 
+/**
+ * S12 (SPEC-ISSUES S142): điểm kỹ năng gần nhất (mini một kỹ năng – thang 5–495) khi chưa có điểm tổng. API S12 gắn `part`
+ * (`total | listening | reading`) cho từng điểm; API cũ thiếu `part` → không đoán (null).
+ */
+export function latestSkillScore(s: Pick<Stats, 'score_history'>): { part: 'listening' | 'reading'; score: number; at: string } | null {
+  const skill = (s.score_history ?? []).filter((p) => p.part === 'listening' || p.part === 'reading');
+  if (!skill.length) return null;
+  const last = [...skill].sort((a, b) => b.at.localeCompare(a.at))[0]!;
+  return { part: last.part as 'listening' | 'reading', score: Math.round(last.score), at: last.at };
+}
+
 export function weekSeries(s: Pick<Stats, 'minutes_by_week'>): Array<{ week: string; minutes: number; attempts: number; reviews: number }> {
   return (s.minutes_by_week ?? []).map((w) => ({ week: w.week_start, minutes: w.minutes, attempts: w.attempts, reviews: w.reviews }));
 }

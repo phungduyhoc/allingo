@@ -27,6 +27,17 @@ export function ErrorState({ error, onRetry, title, className }: { error: unknow
             {t('relogin')}
           </Link>
         ) : null}
+        {/* S12: beta kín → trang nhập mã; thao tác admin cần MFA → cài đặt bảo mật */}
+        {code === 'beta_required' ? (
+          <Link href="/beta" className={buttonVariants({ variant: 'navy', size: 'sm' })} data-testid="error-beta-cta">
+            {t('betaCta')}
+          </Link>
+        ) : null}
+        {code === 'mfa_required' ? (
+          <Link href="/settings/security" className={buttonVariants({ variant: 'navy', size: 'sm' })} data-testid="error-mfa-cta">
+            {t('mfaCta')}
+          </Link>
+        ) : null}
       </div>
     </div>
   );

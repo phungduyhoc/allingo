@@ -26,7 +26,8 @@
     "notFoundDesc": "This link does not exist or has moved.",
     "goHome": "Go to home",
     "openMenu": "Open menu",
-    "skipToContent": "Skip to content"
+    "skipToContent": "Skip to content",
+    "dataTable": "Data table"
   },
   "nav": {
     "home": "Home",
@@ -72,7 +73,11 @@
       "app": "Main navigation",
       "appMobile": "Quick navigation",
       "account": "Account and language"
-    }
+    },
+    "support": "Support",
+    "admin": "Admin",
+    "security": "Security",
+    "feedback": "Feedback"
   },
   "landing": {
     "heroTitle": "Languages for everyone",
@@ -198,7 +203,7 @@
     "xpTitle": "Experience",
     "xpThisWeek": "+{count} this week",
     "estimateTitle": "Estimated score",
-    "estimateNone": "Take a test to get an estimate",
+    "estimateNone": "Take a test with both Listening and Reading to get an overall estimate",
     "estimateTarget": "Target {target}",
     "estimateNoTarget": "No target set",
     "minutesThisWeek": "{count} minutes studied this week",
@@ -237,7 +242,9 @@
     "trendEmpty": "Take more tests to see a trend.",
     "statsTitle": "Your stats",
     "statsLink": "Detailed stats",
-    "insightsTitle": "Insights & forecast"
+    "insightsTitle": "Insights & forecast",
+    "estimateSkillOnly": "Latest: {part, select, listening {Listening} reading {Reading} other {Skill}} {score}/495",
+    "estimateNeedsBoth": "Single-skill mini tests only score that skill; the overall score (10–990) needs a test with both Listening and Reading."
   },
   "testSets": {
     "title": "TOEIC tests",
@@ -626,7 +633,12 @@
       "targetScore": "Score between 10 and 990",
       "dailyMinutes": "Between 10 and 240 minutes"
     },
-    "notificationsLink": "Notification settings"
+    "notificationsLink": "Notification settings",
+    "securityTitle": "Security & support",
+    "securityDesc": "Two-factor verification for admin accounts, contact the support team.",
+    "securityLink": "Account security",
+    "supportLink": "Help center",
+    "adminOpsLink": "Operations admin"
   },
   "errors": {
     "title": "Something went wrong",
@@ -645,7 +657,9 @@
       "internal": "Server error. Try again later.",
       "network": "Could not reach the server. Check your connection and retry.",
       "ai_failed": "The AI could not produce a result. Your usage was refunded – please try again.",
-      "ai_timeout": "The AI took too long to respond. Your usage was refunded – please try again."
+      "ai_timeout": "The AI took too long to respond. Your usage was refunded – please try again.",
+      "beta_required": "Allingo is in closed beta – you need an invitation code to use this feature.",
+      "mfa_required": "This admin action requires two-factor verification (a code from your authenticator app)."
     },
     "upgrade": "Upgrade to Pro",
     "relogin": "Log in again",
@@ -663,7 +677,9 @@
       "waitMinutes": "Try again in {minutes, plural, =1 {1 minute} other {# minutes}}.",
       "waitUnknown": "Please wait a moment and try again.",
       "ready": "You can try again now."
-    }
+    },
+    "betaCta": "Enter invitation code",
+    "mfaCta": "Turn on two-factor verification"
   },
   "offline": {
     "title": "You are offline",
@@ -723,6 +739,28 @@
       "Content sent to AI models never includes your name, email or phone number.",
       "You can request account deletion in Settings; deletion completes within 72 hours, and billing records are retained in anonymized form as required by law.",
       "We comply with Vietnam's Decree 13/2023/ND-CP on personal data protection."
+    ],
+    "draftPending": "Draft pending legal review",
+    "draftPendingDesc": "This text is being reviewed by counsel and may change before Allingo's public launch.",
+    "approved": "Approved",
+    "meta": "Version {version} · effective {date}",
+    "consentNote": "This document requires your consent when you use the related feature.",
+    "otherDocs": "Other documents",
+    "refundTitle": "Refund Policy",
+    "refundBody": [
+      "Monthly/yearly Pro plans can be cancelled at any time in Account → Billing; you keep Pro until the end of the paid period.",
+      "You may request a refund within 7 days of your first payment if you have used less than 20% of the period's AI quota – send the request from the Support page.",
+      "Used AI credits are not refundable; promotional/beta credits cannot be exchanged for money.",
+      "When a refund is issued, the e-invoice is adjusted as required by law and Pro access ends immediately.",
+      "If a system error costs you usage, support will grant compensation credits after verification."
+    ],
+    "voiceTitle": "Voice Data Processing Consent",
+    "voiceBody": [
+      "Speaking practice, shadowing and pronunciation scoring (coming soon) need recordings of your voice.",
+      "Recordings are stored in a private bucket, accessible only through time-limited signed links, and deleted automatically after 90 days (Free) or 365 days (Pro).",
+      "Your voice is sent to our speech recognition/pronunciation provider only to produce your results; it is not used to train models.",
+      "You can withdraw consent at any time in Settings; existing recordings are deleted within 72 hours.",
+      "Processing follows Decree 13/2023/ND-CP on personal data protection (biometric data is sensitive data)."
     ]
   },
   "practice": {
@@ -1175,6 +1213,24 @@
         "invoice_failed": {
           "title": "E-invoice failed",
           "body": "{op} order {order} – {attempts} attempts, error {error}."
+        }
+      },
+      "support": {
+        "reply": {
+          "title": "Support replied: {subject}",
+          "body": "{credits, plural, =0 {Tap to view and reply.} other {We added # credits to your account.}}"
+        }
+      },
+      "content": {
+        "report_resolved": {
+          "title": "Your question report was handled",
+          "body": "{fixed, select, yes {The question you reported has been fixed. Thank you!} other {An editor reviewed your report. Thank you!}}"
+        }
+      },
+      "beta": {
+        "invite": {
+          "title": "Closed beta invitation",
+          "body": "Your Allingo invitation code is ready – redeem it for a Pro trial and AI credits."
         }
       }
     },
@@ -2548,7 +2604,10 @@
       "about": "About",
       "contact": "Contact",
       "terms": "Terms",
-      "privacy": "Privacy"
+      "privacy": "Privacy",
+      "refund": "Refunds",
+      "voice": "Voice consent",
+      "beta": "Closed beta"
     },
     "etsTitle": "No affiliation",
     "etsBody": "TOEIC® is a registered trademark of ETS (Educational Testing Service). Allingo is an independent product and is not affiliated with, sponsored or endorsed by ETS. All practice items are written by Allingo in the publicly known test format; scores shown are estimates, not official scores.",
@@ -2783,6 +2842,820 @@
           "body": "Deletion and export requests follow our Privacy policy; you can also submit them in Settings."
         }
       ]
+    }
+  },
+  "legalFooter": {
+    "label": "Legal",
+    "terms": "Terms",
+    "privacy": "Privacy",
+    "refund": "Refunds",
+    "voice": "Voice consent",
+    "support": "Support",
+    "trademark": "TOEIC® is a trademark of ETS. Allingo is not affiliated with or endorsed by ETS; practice questions are written by Allingo and scores shown are estimates."
+  },
+  "beta": {
+    "metaTitle": "Closed beta",
+    "badge": "TOEIC closed beta",
+    "title": "Allingo is in closed beta for our first 300 learners",
+    "subtitle": "Enter the invitation code from your email to unlock the full AI-powered TOEIC Listening & Reading app. No code yet? Join the waitlist – we send invitations in daily batches.",
+    "perksLabel": "Beta tester perks",
+    "perkPro": "{days}-day Pro trial",
+    "perkProDesc": "Every full test, every plan week, AI analysis.",
+    "perkCredits": "{credits, number} AI credits",
+    "perkCreditsDesc": "Detailed explanations, tutor, long-sentence translation.",
+    "perkTwoWeeks": "Two weeks together",
+    "perkTwoWeeksDesc": "Short surveys on day 7 and 14 to improve the product.",
+    "perkSupport": "Support within 24 hours",
+    "perkSupportDesc": "Feedback, question reports and support tickets right in the app.",
+    "perksNote": "Your actual perks are shown after redeeming (per beta batch configuration).",
+    "loading": "Checking your access…",
+    "loadError": "Could not load your beta status. Try reloading the page.",
+    "signInTitle": "Have an invitation code?",
+    "signInDesc": "Create an account (or log in), then enter the code – the code from your email is kept for you.",
+    "guestTitle": "Create an account to redeem",
+    "guestDesc": "You are using a guest account. Sign up for free – your practice progress is kept – then enter the invitation code.",
+    "signUp": "Sign up",
+    "logIn": "Log in",
+    "redeemTitle": "Enter your invitation code",
+    "redeemDesc": "Codes look like ALG-XXXX-XXXX, are single-use and come in your invitation email.",
+    "redeemDescGateOff": "The beta is open for your account. If you have an invitation code, enter it to get the Pro trial and AI credits.",
+    "codeLabel": "Invitation code",
+    "codePlaceholder": "ALG-XXXX-XXXX",
+    "codeHint": "Not case-sensitive; dashes are optional.",
+    "codeAmbiguous": "Codes never use 0, 1, I, L or O – please check your email again.",
+    "redeemSubmit": "Redeem",
+    "redeemErrors": {
+      "invalid": "This code is wrong, expired or revoked. Check your invitation email or contact support.",
+      "used": "This code has already been used by another account.",
+      "alreadyBeta": "Your account has already redeemed a different invitation code.",
+      "guest": "Guest accounts cannot redeem codes – please sign up.",
+      "rateLimited": "Too many attempts. Wait about 10 minutes and try again.",
+      "network": "Cannot reach the server. Check your connection and try again.",
+      "generic": "Could not redeem the code. Try again in a few minutes."
+    },
+    "redeemedTitle": "You're in!",
+    "alreadyRedeemedTitle": "This code is already active on your account",
+    "redeemedDesc": "Welcome to the Allingo closed beta.",
+    "trialLabel": "Pro plan",
+    "trialUntil": "Trial until {date}",
+    "trialSkipped": "You already have Pro – credits added only",
+    "creditsLabel": "AI credits",
+    "creditsGranted": "+{credits} (balance {balance})",
+    "startSurvey": "Start the 1-minute survey",
+    "goLearn": "Start learning",
+    "hasAccessTitle": "You already have beta access",
+    "hasAccessInvite": "Your invitation code is active.",
+    "hasAccessOther": "Your account has been granted access.",
+    "noCodeTitle": "No invitation code yet?",
+    "noCodeDesc": "Join the TOEIC waitlist – we send up to 50 invitations per day.",
+    "needHelp": "Problems with your code?",
+    "contactSupport": "Contact support"
+  },
+  "betaOnboarding": {
+    "metaTitle": "Beta welcome",
+    "title": "Welcome to the closed beta",
+    "subtitle": "Three quick steps so Allingo understands your goals.",
+    "progressLabel": "Onboarding progress",
+    "steps": {
+      "survey": "Survey",
+      "tour": "Tour",
+      "community": "Feedback channels"
+    },
+    "surveyTitle": "5 quick questions",
+    "surveyDesc": "Your answers help us evaluate the beta – never shared with third parties.",
+    "q": {
+      "goal": "1. Main goal for TOEIC?",
+      "examDate": "2. Planned exam date",
+      "score": "3. Current TOEIC L&R score (approximate)",
+      "devices": "4. Which devices do you study on? (choose any)",
+      "minutes": "5. How much time per day?"
+    },
+    "goals": {
+      "job": "Job hunting",
+      "graduation": "Graduation requirement",
+      "study_abroad": "Study abroad",
+      "promotion": "Promotion",
+      "self_improvement": "Self-improvement",
+      "other": "Other"
+    },
+    "goalNoteLabel": "Other goal",
+    "goalNotePlaceholder": "e.g. career change, scholarship…",
+    "noExamDate": "No exam date yet",
+    "noScore": "Don't know",
+    "scoreHint": "Scale 10–990; never taken the test? Choose \"Don't know\".",
+    "devices": {
+      "android": "Android phone",
+      "ios": "iPhone",
+      "desktop": "Desktop",
+      "laptop": "Laptop",
+      "tablet": "Tablet"
+    },
+    "minutesOption": "{minutes} minutes",
+    "surveySubmit": "Submit survey",
+    "errors": {
+      "goal": "Choose a goal.",
+      "examDate": "Pick an exam date or tick \"No exam date yet\".",
+      "examDatePast": "The exam date must be after today.",
+      "score": "Enter a score between 10 and 990 or choose \"Don't know\".",
+      "devices": "Choose at least one device.",
+      "form": "Please check your answers."
+    },
+    "tourDuration": "≈ 60 seconds",
+    "tourProgress": "Card {current}/{total}",
+    "tourSkip": "Skip",
+    "tourBack": "Back",
+    "tourNext": "Next",
+    "tourDone": "Done",
+    "tour": {
+      "plan": {
+        "title": "Today & Study plan",
+        "body": "Every day Allingo suggests a few short tasks based on your exam date and weak spots. Tap a task to start right away."
+      },
+      "tests": {
+        "title": "Real-format tests",
+        "body": "Take mini or full tests in Exam Mode (timed, audio plays once) or Practice (instant answers). Results include a per-Part diagnosis."
+      },
+      "ai": {
+        "title": "AI explanations & tutor",
+        "body": "On the Review page every question has a bilingual explanation and an Ask the tutor button. AI features are locked during exams to keep things fair."
+      },
+      "feedback": {
+        "title": "Feedback & reports",
+        "body": "The Feedback button at the top attaches a screenshot; each question has a Report button. The team replies within 24–48 hours."
+      }
+    },
+    "communityTitle": "Beta feedback channels",
+    "communityDesc": "Join the community for updates, Q&A and to meet other learners.",
+    "community": {
+      "zalo": "Beta Zalo group",
+      "discord": "Allingo Discord"
+    },
+    "opensNewTab": "(opens in a new tab)",
+    "feedbackHint": "Found a bug or have an idea? Tap \"Feedback\" in the top bar any time – we read every message.",
+    "finish": "Start learning",
+    "replayTour": "Replay the tour"
+  },
+  "security": {
+    "title": "Account security",
+    "subtitle": "Two-factor verification (TOTP) protects admin actions even if your password leaks.",
+    "back": "Settings",
+    "mfaTitle": "Two-factor verification (authenticator app)",
+    "mfaDesc": "A 6-digit code that changes every 30 seconds in Google Authenticator, Microsoft Authenticator, 1Password… Required for admin actions in production.",
+    "required": "Required for your account",
+    "factEnrolled": "Enabled",
+    "factSession": "This session",
+    "factRecovery": "Recovery codes left",
+    "yes": "On",
+    "no": "Off",
+    "pending": "Setup in progress",
+    "verified": "Verified",
+    "notVerified": "Not verified",
+    "notApplicable": "Currently only admin accounts need and can use two-factor verification. Learner accounts are protected by strong passwords, remote session revocation and OTP codes.",
+    "enroll": "Turn on two-factor verification",
+    "continueEnroll": "Continue setup (new key)",
+    "stepApp": "Open an authenticator app on your phone",
+    "stepAppDesc": "Choose \"Add account\" → \"Enter a setup key\" (or open the link on the phone itself).",
+    "stepKey": "Enter the setup key",
+    "stepKeyDesc": "Time-based, {digits} digits, {period} seconds. The key is shown once – never share it.",
+    "copySecret": "Copy key",
+    "copyLink": "Copy otpauth link",
+    "openApp": "Open in app",
+    "stepCode": "Enter the 6-digit code shown in the app",
+    "codeLabel": "6-digit code",
+    "confirm": "Confirm & turn on",
+    "copied": "Copied",
+    "copyFailed": "Your browser blocked copying – select and copy manually.",
+    "codesTitle": "Recovery codes",
+    "codesDesc": "Use one if you lose your phone; each code works only once.",
+    "codesOnce": "Shown only once",
+    "codesOnceDesc": "Save them in a password manager or print them before closing. Allingo cannot show these codes again.",
+    "copyAll": "Copy all",
+    "download": "Download .txt",
+    "codesFileHeader": "Allingo two-factor recovery codes – each code works once. Keep them secret.",
+    "codesSaved": "I have saved my recovery codes somewhere safe",
+    "codesDone": "Done",
+    "lowCodes": "You are running out of recovery codes – generate a new set below.",
+    "verifyLabel": "6-digit code to verify this session",
+    "verifySession": "Verify session",
+    "verifiedToast": "Session verified with two-factor",
+    "regenTitle": "Regenerate recovery codes",
+    "regenDesc": "Old codes stop working immediately. Requires a current 6-digit code from the app.",
+    "regen": "Generate new codes",
+    "otherTitle": "Privacy & support",
+    "otherDesc": "Data deletion requests, lost access or a suspected compromise – contact support.",
+    "contactSupport": "Contact support",
+    "privacyLink": "Privacy policy",
+    "errors": {
+      "invalid": "Wrong or already used code. Wait for a new code and try again.",
+      "locked": "Too many wrong codes – try again in 15 minutes.",
+      "alreadyEnrolled": "Two-factor verification is already on for this account.",
+      "notEnrolled": "Two-factor verification is not set up for this account.",
+      "forbidden": "Your account cannot use this feature.",
+      "generic": "Something went wrong. Try again in a few minutes."
+    }
+  },
+  "mfaStepUp": {
+    "title": "Two-factor verification",
+    "desc": "This admin action requires re-verifying your session. Enter the 6-digit code from your authenticator app – the action continues automatically.",
+    "notEnrolledDesc": "This admin action requires two-factor verification but it is not set up. Turn it on in Settings → Security and try again.",
+    "codeLabel": "6-digit code",
+    "recoveryLabel": "Recovery code",
+    "useRecovery": "Use a recovery code",
+    "useTotp": "Use a code from the app",
+    "verify": "Verify & continue",
+    "cancel": "Cancel",
+    "enrollCta": "Turn on two-factor",
+    "errors": {
+      "invalid": "Wrong or already used code.",
+      "locked": "5 wrong attempts – try again in 15 minutes.",
+      "notEnrolled": "Two-factor verification is not set up.",
+      "generic": "Could not verify. Try again."
+    }
+  },
+  "feedback": {
+    "button": "Feedback",
+    "title": "Send feedback to Allingo",
+    "desc": "Bugs, feature ideas or anything else – the team reads every message within one working day.",
+    "category": "Type",
+    "categories": {
+      "bug": "Bug",
+      "idea": "Idea",
+      "content_error": "Content error",
+      "ux": "Hard to use",
+      "performance": "Slow / laggy",
+      "other": "Other"
+    },
+    "message": "Message",
+    "messagePlaceholder": "What were you doing, what happened, what did you expect?",
+    "count": "{count}/{max}",
+    "screenshot": "Screenshot (optional)",
+    "chooseImage": "Choose image",
+    "pasteHint": "or paste an image (Ctrl/⌘ + V) into this dialog",
+    "previewAlt": "Attached screenshot",
+    "removeImage": "Remove image",
+    "imageErrors": {
+      "type": "PNG, JPEG or WebP images only.",
+      "size": "Images up to 8 MB.",
+      "empty": "The image file is empty."
+    },
+    "contextNote": "Attached automatically: page {page}, app version and a shortened browser string. No email or phone number is sent.",
+    "contextTrace": "Latest error trace: {trace}…",
+    "submit": "Send feedback",
+    "uploading": "Uploading image…",
+    "sending": "Sending…",
+    "cancel": "Cancel",
+    "close": "Close",
+    "thanks": "Thanks for your feedback!",
+    "thanksDesc": "Feedback #{id}. If you need a follow-up, open a request on the Support page.",
+    "errors": {
+      "message_short": "Write at least 3 characters.",
+      "message_long": "Up to 4,000 characters.",
+      "category": "Choose a type."
+    }
+  },
+  "contentReport": {
+    "button": "Report question",
+    "buttonLabel": "Report question {number}",
+    "buttonSent": "Reported",
+    "title": "Report a question",
+    "titleNumber": "Report question {number}",
+    "desc": "The content team reviews and fixes reports within {hours} hours. You'll be notified when it's handled.",
+    "reason": "What's wrong?",
+    "reasons": {
+      "wrong_answer": "Wrong answer key",
+      "typo": "Typo / grammar",
+      "unclear": "Unclear question",
+      "audio_issue": "Audio problem",
+      "image_issue": "Image problem",
+      "translation": "Wrong translation",
+      "explanation_wrong": "Wrong explanation",
+      "other": "Other"
+    },
+    "message": "Details (optional)",
+    "messagePlaceholder": "e.g. the correct answer should be C because…",
+    "submit": "Send report",
+    "cancel": "Cancel",
+    "close": "Close",
+    "thanks": "Thanks for the report!",
+    "duplicate": "You already reported this question – it's being handled.",
+    "slaLine": "Due by: {date}."
+  },
+  "surveys": {
+    "npsTitle": "How likely are you to recommend Allingo to a friend?",
+    "npsQuestion": "Likelihood to recommend, from 0 (never) to 10 (definitely)",
+    "npsDescD7": "One week into the beta – tell us how it's going (under 30 seconds).",
+    "npsDescD14": "Two weeks into the beta – your answer helps decide what comes next.",
+    "scaleLow": "0 – Never",
+    "scaleHigh": "10 – Definitely",
+    "reasonPromoter": "What do you like most?",
+    "reasonPassive": "What would make it a 10?",
+    "reasonDetractor": "What disappointed you?",
+    "reasonPlaceholder": "Optional",
+    "submit": "Send",
+    "later": "Later",
+    "thanks": "Thank you! Your feedback has been recorded.",
+    "onboardingTitle": "Beta survey (1 minute)",
+    "onboardingDesc": "5 questions to help us evaluate the beta.",
+    "onboardingCta": "Take it now"
+  },
+  "support": {
+    "title": "Help center",
+    "ticketTitle": "Support request",
+    "subtitle": "Send a request – support replies first within {hours} hours, by email and in-app notification.",
+    "guestTitle": "Sign up to contact support",
+    "guestDesc": "Guest accounts cannot send requests yet. Sign up for free (progress is kept) or use the Contact page.",
+    "newTitle": "New request",
+    "newDesc": "Describe the problem as specifically as you can (time, test, device).",
+    "category": "Topic",
+    "categories": {
+      "account": "Account",
+      "billing": "Billing",
+      "exam": "Tests / scoring",
+      "content": "Test content",
+      "technical": "Technical",
+      "other": "Other"
+    },
+    "subject": "Subject",
+    "message": "Message",
+    "messagePlaceholder": "What happened? What have you tried?",
+    "attachTrace": "Attach the latest error trace ({trace}…) so engineers can look it up quickly",
+    "attachAttempt": "Linked to attempt #{id}",
+    "submit": "Send request",
+    "errors": {
+      "subject": "Subject must be 3–200 characters.",
+      "message": "Message must be at least 3 characters.",
+      "form": "Please check the form."
+    },
+    "otherChannels": "Other channels",
+    "hintFeedback": "Quick feedback: the \"Feedback\" button in the top bar (with a screenshot).",
+    "hintReport": "Wrong answer key or typo: the \"Report question\" button on the review page.",
+    "refundLink": "Refund policy",
+    "privacyLink": "Privacy & data deletion",
+    "myTickets": "My requests",
+    "emptyTitle": "No requests yet",
+    "emptyDesc": "Requests you send will appear here with their status.",
+    "status": {
+      "open": "In progress",
+      "waiting_user": "Waiting for you",
+      "resolved": "Resolved",
+      "closed": "Closed"
+    },
+    "sla": {
+      "pending": "Reply within {hours} h",
+      "overdue": "Being prioritised",
+      "overdueAdmin": "Overdue {hours} h",
+      "responded": "Replied"
+    },
+    "backToList": "All requests",
+    "createdAt": "Sent {date}",
+    "threadLabel": "Conversation",
+    "author": {
+      "user": "You",
+      "agent": "Allingo support",
+      "system": "System"
+    },
+    "replyLabel": "Reply",
+    "send": "Send reply",
+    "reopenNote": "This request is resolved – replying reopens it.",
+    "closedNote": "This request is closed and no longer accepts replies.",
+    "newTicketLink": "Send a new request"
+  },
+  "adminOps": {
+    "forbiddenTitle": "Access denied",
+    "forbiddenDesc": "This page is for administrators only.",
+    "navLabel": "Admin sections",
+    "sections": {
+      "overview": {
+        "nav": "Overview",
+        "title": "Operations admin",
+        "desc": "System health, support SLA and entry points to beta admin sections."
+      },
+      "beta": {
+        "nav": "Beta",
+        "title": "Closed beta",
+        "desc": "Waitlist, batched invitations (≤ 50/day) and the weekly KPI report."
+      },
+      "feedback": {
+        "nav": "Feedback",
+        "title": "In-app feedback",
+        "desc": "Feedback with screenshots and trace ids – triage within one working day."
+      },
+      "content": {
+        "nav": "Content",
+        "title": "Content",
+        "desc": "Question reports (48-hour SLA) and item statistics: p-value, discrimination, retire suggestions."
+      },
+      "support": {
+        "nav": "Support",
+        "title": "Support tickets",
+        "desc": "First reply within 24 hours, reply by email + in-app, grant compensation credits."
+      },
+      "users": {
+        "nav": "Users",
+        "title": "Users",
+        "desc": "Search, view profiles (PII masked), lock/unlock, deletion requests, read-only impersonation."
+      },
+      "ai": {
+        "nav": "AI",
+        "title": "AI quality",
+        "desc": "👍/👎 per prompt version, cost and guardrail refusals."
+      },
+      "system": {
+        "nav": "System",
+        "title": "System",
+        "desc": "Queues, dead letters + replay, partitions, outbox and feature flags."
+      },
+      "audit": {
+        "nav": "Audit",
+        "title": "Audit log",
+        "desc": "Look up every admin and system action by actor, action, entity and time."
+      },
+      "billing": {
+        "nav": "Billing",
+        "title": "Billing",
+        "desc": "Billing admin."
+      }
+    },
+    "status": "Status",
+    "actions": "Actions",
+    "createdAt": "Time",
+    "email": "Email (masked)",
+    "locale": "Language",
+    "user": "User",
+    "select": "Select",
+    "yes": "Yes",
+    "no": "No",
+    "empty": "No data.",
+    "apply": "Apply",
+    "from": "From",
+    "to": "To",
+    "save": "Save",
+    "saved": "Saved",
+    "cancel": "Cancel",
+    "close": "Close",
+    "copied": "Copied",
+    "reasonMin": "Required, at least {min} characters – written to the audit log.",
+    "overview": {
+      "ticketsOverdue": "Tickets past SLA",
+      "reportsOverdue": "Question reports past due",
+      "betaToday": "{sent}/{limit} invitations sent today",
+      "open": "Open",
+      "openSection": "Open {section}"
+    },
+    "beta": {
+      "tabs": {
+        "waitlist": "Waitlist",
+        "invites": "Invitations",
+        "report": "Weekly report"
+      },
+      "counts": "Counts by status",
+      "program": "Program",
+      "source": "Source",
+      "marketing": "Marketing consent",
+      "waitStatus": {
+        "waiting": "Waiting",
+        "invited": "Invited",
+        "joined": "Joined",
+        "removed": "Removed"
+      },
+      "inviteStatus": {
+        "queued": "Queued",
+        "sent": "Sent",
+        "redeemed": "Redeemed",
+        "revoked": "Revoked",
+        "expired": "Expired",
+        "failed": "Failed"
+      },
+      "selectPage": "Select {count} waiting",
+      "selectRow": "Select {email}",
+      "batch": "Batch name",
+      "queueSelected": "Queue invitations ({count})",
+      "queueEmails": "Queue {count} emails",
+      "confirmQueueTitle": "Queue {count} invitations?",
+      "confirmQueueDesc": "Invitations go into batch \"{batch}\" and are sent automatically at 09:00 (Vietnam time) within the daily limit, or when you press \"Send now\". Emails that already have an active invitation are skipped.",
+      "queuedToast": "Queued {queued} invitations (skipped {skipped}) – batch {batch}",
+      "emailTitle": "Invite by email",
+      "emailDesc": "Paste emails (one per line, up to 500) for partners/staff who are not on the waitlist.",
+      "emailPlaceholder": "name@example.com",
+      "invalidEmails": "Invalid emails: {list}",
+      "todaySent": "Sent today",
+      "todayLimit": "Daily limit",
+      "todayRemaining": "Remaining today",
+      "sendNow": "Send now",
+      "sendHint": "Sends queued invitations in queue order.",
+      "sendLimit": "Maximum invitations",
+      "confirmSendTitle": "Send invitations now?",
+      "confirmSendDesc": "Invitation emails go out immediately (sent emails cannot be recalled). Remaining today: {remaining}.",
+      "sendDone": "Invitation send ran ({mode})",
+      "sentAt": "Sent",
+      "expiresAt": "Expires",
+      "redeemedAt": "Redeemed",
+      "attempts": "Attempts",
+      "revoke": "Revoke",
+      "revoked": "Invitation revoked",
+      "confirmRevokeTitle": "Revoke this invitation?",
+      "confirmRevokeDesc": "The code for {email} will stop working. To invite again you must create a new invitation (new code).",
+      "week": "ISO week",
+      "weekHint": "Empty = last week (Vietnam time).",
+      "simulated": "SIMULATED DATA",
+      "noPosthog": "PostHog: not configured",
+      "markdown": "Report (Markdown)",
+      "kpi": {
+        "testers": "Testers",
+        "invites": "Invited {sent} · redeemed {redeemed}",
+        "activation": "Activation (diagnostic ≤ 24 h)",
+        "target": "Target ≥ {target}",
+        "d7": "D7 retention",
+        "retention": "D1 {d1} · D14 {d14}",
+        "nps": "NPS",
+        "responses": "{count} responses",
+        "thumbs": "Explanation 👍 rate",
+        "engagement": "Questions/tester",
+        "engagementHint": "{sessions} sessions/user · {explains} explanations/user",
+        "cost": "AI cost/tester",
+        "crashFree": "Crash-free",
+        "notConnected": "Sentry Release Health not connected"
+      },
+      "weekPlaceholder": "2026-W45"
+    },
+    "feedback": {
+      "category": "Type",
+      "message": "Message",
+      "page": "Page",
+      "trace": "Trace",
+      "screenshot": "Image",
+      "open": "Open image",
+      "processing": "Processing",
+      "setStatus": "Change feedback status",
+      "status": {
+        "new": "New",
+        "triaged": "Triaged",
+        "done": "Done",
+        "wontfix": "Won't fix"
+      }
+    },
+    "content": {
+      "tabs": {
+        "reports": "Question reports",
+        "stats": "Item statistics"
+      },
+      "status": {
+        "open": "Open",
+        "confirmed": "Confirmed",
+        "rejected": "Rejected",
+        "fixed": "Fixed"
+      },
+      "overdue": "Overdue",
+      "overdueOnly": "Overdue only",
+      "overdueBadge": "Overdue",
+      "question": "Question",
+      "reason": "Reason",
+      "message": "Details",
+      "reportsForQuestion": "Reports for this question",
+      "sla": "SLA due",
+      "handle": "Handle",
+      "handleTitle": "Handle question report",
+      "handleDesc": "The reporter gets an in-app notification when the status is Confirmed, Fixed or Rejected. Fix the question in the CMS (new version via the two-step workflow).",
+      "note": "Resolution note (optional)",
+      "notePlaceholder": "e.g. fixed the answer key in version 2",
+      "resolved": "Report updated",
+      "computedAt": "Computed",
+      "recompute": "Recompute statistics",
+      "recomputeTitle": "Run content.stats_nightly now?",
+      "recomputeDesc": "Recomputes p-value and discrimination for every question from the last 365 days of attempts (replica). May take a few tens of seconds.",
+      "recomputed": "Statistics recomputed",
+      "recommendation": "Suggestion",
+      "rec": {
+        "retire": "Retire",
+        "review": "Review",
+        "ok": "OK",
+        "insufficient_data": "Not enough data"
+      },
+      "reasons": {
+        "too_hard": "too hard",
+        "too_easy": "too easy",
+        "low_discrimination": "low discrimination",
+        "very_low_discrimination": "very low discrimination",
+        "negative_discrimination": "negative discrimination",
+        "many_open_reports": "many open reports",
+        "many_confirmed_reports": "many confirmed reports"
+      },
+      "section": "Part",
+      "sort": "Sort",
+      "sortBy": {
+        "discrimination": "Discrimination",
+        "p_value": "P-value",
+        "reports": "Reports",
+        "n": "Responses",
+        "avg_time": "Average time"
+      },
+      "minN": "Minimum n",
+      "pValue": "P-value",
+      "discrimination": "Discrimination",
+      "avgTime": "Avg time",
+      "reportsCol": "Reports open/total",
+      "seconds": "{s} s"
+    },
+    "support": {
+      "priority": "Priority",
+      "priorities": {
+        "low": "Low",
+        "normal": "Normal",
+        "high": "High",
+        "urgent": "Urgent"
+      },
+      "category": "Topic",
+      "search": "Subject keyword",
+      "searchPlaceholder": "audio, payment…",
+      "subject": "Subject",
+      "lastMessage": "Last message",
+      "pick": "Pick a ticket to see the conversation and reply.",
+      "context": "Technical context",
+      "assignMe": "Assign to me",
+      "assignedToMe": "Assigned to you",
+      "closedNoReply": "Ticket is closed – no further replies.",
+      "reply": "Reply to user",
+      "channels": "Channels",
+      "channel": {
+        "inapp": "In-app",
+        "email": "Email"
+      },
+      "after": "Status after sending",
+      "grantCredit": "Grant compensation credits",
+      "delta": "Credits",
+      "note": "Note (required)",
+      "notePlaceholder": "e.g. compensation for Part 3 audio bug",
+      "send": "Send reply",
+      "replied": "Reply sent",
+      "repliedCredit": "Reply sent and {delta} credits added",
+      "confirmCreditTitle": "Grant {delta} compensation credits?",
+      "confirmCreditDesc": "Credits are added to {name} immediately (admin_adjust ledger, audited). Note: \"{note}\".",
+      "errMessage": "Enter a reply.",
+      "errDelta": "Credits must be between 1 and 100,000.",
+      "errNote": "The note needs at least 3 characters.",
+      "errChannels": "Choose at least one channel.",
+      "errForm": "Please check the form."
+    },
+    "users": {
+      "query": "Email, name or ID",
+      "queryPlaceholder": "name@example.com or prefix",
+      "role": "Role",
+      "status": {
+        "active": "Active",
+        "suspended": "Locked",
+        "pending_deletion": "Pending deletion",
+        "deleted": "Deleted"
+      },
+      "privacyNote": "Results mask email/phone; the search string is not logged (only the search action).",
+      "typeToSearch": "Type at least 2 characters or pick a filter to search.",
+      "name": "Display name",
+      "guest": "Guest",
+      "pick": "Pick a user to see their profile.",
+      "betaTester": "Beta tester",
+      "noPhone": "no phone",
+      "sessions": "Active sessions",
+      "credits": "Credit balance",
+      "lastSeen": "Last active",
+      "providers": "Signs in with",
+      "password": "Password/OTP",
+      "beta": "Beta",
+      "betaSince": "Tester since {date}",
+      "deletion": "Deletion request",
+      "subscriptions": "Plans",
+      "attempts": "Recent attempts",
+      "orders": "Orders",
+      "tickets": "Support tickets",
+      "lock": "Lock account",
+      "unlock": "Unlock",
+      "impersonate": "View as user",
+      "requestDeletion": "Request data deletion",
+      "auditLink": "User audit log",
+      "privilegedNote": "Admin accounts: cannot be impersonated; locking/deleting requires superadmin.",
+      "reason": "Reason",
+      "reasonPlaceholder": "e.g. ticket #1a2b3c4d – user request",
+      "lockedToast": "Account locked – {sessions} sessions revoked",
+      "unlockedToast": "Account unlocked",
+      "deletionToast": "Data deletion scheduled – completes before {date}",
+      "confirm": {
+        "lock": {
+          "title": "Lock {name}'s account?",
+          "desc": "All sessions are revoked immediately; the user cannot sign in until unlocked.",
+          "cta": "Lock account"
+        },
+        "unlock": {
+          "title": "Unlock {name}'s account?",
+          "desc": "The user can sign in again immediately.",
+          "cta": "Unlock"
+        },
+        "deletion": {
+          "title": "Delete {name}'s data?",
+          "desc": "Only when the user asked and their identity was verified via a ticket. Data is deleted within 72 hours – it CANNOT be restored.",
+          "cta": "Schedule deletion",
+          "ack": "I verified the requester's identity and understand this cannot be undone."
+        },
+        "impersonate": {
+          "title": "View as {name}?",
+          "desc": "READ-ONLY token for 10 minutes; every request is audited. Use only to investigate tickets – never act on the user's behalf.",
+          "cta": "Start viewing"
+        }
+      },
+      "imp": {
+        "banner": "Viewing as {name} – READ ONLY",
+        "left": "{m}:{s} left",
+        "expired": "The viewing session has expired.",
+        "exit": "Exit view",
+        "readOnly": "Read-only mode",
+        "readOnlyDesc": "Data is loaded with a separate token (not your session). The API blocks all writes and admin pages; email/phone are masked.",
+        "views": "User data",
+        "view": {
+          "profile": "Profile",
+          "stats": "Stats",
+          "attempts": "Attempts",
+          "entitlements": "Entitlements",
+          "credits": "Credits",
+          "tickets": "Tickets"
+        }
+      },
+      "mfa": "MFA"
+    },
+    "ai": {
+      "task": "Task",
+      "version": "Prompt",
+      "tasks": "Tasks",
+      "outcome": "Outcome",
+      "outcomeLine": "{ok} ok · {refused} refused · {failed} failed",
+      "feedback": "Ratings",
+      "ratio": "👍 rate",
+      "cost": "Cost",
+      "qualityTitle": "Quality by prompt version",
+      "targetNote": "GATE-2 target: explanation 👍 rate ≥ 80%. 👎 includes \"not helpful\" and \"wrong\".",
+      "refusalsTitle": "Guardrail refusals",
+      "reason": "Reason",
+      "inputRef": "Reference (no content)"
+    },
+    "system": {
+      "tabs": {
+        "status": "Status",
+        "dead-letters": "Dead letters",
+        "flags": "Feature flags"
+      },
+      "redis": "Redis",
+      "healthy": "Healthy",
+      "down": "Down",
+      "dlqUnreplayed": "Unreplayed DLQ",
+      "dlqHint": "Total {total} · last 24 h {day}",
+      "slaOverdue": "Past SLA",
+      "slaHint": "{tickets} tickets · {reports} question reports",
+      "outbox": "Unpublished outbox",
+      "outboxHint": "Oldest {sec} s",
+      "partitionsMissing": "Missing partitions: {list}",
+      "queues": "BullMQ queues",
+      "queue": "Queue",
+      "waiting": "Waiting",
+      "active": "Active",
+      "delayed": "Delayed",
+      "failed": "Failed",
+      "oldest": "Oldest waiting",
+      "partitions": "Partition coverage",
+      "monthsAhead": "{n} months ahead",
+      "job": "Job",
+      "replayedFilter": "Replay",
+      "notReplayed": "Not replayed",
+      "replayedOnly": "Replayed",
+      "failedAt": "Failed at",
+      "error": "Error",
+      "attempts": "Attempts",
+      "replays": "Replays",
+      "replay": "Replay",
+      "dlqEmpty": "No dead-letter jobs. 🎉",
+      "confirmReplayTitle": "Replay this job?",
+      "confirmReplayDesc": "Job {job} ({id}) runs again with the same jobId (idempotent). Check the failure cause before replaying.",
+      "replayed": "Replayed ({mode})",
+      "replayFailed": "Replay failed: {error}",
+      "noHandler": "This job has no handler to replay.",
+      "flagsDesc": "Changes take effect on every server within 60 seconds. Turning a kill-switch off makes the API return 503 and the UI hide the feature.",
+      "public": "Public",
+      "internal": "Internal",
+      "hasRules": "has rules/allowlist",
+      "updated": "Updated",
+      "toggleFlag": "Toggle {key}",
+      "confirmOnTitle": "Turn on {key}?",
+      "confirmOffTitle": "Turn off {key}?",
+      "confirmFlagDesc": "The change applies to every user immediately and is audited.",
+      "turnOn": "Turn on",
+      "turnOff": "Turn off"
+    },
+    "audit": {
+      "action": "Action",
+      "actor": "Actor",
+      "entityType": "Entity type",
+      "entityId": "Entity ID",
+      "entity": "Entity",
+      "details": "Details",
+      "show": "Show before/after",
+      "before": "Before",
+      "after": "After",
+      "hint": "Actions ending in \".\" or \"*\" match by prefix (e.g. user. or beta.*). Defaults to the last 30 days."
     }
   }
 }

@@ -1,4 +1,4 @@
-import { type NOTIFICATION_TEMPLATE_CODES, pickLocalized, type LocalizedText, type NotificationItem } from '@allingo/schemas';
+import { type NOTIFICATION_TEMPLATE_CODES, type S12_NOTIFICATION_TEMPLATE_CODES, pickLocalized, type LocalizedText, type NotificationItem } from '@allingo/schemas';
 import { formatVnd } from '@/lib/billing';
 import { VN_TIME_ZONE } from '@/lib/quota';
 
@@ -19,8 +19,13 @@ export interface Translator {
 
 type Params = Record<string, string | number>;
 
-/** Tham số bắt buộc của từng mẫu – thiếu thì không dịch ở web (tránh câu thiếu chữ) */
-export const TEMPLATE_REQUIRED_PARAMS: Record<(typeof NOTIFICATION_TEMPLATE_CODES)[number], readonly string[]> = {
+/**
+ * Tham số bắt buộc của từng mẫu – thiếu thì không dịch ở web (tránh câu thiếu chữ). S12 (SPEC-ISSUES S136): mã `support.reply`,
+ * `content.report_resolved`, `beta.invite` nằm ở `S12_NOTIFICATION_TEMPLATE_CODES` (packages/schemas) – web đã có bản dịch nên
+ * khai báo cùng bảng này; gộp vào danh sách chung khi sửa packages/schemas.
+ */
+type TemplateCode = (typeof NOTIFICATION_TEMPLATE_CODES)[number] | (typeof S12_NOTIFICATION_TEMPLATE_CODES)[number];
+export const TEMPLATE_REQUIRED_PARAMS: Record<TemplateCode, readonly string[]> = {
   'billing.order_paid': ['plan', 'total'],
   'billing.invoice_issued': ['series', 'invoice', 'total', 'lookup'],
   'billing.subscription_expiring': ['plan', 'date', 'days'],
@@ -35,6 +40,10 @@ export const TEMPLATE_REQUIRED_PARAMS: Record<(typeof NOTIFICATION_TEMPLATE_CODE
   'learning.badge_awarded': [],
   'learning.plan_adjust_ready': [],
   'admin.invoice_failed': ['op', 'order', 'attempts', 'error'],
+  // S12
+  'support.reply': ['subject', 'credits'],
+  'content.report_resolved': ['fixed'],
+  'beta.invite': [],
 };
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : null);
@@ -49,7 +58,7 @@ function formatDate(iso: unknown, locale: string): string | null {
 }
 
 /** Tham số ICU từ payload (dữ liệu mẫu của NotificationService) */
-export function templateParams(item: Pick<NotificationItem, 'payload'>, locale: string): Params {
+export function templateParams(item: Pick<NotificationItem, 'payload'> & Partial<Pick<NotificationItem, 'template_code'>>, locale: string): Params {
   const p = (item.payload ?? {});
   const d = p.data && typeof p.data === 'object' ? (p.data as Record<string, unknown>) : {};
   const src: Record<string, unknown> = { ...p, ...d };
@@ -73,7 +82,10 @@ export function templateParams(item: Pick<NotificationItem, 'payload'>, locale: 
     const v = num(src[from]);
     if (v !== null) out[k] = v;
   }
+  // S12: support.reply có `credits` = 0 khi không cấp bù (vẫn là tham số bắt buộc của ICU plural)
+  if (item.template_code === 'support.reply' && out.credits === undefined) out.credits = 0;
   for (const [k, from] of [
+    ['subject', 'subject'],
     ['series', 'series'],
     ['invoice', 'invoice_no'],
     ['lookup', 'lookup_code'],
@@ -85,6 +97,7 @@ export function templateParams(item: Pick<NotificationItem, 'payload'>, locale: 
     if (v) out[k] = v;
   }
   if (typeof src.is_referrer === 'boolean') out.referrer = src.is_referrer ? 'yes' : 'no';
+  if (typeof src.fixed === 'boolean') out.fixed = src.fixed ? 'yes' : 'no';
   const order = str(src.order_id);
   if (order) out.order = order.slice(0, 8);
   return out;
@@ -131,7 +144,8 @@ export function resolveNotificationHref(url: string | null | undefined): string 
   const u = str(url);
   if (!u || !u.startsWith('/') || u.startsWith('//') || u.startsWith('/\\')) return null;
   let path = u.replace(/^\/(vi|en)(?=\/|$)/, '') || '/';
-  const ALIASES: Record<string, string> = { '/practice': '/toeic/practice', '/today': '/toeic/today', '/plan': '/toeic/plan', '/stats': '/toeic/dashboard', '/dashboard': '/toeic/dashboard' };
+  // S12: `/support/tickets/{id}` (support.reply) và `/beta?code=` (beta.invite) là route web có sẵn – giữ nguyên
+  const ALIASES: Record<string, string> = { '/practice': '/toeic/practice', '/today': '/toeic/today', '/plan': '/toeic/plan', '/stats': '/toeic/dashboard', '/dashboard': '/toeic/dashboard', '/support/tickets': '/support' };
   const [pathname, rest = ''] = path.split(/(?=[?#])/);
   if (pathname && ALIASES[pathname]) path = ALIASES[pathname] + rest;
   return path;

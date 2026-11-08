@@ -149,7 +149,8 @@ export async function postFunnelEvent(body: FunnelEventInput): Promise<FunnelEve
 
 export interface WaitlistInput {
   email: string;
-  program: 'ielts' | 'jlpt' | 'hsk';
+  /** S12: thêm `toeic` – danh sách chờ beta kín (trang /beta) */
+  program: 'toeic' | 'ielts' | 'jlpt' | 'hsk';
   locale: string;
   consent_marketing: boolean;
 }

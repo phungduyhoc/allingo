@@ -5,6 +5,8 @@ import { APP_LAYOUT_MESSAGES } from '@/lib/i18n-app-scopes';
 import { AuthGate } from '@/features/auth/auth-gate';
 import { QuotaToastListener } from '@/features/quota/quota-toast-listener';
 import { RealtimeProvider } from '@/features/realtime/realtime-provider';
+import { BetaGateListener } from '@/features/beta/beta-gate-listener';
+import { MfaStepUpProvider } from '@/features/security/mfa-step-up-provider';
 
 export default async function AppLayout({ children, params }: { children: React.ReactNode; params: Promise<{ locale: string }> }) {
   const { locale } = await params;
@@ -17,6 +19,9 @@ export default async function AppLayout({ children, params }: { children: React.
       <AuthGate>
         <RealtimeProvider>{children}</RealtimeProvider>
         <QuotaToastListener />
+        {/* S12: 403 beta_required → /beta; 403 mfa_required (admin) → hộp thoại step-up rồi gửi lại request */}
+        <BetaGateListener />
+        <MfaStepUpProvider />
       </AuthGate>
     </NextIntlClientProvider>
   );
