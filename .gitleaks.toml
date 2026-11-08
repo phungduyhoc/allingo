@@ -5,5 +5,17 @@ title = "Allingo gitleaks"
 useDefault = true
 
 [allowlist]
-description = "Vector chữ ký tự tạo với khoá GIẢ cho test 3 cổng thanh toán (Sprint 7, A90) – không phải credential thật"
-paths = ['''apps/api/test/fixtures/payments/vectors\.json''']
+description = """Không phải secret: vector chữ ký với khoá GIẢ (S7, A90), tệp test/e2e (giá trị mẫu cố ý – test redaction S11),
+JWT/khoá sinh cho load test (tests/load/.out – gitignored), tham chiếu tên biến môi trường (env.X) và khoá localStorage."""
+paths = [
+  '''apps/api/test/fixtures/payments/vectors\.json''',
+  '''(^|/)[^/]+\.test\.ts$''',
+  '''^apps/web/e2e/''',
+  '''^tests/load/\.out/''',
+]
+regexTarget = "line"
+regexes = [
+  '''env\.[A-Z0-9_]+(\s*\|\|\s*undefined)?''',
+  '''(?i)(storage|memory|cache)_?key\s*=\s*['"][a-z0-9_.:-]+['"]''',
+  '''\b[A-Z0-9_]*KEY\s*=\s*['"]allingo[a-z0-9_.:-]*['"]''',
+]

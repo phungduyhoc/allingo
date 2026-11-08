@@ -1,0 +1,216 @@
+# promtool test rules infra/observability/prometheus/tests/alerts.test.yml – mỗi alert S11 có ca kích hoạt + ca không kích hoạt
+# (annotations kỳ vọng = chuỗi đã render từ template của rule – đổi summary/description/runbook_url phải cập nhật tại đây)
+rule_files:
+- ../rules/allingo-recording.yml
+- ../rules/allingo-alerts.yml
+evaluation_interval: 30s
+tests:
+- interval: 15s
+  input_series:
+  - series: http_server_requests_total{service="allingo-api",route="/v1/attempts",method="POST",status="201"}
+    values: 0+98x60
+  - series: http_server_requests_total{service="allingo-api",route="/v1/attempts",method="POST",status="500"}
+    values: 0+2x60
+  alert_rule_test:
+  - eval_time: 3m
+    alertname: ApiHighErrorRate
+    exp_alerts: []
+  - eval_time: 12m
+    alertname: ApiHighErrorRate
+    exp_alerts:
+    - exp_labels:
+        severity: page
+        team: backend
+        service: allingo-api
+      exp_annotations:
+        summary: API 5xx > 1 % trong 5 phút (2%)
+        description: Tỉ lệ 5xx của allingo-api vượt 1 % liên tục 5 phút – error budget 99,9 % đang cháy nhanh.
+        runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/deploy-rollback.md#api-5xx
+- interval: 15s
+  input_series:
+  - series: http_server_requests_total{service="allingo-api",route="/v1/attempts",method="POST",status="201"}
+    values: 0+199x60
+  - series: http_server_requests_total{service="allingo-api",route="/v1/attempts",method="POST",status="500"}
+    values: 0+1x60
+  alert_rule_test:
+  - eval_time: 14m
+    alertname: ApiHighErrorRate
+    exp_alerts: []
+- interval: 15s
+  input_series:
+  - series: http_server_request_duration_seconds_bucket{method="PUT",route="/v1/attempts/:attemptId/answers",status="204",le="0.5"}
+    values: 0+0x100
+  - series: http_server_request_duration_seconds_bucket{method="PUT",route="/v1/attempts/:attemptId/answers",status="204",le="0.8"}
+    values: 0+10x100
+  - series: http_server_request_duration_seconds_bucket{method="PUT",route="/v1/attempts/:attemptId/answers",status="204",le="+Inf"}
+    values: 0+10x100
+  alert_rule_test:
+  - eval_time: 5m
+    alertname: DraftSaveLatencyHigh
+    exp_alerts: []
+  - eval_time: 22m
+    alertname: DraftSaveLatencyHigh
+    exp_alerts:
+    - exp_labels:
+        severity: page
+        team: backend
+      exp_annotations:
+        description: Người đang thi lưu nháp chậm – kiểm DB (slow query, kết nối), event loop API, khoá hàng attempts.
+        runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/db-slow.md
+        summary: p95 lưu nháp (PUT /attempts/{id}/answers) > 500 ms trong 10 phút (785ms)
+- interval: 15s
+  input_series:
+  - series: http_server_request_duration_seconds_bucket{method="PUT",route="/v1/attempts/:attemptId/answers",status="204",le="0.2"}
+    values: 0+10x100
+  - series: http_server_request_duration_seconds_bucket{method="PUT",route="/v1/attempts/:attemptId/answers",status="204",le="+Inf"}
+    values: 0+10x100
+  alert_rule_test:
+  - eval_time: 22m
+    alertname: DraftSaveLatencyHigh
+    exp_alerts: []
+- interval: 15s
+  input_series:
+  - series: bullmq_deadletter_jobs{queue="grading",instance="api-1"}
+    values: 0 0 0 0 1 1 1 1 1 1 1 1
+  - series: bullmq_deadletter_jobs{queue="notify",instance="api-1"}
+    values: '0x12'
+  - series: billing_webhooks_total{provider="vnpay",result="invalid_signature"}
+    values: 0 1 2 3 4 5 5 5 5 5 5 5
+  - series: billing_webhooks_total{provider="momo",result="invalid_signature"}
+    values: 0 1 1 1 1 1 1 1 1 1 1 1
+  alert_rule_test:
+  - eval_time: 2m
+    alertname: DeadLetterJobs
+    exp_alerts:
+    - exp_labels:
+        severity: ticket
+        team: backend
+        queue: grading
+      exp_annotations:
+        summary: 'Có job trong dead-letter (grading: 1)'
+        description: Job thất bại sau mọi lần thử trong 24 giờ – xem ops.jobs_deadletter, replay sau khi sửa nguyên nhân.
+        runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/queues-dlq.md
+  - eval_time: 2m30s
+    alertname: PaymentWebhookFailures
+    exp_alerts:
+    - exp_labels:
+        severity: page
+        team: billing
+        provider: vnpay
+      exp_annotations:
+        description: Sai chữ ký/payload/lỗi xử lý – có thể đổi khoá cổng, tấn công giả IPN, hoặc lỗi DB. Đơn có thể không được cấp quyền.
+        runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/payments.md#webhook-that-bai
+        summary: Webhook thanh toán thất bại > 3 trong 10 phút (vnpay)
+- interval: 1m
+  input_series:
+  - series: ai_task_fallbacks_total{task="explain_mcq",model="claude-haiku"}
+    values: 0+3x60
+  - series: ai_task_duration_seconds_count{task="explain_mcq",model="gemini-flash",status="succeeded"}
+    values: 0+10x60
+  - series: ai_task_cost_usd_total{task="explain_mcq",model="gemini-flash"}
+    # 0,1 USD/phút kéo dài 120′: ở giữa chuỗi increase[1h] ngoại suy đúng 6,00 bất kể nhịp đánh giá recording rule (tránh test chập chờn)
+    values: 0+0.1x120
+  alert_rule_test:
+  - eval_time: 40m
+    alertname: AiFallbackRateHigh
+    exp_alerts:
+    - exp_labels:
+        severity: ticket
+        team: ai
+      exp_annotations:
+        description: Model chính lỗi/timeout, breaker mở – chất lượng/chi phí thay đổi.
+        runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/ai-provider.md
+        summary: AI fallback > 20 % trong 15 phút (30%)
+  - eval_time: 90m
+    alertname: AiCostPerHourHigh
+    exp_alerts:
+    - exp_labels:
+        severity: page
+        team: ai
+      exp_annotations:
+        description: Lạm dụng/bot, cache explain bị xoá, prompt mới dài – cân nhắc kill-switch ff.ai.explain / ff.ai.tutor.
+        runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/ai-provider.md#chi-phi
+        summary: Chi phí AI 1 giờ > 5 USD (6.00 USD)
+  - eval_time: 30m
+    alertname: AiCostPerHourHigh
+    exp_alerts: []
+- interval: 1m
+  input_series:
+  - series: db_connections{instance="api-1",state="active"}
+    values: 30x20
+  - series: db_connections{instance="api-1",state="idle"}
+    values: 55x20
+  - series: db_max_connections{instance="api-1"}
+    values: 100x20
+  - series: node_filesystem_avail_bytes{instance="db-1",mountpoint="/data",fstype="ext4"}
+    values: 15x30
+  - series: node_filesystem_size_bytes{instance="db-1",mountpoint="/data",fstype="ext4"}
+    values: 100x30
+  - series: probe_ssl_earliest_cert_expiry{instance="api.allingo.vn:443"}
+    values: 864000x120
+  - series: redis_up{instance="redis-exporter:9121"}
+    values: 1 1 1 0 0 0 0 1 1
+  - series: db_partition_months_ahead{instance="api-1",table="learn.attempt_answers"}
+    values: '0x60'
+  - series: db_partition_months_ahead{instance="api-1",table="ops.outbox"}
+    values: 2x60
+  alert_rule_test:
+  - eval_time: 7m
+    alertname: DbConnectionsHigh
+    exp_alerts:
+    - exp_labels:
+        severity: page
+        team: backend
+      exp_annotations:
+        description: Pool × replica vượt khả năng server – bật PgBouncer/giảm DB_POOL_MAX hoặc tăng SKU.
+        runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/db-slow.md#ket-noi
+        summary: Kết nối PostgreSQL > 80 % max_connections (85%)
+  - eval_time: 12m
+    alertname: DiskUsageHigh
+    exp_alerts:
+    - exp_labels:
+        severity: ticket
+        team: backend
+        instance: db-1
+        mountpoint: /data
+        fstype: ext4
+      exp_annotations:
+        description: WAL/backup/log tăng – xem slot replication treo, retention log, lifecycle bucket.
+        runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/db-slow.md#dia-day
+        summary: Ổ đĩa > 80 % (db-1 /data)
+  - eval_time: 70m
+    alertname: CertificateExpiringSoon
+    exp_alerts:
+    - exp_labels:
+        severity: ticket
+        team: backend
+        instance: api.allingo.vn:443
+      exp_annotations:
+        description: Gia hạn Cloudflare Origin CA / custom domain Container Apps.
+        runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/secrets-rotation.md#chung-chi
+        summary: Chứng chỉ api.allingo.vn:443 hết hạn trong < 14 ngày
+  - eval_time: 5m
+    alertname: RedisDown
+    exp_alerts:
+    - exp_labels:
+        severity: page
+        team: backend
+        instance: redis-exporter:9121
+      exp_annotations:
+        description: Quota/cache/BullMQ/rate limit ở chế độ degrade – hàng đợi ngừng xử lý.
+        runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/redis-down.md
+        summary: Redis không truy cập được
+  - eval_time: 8m
+    alertname: RedisDown
+    exp_alerts: []
+  - eval_time: 40m
+    alertname: PartitionMissing
+    exp_alerts:
+    - exp_labels:
+        severity: page
+        team: backend
+        table: learn.attempt_answers
+      exp_annotations:
+        description: Job ops.partition.ensure không chạy/thất bại – chèn dữ liệu tháng mới sẽ lỗi. Chạy pnpm --filter @allingo/db exec tsx scripts/ensure-partitions.ts.
+        runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/db-slow.md#partition
+        summary: Thiếu partition tháng tới cho learn.attempt_answers

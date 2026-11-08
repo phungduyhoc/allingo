@@ -1,0 +1,115 @@
+# Stack quan sát cho dev / máy đo tải (S11 – ADR-0015, ADR-0026). Staging dùng Terraform module `observability`
+# (Azure Monitor + Managed Prometheus/Grafana hoặc Grafana Cloud) với CÙNG rule/dashboard trong thư mục này.
+#   docker compose -f infra/observability/compose.yml up -d
+#   Grafana http://localhost:3300 (admin/admin – đổi ngay), Prometheus :9090, Alertmanager :9093, Loki :3100, Tempo :3200
+# API/worker chạy trên host: OTEL_ENABLED=true OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318; METRICS_TOKEN khớp
+# prometheus/secrets/metrics_token (tạo tay, không commit). Alertmanager đọc webhook Slack/Telegram từ alertmanager/secrets/*.
+name: allingo-observability
+services:
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    ports: ['9090:9090']
+    extra_hosts: ['host.docker.internal:host-gateway']
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    command: [--config.file=/etc/alertmanager/alertmanager.yml, --storage.path=/alertmanager]
+    volumes:
+      - ./alertmanager:/etc/alertmanager:ro
+      - alertmanager-data:/alertmanager
+    ports: ['9093:9093']
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+      GF_FEATURE_TOGGLES_ENABLE: traceToLogs
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports: ['3300:3000']
+    depends_on: [prometheus, loki, tempo]
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.5.3
+    command: [-config.file=/etc/loki/loki.yml]
+    volumes:
+      - ./loki:/etc/loki:ro
+      - loki-data:/loki
+    ports: ['3100:3100']
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.8.2
+    command: [-config.file=/etc/tempo/tempo.yml]
+    volumes:
+      - ./tempo:/etc/tempo:ro
+      - tempo-data:/var/tempo
+    ports: ['3200:3200']
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.132.0
+    command: [--config=/etc/otelcol/config.yml]
+    volumes:
+      - ./otel-collector:/etc/otelcol:ro
+    ports: ['4317:4317', '4318:4318']
+    depends_on: [tempo, loki]
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.5.3
+    command: [-config.file=/etc/promtail/promtail.yml]
+    volumes:
+      - ./promtail:/etc/promtail:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on: [loki]
+    restart: unless-stopped
+
+  # Exporter cho dashboard "Hạ tầng" và alert DB/Redis/disk/chứng chỉ
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    pid: host
+    volumes: ['/:/host:ro,rslave']
+    command: [--path.rootfs=/host]
+    restart: unless-stopped
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    environment:
+      DATA_SOURCE_NAME: ${PG_EXPORTER_DSN:-postgresql://allingo:allingo@host.docker.internal:5432/allingo?sslmode=disable}
+    extra_hosts: ['host.docker.internal:host-gateway']
+    restart: unless-stopped
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.75.0
+    environment:
+      REDIS_ADDR: ${REDIS_EXPORTER_ADDR:-redis://host.docker.internal:6379}
+    extra_hosts: ['host.docker.internal:host-gateway']
+    restart: unless-stopped
+  blackbox:
+    image: prom/blackbox-exporter:v0.27.0
+    command: [--config.file=/etc/blackbox/blackbox.yml]
+    volumes: ['./blackbox:/etc/blackbox:ro']
+    extra_hosts: ['host.docker.internal:host-gateway']
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:
+  loki-data:
+  tempo-data:

@@ -13,3 +13,13 @@ onlyBuiltDependencies:
   - unrs-resolver
   - '@tailwindcss/oxide'
   - '@parcel/watcher'
+
+# S11 – `pnpm audit --audit-level high` chặn CI. Chấp nhận rủi ro TẠM (hết hạn 2026-11-30, docs/security/pentest-1.md §Phụ thuộc):
+# chỉ lỗ hổng phụ thuộc bắc cầu KHÔNG xử lý dữ liệu không tin cậy ở runtime; nâng bằng overrides ở S12 (phối hợp agent web/CMS).
+auditConfig:
+  ignoreGhsas:
+    - GHSA-cg2g-xh64-v4q7 # dompurify (critical) – monaco-editor trong Payload admin (chỉ editor/admin, không render nội dung người học)
+    - GHSA-mrv2-3pqr-j5jr # dompurify (high) – cùng đường monaco-editor
+    - GHSA-mrhx-c7xc-m3w5 # zod <4.6.6 – @serwist/next kiểm cấu hình lúc build (không validate input người dùng)
+    - GHSA-834v-8h66-3h79 # happy-dom – môi trường test vitest (devDependency, không có ở image production)
+    - GHSA-c8p4-j97h-3vg8 # happy-dom – như trên

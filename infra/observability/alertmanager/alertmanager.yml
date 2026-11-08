@@ -1,0 +1,58 @@
+# Alertmanager (S11): page → Slack #allingo-oncall + Telegram; ticket → Slack #allingo-alerts + email. Secret đọc từ tệp
+# (alertmanager/secrets/*, tạo khi deploy – không commit). Gom theo alertname+service; nhắc lại 4 giờ (page 1 giờ).
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: smtp.resend.com:587
+  smtp_from: alerts@allingo.vn
+  smtp_auth_username: resend
+  smtp_auth_password_file: /etc/alertmanager/secrets/smtp_password
+
+templates:
+  - /etc/alertmanager/templates/*.tmpl
+
+route:
+  receiver: slack-alerts
+  group_by: [alertname, service, queue, provider]
+  group_wait: 30s
+  group_interval: 2m
+  repeat_interval: 4h
+  routes:
+    - matchers: ['severity="page"']
+      receiver: oncall-page
+      group_wait: 15s
+      repeat_interval: 1h
+      continue: false
+    - matchers: ['severity="ticket"']
+      receiver: slack-alerts
+
+inhibit_rules:
+  # API sập → bỏ qua alert phái sinh (độ trễ, 5xx) cùng service
+  - source_matchers: ['alertname="ApiDown"']
+    target_matchers: ['alertname=~"ApiHighErrorRate|DraftSaveLatencyHigh|EventLoopLagHigh"']
+    equal: [service]
+  - source_matchers: ['alertname="RedisDown"']
+    target_matchers: ['alertname=~"QueueBacklog|DeadLetterJobs"']
+
+receivers:
+  - name: oncall-page
+    slack_configs:
+      - api_url_file: /etc/alertmanager/secrets/slack_oncall_webhook
+        channel: '#allingo-oncall'
+        send_resolved: true
+        title: '{{ template "allingo.title" . }}'
+        text: '{{ template "allingo.text" . }}'
+    telegram_configs:
+      - bot_token_file: /etc/alertmanager/secrets/telegram_bot_token
+        chat_id: -1000000000000
+        send_resolved: true
+        message: '{{ template "allingo.text" . }}'
+  - name: slack-alerts
+    slack_configs:
+      - api_url_file: /etc/alertmanager/secrets/slack_alerts_webhook
+        channel: '#allingo-alerts'
+        send_resolved: true
+        title: '{{ template "allingo.title" . }}'
+        text: '{{ template "allingo.text" . }}'
+    email_configs:
+      - to: ops@allingo.vn
+        send_resolved: true

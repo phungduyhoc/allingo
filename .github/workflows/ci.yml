@@ -77,6 +77,8 @@ jobs:
       # ffmpeg cho test pipeline media (thiếu → test media tự skip, nên phải cài để không bỏ sót)
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - run: pnpm --filter './packages/*' build
+      # S11: chặn DROP/RENAME/khoá bảng trong migration mới không có cờ `-- migration-guard: allow <lý do>`
+      - run: pnpm --filter @allingo/db migration:guard
       - run: pnpm db:migrate
       - run: pnpm db:seed --set core,demo
       - run: pnpm db:diff
@@ -120,9 +122,12 @@ jobs:
           if-no-files-found: ignore
 
   security:
-    name: Security (gitleaks · audit · trivy)
+    name: Security (gitleaks · audit · semgrep · trivy)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -138,10 +143,53 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm audit --audit-level high || true # Sprint 0: báo cáo, chưa chặn
+      # S11: chặn lỗ hổng high/critical (ngoại lệ có hạn ở pnpm-workspace.yaml auditConfig.ignoreGhsas – docs/security/pentest-1.md)
+      - run: pnpm audit --audit-level high
+      # Semgrep: ruleset TS/Node/Next + JWT + secrets + luật riêng (.semgrep/allingo.yml)
+      - name: Semgrep
+        run: |
+          pipx install semgrep==1.183.0
+          semgrep scan --metrics=off --error \
+            --config p/typescript --config p/nodejsscan --config p/jwt --config p/secrets --config p/react --config p/nextjs \
+            --config .semgrep/ \
+            --exclude 'node_modules' --exclude '**/*.test.ts' --exclude 'apps/web/e2e/**' \
+            --sarif --output semgrep.sarif apps packages db
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
       - uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: fs
           scan-ref: .
           severity: CRITICAL,HIGH
-          exit-code: '0'
+          ignore-unfixed: true
+          exit-code: '0' # fs: báo cáo (lockfile đã chặn bằng pnpm audit)
+      # S11: Trivy quét IMAGE api (base + OS packages + node_modules production) – chặn CRITICAL/HIGH có bản vá
+      - name: Build image api
+        run: docker build -f apps/api/Dockerfile -t allingo-api:ci .
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: allingo-api:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+
+  observability:
+    name: Observability as code (promtool · amtool · dashboards)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: promtool + amtool
+        run: |
+          curl -sSL https://github.com/prometheus/prometheus/releases/download/v3.5.0/prometheus-3.5.0.linux-amd64.tar.gz | tar xz
+          curl -sSL https://github.com/prometheus/alertmanager/releases/download/v0.28.1/alertmanager-0.28.1.linux-amd64.tar.gz | tar xz
+          ./prometheus-3.5.0.linux-amd64/promtool check rules infra/observability/prometheus/rules/*.yml
+          ./prometheus-3.5.0.linux-amd64/promtool test rules infra/observability/prometheus/tests/alerts.test.yml
+          mkdir -p /tmp/am/secrets && for f in smtp_password slack_oncall_webhook slack_alerts_webhook telegram_bot_token; do echo "https://example.invalid/x" > /tmp/am/secrets/$f; done
+          sed "s#/etc/alertmanager/secrets#/tmp/am/secrets#g; s#/etc/alertmanager/templates#infra/observability/alertmanager/templates#g" infra/observability/alertmanager/alertmanager.yml > /tmp/am/am.yml
+          ./alertmanager-0.28.1.linux-amd64/amtool check-config /tmp/am/am.yml
+      - run: python3 infra/observability/grafana/dashboards.py --check

@@ -18,6 +18,11 @@ resource "azurerm_redis_cache" "this" {
   redis_configuration {
     # BullMQ yêu cầu không evict key của hàng đợi
     maxmemory_policy = "noeviction"
+    # S11: persistence RDB (Premium) – docs/runbooks/restore.md §2
+    rdb_backup_enabled            = var.rdb_backup != null && var.sku_name == "Premium" ? true : null
+    rdb_backup_frequency          = var.rdb_backup != null && var.sku_name == "Premium" ? var.rdb_backup.frequency_minutes : null
+    rdb_backup_max_snapshot_count = var.rdb_backup != null && var.sku_name == "Premium" ? var.rdb_backup.max_snapshots : null
+    rdb_storage_connection_string = var.rdb_backup != null && var.sku_name == "Premium" ? var.rdb_backup.storage_connection_string : null
   }
 
   tags = var.tags

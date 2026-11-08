@@ -1,0 +1,162 @@
+# Alert rules (S11). Mỗi alert có labels.severity (page | ticket) + annotations.summary/description/runbook_url.
+# Kiểm tra: promtool check rules + promtool test rules prometheus/tests/alerts.test.yml (test: apps/api/test/unit/s11-observability-config.test.ts).
+groups:
+  - name: allingo-api
+    rules:
+      - alert: ApiHighErrorRate
+        expr: allingo:http_error_ratio:rate5m{service="allingo-api"} > 0.01
+        for: 5m
+        labels: { severity: page, team: backend }
+        annotations:
+          summary: 'API 5xx > 1 % trong 5 phút ({{ $value | humanizePercentage }})'
+          description: 'Tỉ lệ 5xx của allingo-api vượt 1 % liên tục 5 phút – error budget 99,9 % đang cháy nhanh.'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/deploy-rollback.md#api-5xx
+      - alert: DraftSaveLatencyHigh
+        expr: allingo:draft_save_latency_p95:10m > 0.5
+        for: 10m
+        labels: { severity: page, team: backend }
+        annotations:
+          summary: 'p95 lưu nháp (PUT /attempts/{id}/answers) > 500 ms trong 10 phút ({{ $value | humanizeDuration }})'
+          description: 'Người đang thi lưu nháp chậm – kiểm DB (slow query, kết nối), event loop API, khoá hàng attempts.'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/db-slow.md
+      - alert: ApiDown
+        expr: up{job="allingo-api"} == 0
+        for: 2m
+        labels: { severity: page, team: backend }
+        annotations:
+          summary: 'Không scrape được allingo-api ({{ $labels.instance }})'
+          description: 'API không phản hồi /v1/metrics 2 phút – kiểm revision Container Apps, /v1/health/ready.'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/deploy-rollback.md#api-down
+      - alert: EndpointProbeFailed
+        expr: probe_success{job="blackbox-http"} == 0
+        for: 2m
+        labels: { severity: page, team: backend }
+        annotations:
+          summary: 'Uptime check thất bại: {{ $labels.instance }}'
+          description: '/health/ready hoặc landing không đạt 2xx/3xx trong 2 phút.'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/deploy-rollback.md#api-down
+      - alert: ErrorBudgetFastBurn
+        expr: allingo:http_error_ratio:rate1h{service="allingo-api"} > (14.4 * 0.001) and allingo:http_error_ratio:rate5m{service="allingo-api"} > (14.4 * 0.001)
+        for: 2m
+        labels: { severity: page, team: backend }
+        annotations:
+          summary: 'Error budget cháy nhanh (14,4× – hết budget tháng trong ~2 ngày)'
+          description: 'Burn rate 1 giờ và 5 phút cùng vượt 14,4× SLO 99,9 % – xem docs/slo.md (chính sách đóng băng).'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/on-call.md#error-budget
+      - alert: EventLoopLagHigh
+        expr: max by (instance) (nodejs_eventloop_lag_p99_seconds{service="allingo-api"}) > 0.2
+        for: 5m
+        labels: { severity: ticket, team: backend }
+        annotations:
+          summary: 'Event loop API trễ p99 > 200 ms ({{ $labels.instance }})'
+          description: 'CPU-bound (Review đề lớn, JSON lớn) hoặc thiếu replica – scale out (docs/perf/report-S11.md §Dung lượng).'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/db-slow.md#api-cpu
+
+  - name: allingo-queues
+    rules:
+      - alert: DeadLetterJobs
+        expr: max by (queue) (bullmq_deadletter_jobs) > 0
+        for: 1m
+        labels: { severity: ticket, team: backend }
+        annotations:
+          summary: 'Có job trong dead-letter ({{ $labels.queue }}: {{ $value }})'
+          description: 'Job thất bại sau mọi lần thử trong 24 giờ – xem ops.jobs_deadletter, replay sau khi sửa nguyên nhân.'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/queues-dlq.md
+      - alert: QueueBacklog
+        expr: max by (queue) (bullmq_queue_jobs{state=~"waiting|prioritized"}) > 500 or max by (queue) (bullmq_queue_oldest_waiting_seconds) > 600
+        for: 10m
+        labels: { severity: page, team: backend }
+        annotations:
+          summary: 'Hàng đợi {{ $labels.queue }} tồn đọng'
+          description: '> 500 job chờ hoặc job chờ lâu nhất > 10 phút – worker dừng/tắc, Redis đầy, backpressure kéo dài.'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/queues-dlq.md#backlog
+
+  - name: allingo-billing
+    rules:
+      - alert: PaymentWebhookFailures
+        expr: sum by (provider) (increase(billing_webhooks_total{result=~"invalid_signature|invalid_payload|error|amount_mismatch"}[10m])) > 3
+        for: 0m
+        labels: { severity: page, team: billing }
+        annotations:
+          summary: 'Webhook thanh toán thất bại > 3 trong 10 phút ({{ $labels.provider }})'
+          description: 'Sai chữ ký/payload/lỗi xử lý – có thể đổi khoá cổng, tấn công giả IPN, hoặc lỗi DB. Đơn có thể không được cấp quyền.'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/payments.md#webhook-that-bai
+
+  - name: allingo-ai
+    rules:
+      - alert: AiFallbackRateHigh
+        expr: allingo:ai_fallback_ratio:15m > 0.2
+        for: 15m
+        labels: { severity: ticket, team: ai }
+        annotations:
+          summary: 'AI fallback > 20 % trong 15 phút ({{ $value | humanizePercentage }})'
+          description: 'Model chính lỗi/timeout, breaker mở – chất lượng/chi phí thay đổi.'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/ai-provider.md
+      - alert: AiCostPerHourHigh
+        # Ngưỡng 5 USD/giờ (≈ 5.000 explain/giờ – ADR-0026, HANDOFF S5); chỉnh khi lưu lượng beta rõ
+        expr: allingo:ai_cost_usd:1h > 5
+        for: 5m
+        labels: { severity: page, team: ai }
+        annotations:
+          summary: 'Chi phí AI 1 giờ > 5 USD ({{ $value | printf "%.2f" }} USD)'
+          description: 'Lạm dụng/bot, cache explain bị xoá, prompt mới dài – cân nhắc kill-switch ff.ai.explain / ff.ai.tutor.'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/ai-provider.md#chi-phi
+      - alert: AiCircuitOpen
+        expr: max by (provider) (ai_provider_circuit_state) == 2
+        for: 5m
+        labels: { severity: ticket, team: ai }
+        annotations:
+          summary: 'Circuit breaker AI mở: {{ $labels.provider }}'
+          description: 'Provider lỗi liên tục ≥ 5 phút – đang chạy fallback.'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/ai-provider.md
+
+  - name: allingo-infra
+    rules:
+      - alert: DbConnectionsHigh
+        expr: allingo:db_connection_ratio > 0.8
+        for: 5m
+        labels: { severity: page, team: backend }
+        annotations:
+          summary: 'Kết nối PostgreSQL > 80 % max_connections ({{ $value | humanizePercentage }})'
+          description: 'Pool × replica vượt khả năng server – bật PgBouncer/giảm DB_POOL_MAX hoặc tăng SKU.'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/db-slow.md#ket-noi
+      - alert: DiskUsageHigh
+        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"}) > 0.8
+        for: 10m
+        labels: { severity: ticket, team: backend }
+        annotations:
+          summary: 'Ổ đĩa > 80 % ({{ $labels.instance }} {{ $labels.mountpoint }})'
+          description: 'WAL/backup/log tăng – xem slot replication treo, retention log, lifecycle bucket.'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/db-slow.md#dia-day
+      - alert: RedisDown
+        expr: redis_up == 0 or absent(redis_up)
+        for: 1m
+        labels: { severity: page, team: backend }
+        annotations:
+          summary: 'Redis không truy cập được'
+          description: 'Quota/cache/BullMQ/rate limit ở chế độ degrade – hàng đợi ngừng xử lý.'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/redis-down.md
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels: { severity: page, team: backend }
+        annotations:
+          summary: 'PostgreSQL không truy cập được'
+          description: 'Mọi ghi bài làm lỗi – kiểm Azure Flexible Server, failover/restore.'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/restore.md
+      - alert: CertificateExpiringSoon
+        expr: (probe_ssl_earliest_cert_expiry - time()) < 14 * 86400
+        for: 1h
+        labels: { severity: ticket, team: backend }
+        annotations:
+          summary: 'Chứng chỉ {{ $labels.instance }} hết hạn trong < 14 ngày'
+          description: 'Gia hạn Cloudflare Origin CA / custom domain Container Apps.'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/secrets-rotation.md#chung-chi
+      - alert: PartitionMissing
+        expr: min by (table) (db_partition_months_ahead) < 1
+        for: 30m
+        labels: { severity: page, team: backend }
+        annotations:
+          summary: 'Thiếu partition tháng tới cho {{ $labels.table }}'
+          description: 'Job ops.partition.ensure không chạy/thất bại – chèn dữ liệu tháng mới sẽ lỗi. Chạy pnpm --filter @allingo/db exec tsx scripts/ensure-partitions.ts.'
+          runbook_url: https://github.com/phungduyhoc/allingo/blob/main/docs/runbooks/db-slow.md#partition

@@ -62,3 +62,20 @@ external_secret_env = {
 # postgres_sku_name = "B_Standard_B1ms"
 # redis_sku_name    = "Basic"
 # redis_capacity    = 0
+
+# --- S11: quan sát & bảo vệ edge -------------------------------------------------------------------------
+postgres_backup_retention_days = 30
+postgres_max_connections       = 50 # B1ms; D2ds_v5 ≈ 859
+infra_alerts_enabled           = true
+alert_emails                   = ["ops@allingo.vn"]
+# alert_webhook_url            = (TF_VAR_alert_webhook_url – Slack incoming webhook, không commit)
+uptime_urls = {
+  api = "https://api-staging.allingo.vn/v1/health/ready"
+  web = "https://staging.allingo.vn/"
+}
+# Gói Cloudflare Pro+: thêm rule OTP/webhook (Free chỉ 1 rule = auth_rate_limit)
+# extra_rate_limits = [
+#   { ref = "rl_otp", path_prefix = "/v1/auth/otp/", requests_per_period = 10, period = 60, mitigation_timeout = 600 },
+#   { ref = "rl_webhooks", path_prefix = "/v1/webhooks/", requests_per_period = 300, period = 60, action = "log" },
+# ]
+# webhook_ip_allowlist = { vnpay = ["<CIDR từ tài liệu VNPay>"] }

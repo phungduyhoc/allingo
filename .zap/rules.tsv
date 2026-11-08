@@ -1,0 +1,11 @@
+# ZAP rule overrides (id	ACTION	note) – ACTION: IGNORE | INFO | WARN | FAIL. Mặc định baseline: WARN; S11: High → FAIL.
+10020	FAIL	Thiếu X-Frame-Options/frame-ancestors (API đặt DENY + CSP frame-ancestors 'none')
+10021	FAIL	Thiếu X-Content-Type-Options
+10035	FAIL	Thiếu Strict-Transport-Security
+10038	WARN	CSP chưa đặt (web: CSP nonce làm ở sprint web)
+10054	WARN	Cookie không có SameSite
+10010	FAIL	Cookie thiếu HttpOnly
+10011	FAIL	Cookie thiếu Secure (staging/prod COOKIE_SECURE=true)
+10096	INFO	Timestamp disclosure (ISO time trong JSON là có chủ đích)
+10049	INFO	Non-storable content (Cache-Control no-store cho phản hồi có phiên là có chủ đích)
+90004	WARN	Site isolation (COEP/COOP) – web xem xét sau

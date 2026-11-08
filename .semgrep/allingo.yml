@@ -1,0 +1,93 @@
+# Semgrep – luật riêng của Allingo (S11). CI chạy cùng p/typescript, p/nodejsscan, p/secrets, p/jwt (semgrep registry).
+# Cục bộ: semgrep scan --config .semgrep/ --error apps packages db
+rules:
+  - id: allingo-no-console-in-api
+    languages: [typescript]
+    severity: ERROR
+    message: 'Không console.* trong apps/api (CLAUDE.md §6) – dùng getLogger() (pino, đã che PII).'
+    paths: { include: ['apps/api/src/**'] }
+    pattern-either:
+      - pattern: console.log(...)
+      - pattern: console.info(...)
+      - pattern: console.debug(...)
+      - pattern: console.error(...)
+      - pattern: console.warn(...)
+
+  - id: allingo-no-ai-sdk-outside-gateway
+    languages: [typescript]
+    severity: ERROR
+    message: 'Gọi model AI chỉ qua AiGateway.runTask/streamTask (CLAUDE.md §5.2) – không import SDK model trong module nghiệp vụ.'
+    paths:
+      include: ['apps/api/src/modules/**']
+      exclude: ['apps/api/src/modules/ai-gateway/**']
+    pattern-either:
+      - pattern: import $X from "ai"
+      - pattern: import { ... } from "ai"
+      - pattern: import { ... } from "@ai-sdk/google"
+      - pattern: import { ... } from "@ai-sdk/anthropic"
+      - pattern: import { ... } from "@ai-sdk/openai"
+
+  - id: allingo-sql-raw-interpolation
+    languages: [typescript]
+    severity: ERROR
+    message: 'sql.raw()/unsafe() với template có biến → SQL injection. Dùng tham số sql`… ${v}` (Drizzle) hoặc danh sách cho phép.'
+    paths: { include: ['apps/api/src/**', 'db/src/**'] }
+    pattern-either:
+      - pattern: sql.raw(`...${$X}...`)
+      - pattern: $DB.unsafe(`...${$X}...`)
+
+  - id: allingo-jwt-decode-without-verify
+    languages: [typescript]
+    severity: ERROR
+    message: 'Không tin JWT chưa xác minh (decodeJwt/jwt.decode) để phân quyền – dùng jwtVerify với algorithms cố định.'
+    paths: { include: ['apps/api/src/**'] }
+    pattern-either:
+      - pattern: decodeJwt(...)
+      - pattern: jwt.decode(...)
+
+  - id: allingo-tls-verify-disabled
+    languages: [typescript]
+    severity: ERROR
+    message: 'Không tắt xác minh TLS.'
+    pattern-either:
+      - pattern: '{..., rejectUnauthorized: false, ...}'
+      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+
+  - id: allingo-insecure-random-for-secret
+    languages: [typescript]
+    severity: WARNING
+    message: 'Math.random() không dùng cho token/mã OTP/khoá – dùng crypto.randomBytes/randomInt.'
+    paths: { include: ['apps/api/src/modules/iam/**', 'apps/api/src/shared/auth/**', 'apps/api/src/modules/billing/**'] }
+    pattern: Math.random()
+
+  - id: allingo-dynamic-code
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: 'Không eval/new Function.'
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+
+  - id: allingo-shell-exec-template
+    languages: [typescript]
+    severity: ERROR
+    message: 'child_process.exec với chuỗi ghép → command injection; dùng execFile/spawn với mảng tham số (như ffmpeg.ts).'
+    pattern-either:
+      - pattern: exec(`...${$X}...`, ...)
+      - pattern: execSync(`...${$X}...`, ...)
+
+  - id: allingo-dangerously-set-inner-html
+    languages: [typescript]
+    severity: WARNING
+    message: 'dangerouslySetInnerHTML với nội dung người dùng → XSS; dùng renderer Markdown an toàn (apps/web/src/lib/markdown.ts).'
+    paths: { include: ['apps/web/src/**'] }
+    pattern: <$EL dangerouslySetInnerHTML={...} />
+
+  - id: allingo-cookie-without-httponly
+    languages: [typescript]
+    severity: WARNING
+    message: "Cookie phiên phải httpOnly + sameSite (+ secure theo env) – dùng AuthService.cookieOptions()."
+    paths: { include: ['apps/api/src/**'] }
+    patterns:
+      - pattern: '$REPLY.setCookie($NAME, $VAL, {...})'
+      - pattern-not: '$REPLY.setCookie($NAME, $VAL, {..., httpOnly: true, ...})'

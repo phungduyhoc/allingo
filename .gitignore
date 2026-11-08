@@ -49,3 +49,6 @@ dump.rdb
 
 # Driver lưu trữ fs (dev/test, ADR-0025)
 .storage/
+
+# load test (S11): JWT sinh bởi tests/load/seed-big.ts – không commit
+tests/load/.out/

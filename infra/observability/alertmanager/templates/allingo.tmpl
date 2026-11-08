@@ -1,0 +1,5 @@
+{{ define "allingo.title" }}[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }} ({{ .CommonLabels.severity }}){{ end }}
+{{ define "allingo.text" }}{{ range .Alerts }}• {{ .Annotations.summary }}
+  {{ .Annotations.description }}
+  Runbook: {{ .Annotations.runbook_url }}
+{{ end }}{{ end }}

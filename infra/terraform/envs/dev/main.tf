@@ -93,21 +93,31 @@ module "observability" {
   daily_quota_gb      = var.log_daily_quota_gb
   sampling_percentage = var.appinsights_sampling_percentage
   tags                = local.tags
+
+  # S11: alert hạ tầng (DB/Redis) + uptime /v1/health/ready và landing
+  alerts_enabled           = var.infra_alerts_enabled
+  alert_emails             = var.alert_emails
+  alert_webhook_url        = var.alert_webhook_url
+  postgres_server_id       = module.postgres.server_id
+  postgres_max_connections = var.postgres_max_connections
+  redis_id                 = module.redis.id
+  uptime_urls              = var.uptime_urls
 }
 
 module "postgres" {
   source = "../../modules/postgres"
 
-  name_prefix               = local.name_prefix
-  location                  = var.location
-  resource_group_name       = azurerm_resource_group.this.name
-  delegated_subnet_id       = module.network.postgres_subnet_id
-  private_dns_zone_id       = module.network.postgres_private_dns_zone_id
-  sku_name                  = var.postgres_sku_name
-  storage_mb                = var.postgres_storage_mb
-  backup_retention_days     = var.postgres_backup_retention_days
-  high_availability_enabled = false
-  tags                      = local.tags
+  name_prefix                  = local.name_prefix
+  location                     = var.location
+  resource_group_name          = azurerm_resource_group.this.name
+  delegated_subnet_id          = module.network.postgres_subnet_id
+  private_dns_zone_id          = module.network.postgres_private_dns_zone_id
+  sku_name                     = var.postgres_sku_name
+  storage_mb                   = var.postgres_storage_mb
+  backup_retention_days        = var.postgres_backup_retention_days
+  geo_redundant_backup_enabled = var.postgres_geo_redundant_backup
+  high_availability_enabled    = false
+  tags                         = local.tags
 }
 
 module "redis" {
@@ -399,6 +409,9 @@ module "cdn_waf" {
   admin_allowed_countries = var.admin_allowed_countries
   admin_allowed_ips       = var.admin_allowed_ips
   auth_rate_limit         = var.auth_rate_limit
+  # S11: rate limit OTP/webhook (gói Pro+) + allowlist IP webhook theo cổng
+  extra_rate_limits    = var.extra_rate_limits
+  webhook_ip_allowlist = var.webhook_ip_allowlist
 }
 
 module "dns" {

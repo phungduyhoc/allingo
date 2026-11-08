@@ -100,8 +100,21 @@ variable "postgres_storage_mb" {
 }
 
 variable "postgres_backup_retention_days" {
-  type    = number
-  default = 7
+  description = "PITR 7 ngày (S11: staging/prod 30, dev 7 – docs/runbooks/restore.md)"
+  type        = number
+  default     = 7
+}
+
+variable "postgres_geo_redundant_backup" {
+  description = "S11: backup geo-redundant (production bật; chỉ đặt khi tạo server)"
+  type        = bool
+  default     = false
+}
+
+variable "postgres_max_connections" {
+  description = "S11: max_connections của SKU (ngưỡng alert 80 %)"
+  type        = number
+  default     = 50
 }
 
 variable "redis_sku_name" {
@@ -404,4 +417,46 @@ variable "origin_certificate_password" {
   type      = string
   default   = ""
   sensitive = true
+}
+
+# ---------------------------------------------------------------- S11: alert hạ tầng, uptime, WAF bổ sung
+variable "infra_alerts_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "alert_emails" {
+  type    = list(string)
+  default = []
+}
+
+variable "alert_webhook_url" {
+  description = "Slack incoming webhook / Alertmanager webhook – TF_VAR_alert_webhook_url (không commit)"
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "uptime_urls" {
+  type    = map(string)
+  default = {}
+}
+
+variable "extra_rate_limits" {
+  description = "Xem modules/cdn-waf – gói Free để rỗng (1 rule)"
+  type = list(object({
+    ref                 = string
+    path_prefix         = string
+    requests_per_period = number
+    period              = optional(number, 60)
+    mitigation_timeout  = optional(number, 60)
+    action              = optional(string, "block")
+  }))
+  default = []
+}
+
+variable "webhook_ip_allowlist" {
+  description = "provider → CIDR của cổng thanh toán (modules/cdn-waf)"
+  type        = map(list(string))
+  default     = {}
 }

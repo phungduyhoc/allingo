@@ -1,0 +1,24 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommits", "group:monorepos", "helpers:pinGitHubActionDigests"],
+  "description": "S11 – cập nhật phụ thuộc tự động. Major cần ADR (ADR-0021: TypeScript/ESLint ghim); bảo mật ưu tiên, gộp patch hằng tuần.",
+  "timezone": "Asia/Ho_Chi_Minh",
+  "schedule": ["before 6am on monday"],
+  "prConcurrentLimit": 8,
+  "rangeStrategy": "bump",
+  "lockFileMaintenance": { "enabled": true, "schedule": ["before 6am on the first day of the month"] },
+  "vulnerabilityAlerts": { "enabled": true, "labels": ["security"], "schedule": ["at any time"] },
+  "osvVulnerabilityAlerts": true,
+  "packageRules": [
+    { "matchUpdateTypes": ["patch", "minor"], "matchDepTypes": ["devDependencies"], "groupName": "dev dependencies (non-major)", "automerge": false },
+    { "matchUpdateTypes": ["patch"], "matchDepTypes": ["dependencies"], "groupName": "runtime patch" },
+    { "matchUpdateTypes": ["major"], "labels": ["major", "needs-adr"], "dependencyDashboardApproval": true },
+    { "matchPackageNames": ["typescript", "eslint"], "matchUpdateTypes": ["major"], "enabled": false, "description": "ADR-0021 ghim" },
+    { "matchPackagePrefixes": ["@opentelemetry/"], "groupName": "opentelemetry" },
+    { "matchPackagePrefixes": ["@nestjs/"], "groupName": "nestjs" },
+    { "matchPackagePrefixes": ["@ai-sdk/"], "matchPackageNames": ["ai"], "groupName": "vercel ai sdk" },
+    { "matchManagers": ["github-actions"], "groupName": "github actions" },
+    { "matchManagers": ["terraform"], "groupName": "terraform providers" },
+    { "matchDatasources": ["docker"], "matchFileNames": ["infra/observability/compose.yml"], "groupName": "observability images" }
+  ]
+}

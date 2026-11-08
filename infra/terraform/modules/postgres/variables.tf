@@ -30,8 +30,32 @@ variable "storage_mb" {
 }
 
 variable "backup_retention_days" {
-  type    = number
-  default = 7
+  description = "PITR (WAL + backup tự động): 7 dev, 30 staging/prod (S11 – docs/runbooks/restore.md)"
+  type        = number
+  default     = 7
+
+  validation {
+    condition     = var.backup_retention_days >= 7 && var.backup_retention_days <= 35
+    error_message = "Azure Flexible Server hỗ trợ 7–35 ngày."
+  }
+}
+
+variable "geo_redundant_backup_enabled" {
+  description = "S11: backup geo-redundant (khôi phục sang vùng khác) – bật ở production; chỉ đặt được khi tạo server"
+  type        = bool
+  default     = false
+}
+
+variable "slow_query_ms" {
+  description = "S11: log_min_duration_statement (ms) – khớp DB_SLOW_QUERY_MS của API"
+  type        = number
+  default     = 200
+}
+
+variable "storage_auto_grow_enabled" {
+  description = "S11: tự tăng dung lượng khi gần đầy (alert DiskUsageHigh vẫn bật)"
+  type        = bool
+  default     = true
 }
 
 variable "availability_zone" {

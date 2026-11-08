@@ -4,7 +4,8 @@
 #   - cloudflare_ruleset phase http_request_firewall_custom: chặn /v1/internal/* từ Internet; chỉ cho phép đường dẫn
 #     quản trị (/admin của CMS, /v1/admin & /docs của API) từ VN hoặc IP được phép.
 #   - cloudflare_ruleset phase http_ratelimit: giới hạn /v1/auth/* theo IP (chống dò mật khẩu/OTP; bổ sung cho
-#     rate limit trong API và khoá OTP 5 lần sai – CLAUDE.md §9).
+#     rate limit trong API và khoá OTP 5 lần sai – CLAUDE.md §9); S11: `extra_rate_limits` (OTP, webhook…) cho gói Pro+.
+#   - S11: `webhook_ip_allowlist` – webhook cổng thanh toán chỉ từ dải IP cổng công bố (tuỳ chọn theo cổng).
 #   - data cloudflare_ip_ranges: dải IP Cloudflare để khoá ingress Container Apps (chỉ nhận traffic qua edge).
 
 locals {
@@ -41,6 +42,16 @@ locals {
 
   admin_expression = var.admin_geo_block_enabled && length(local.admin_conditions) > 0 ? "(${join(" or ", local.admin_conditions)})${local.admin_allow_clause}" : null
 
+  webhook_rules = [
+    for provider, cidrs in var.webhook_ip_allowlist : {
+      ref         = "webhook_allowlist_${provider}"
+      description = "Webhook ${provider}: chỉ nhận từ dải IP cổng công bố (S11)"
+      expression  = "(starts_with(http.request.uri.path, ${jsonencode("/v1/webhooks/payments/${provider}")}) and not ip.src in {${join(" ", cidrs)}})"
+      action      = "block"
+      enabled     = true
+    } if length(cidrs) > 0
+  ]
+
   firewall_rules = concat(
     local.internal_expression == null ? [] : [{
       ref         = "block_internal_api"
@@ -49,6 +60,7 @@ locals {
       action      = "block"
       enabled     = true
     }],
+    local.webhook_rules,
     local.admin_expression == null ? [] : [{
       ref         = "geo_restrict_admin"
       description = "Đường dẫn quản trị chỉ từ ${join(",", var.admin_allowed_countries)} hoặc IP được phép"
@@ -95,7 +107,7 @@ resource "cloudflare_ruleset" "rate_limit" {
   kind        = "zone"
   phase       = "http_ratelimit"
 
-  rules = [{
+  rules = concat([{
     ref         = "rate_limit_auth"
     description = "Giới hạn ${var.auth_rate_limit.requests_per_period} yêu cầu/${var.auth_rate_limit.period}s/IP cho ${var.auth_rate_limit.path_prefix}*"
     expression  = local.rate_limit_expression
@@ -107,7 +119,19 @@ resource "cloudflare_ruleset" "rate_limit" {
       requests_per_period = var.auth_rate_limit.requests_per_period
       mitigation_timeout  = var.auth_rate_limit.mitigation_timeout
     }
-  }]
+    }], [for r in var.extra_rate_limits : {
+    ref         = r.ref
+    description = "S11: ${r.requests_per_period} yêu cầu/${r.period}s/IP cho ${r.path_prefix}*"
+    expression  = "(http.request.uri.path contains ${jsonencode(r.path_prefix)})"
+    action      = r.action
+    enabled     = true
+    ratelimit = {
+      characteristics     = ["cf.colo.id", "ip.src"]
+      period              = r.period
+      requests_per_period = r.requests_per_period
+      mitigation_timeout  = r.mitigation_timeout
+    }
+  }])
 }
 
 # Dải IP edge Cloudflare (để giới hạn ingress Container Apps)

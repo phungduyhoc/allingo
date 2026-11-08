@@ -31,9 +31,9 @@ resource "azurerm_postgresql_flexible_server" "this" {
 
   sku_name                     = var.sku_name
   storage_mb                   = var.storage_mb
-  auto_grow_enabled            = true
+  auto_grow_enabled            = var.storage_auto_grow_enabled
   backup_retention_days        = var.backup_retention_days
-  geo_redundant_backup_enabled = false
+  geo_redundant_backup_enabled = var.geo_redundant_backup_enabled
   zone                         = var.availability_zone
 
   authentication {
@@ -79,7 +79,7 @@ resource "azurerm_postgresql_flexible_server_configuration" "shared_preload_libr
 resource "azurerm_postgresql_flexible_server_configuration" "log_min_duration" {
   name      = "log_min_duration_statement"
   server_id = azurerm_postgresql_flexible_server.this.id
-  value     = "500"
+  value     = tostring(var.slow_query_ms)
 }
 
 resource "azurerm_postgresql_flexible_server_database" "app" {

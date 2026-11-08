@@ -90,3 +90,30 @@ variable "auth_rate_limit" {
   })
   default = {}
 }
+
+variable "extra_rate_limits" {
+  description = <<-EOT
+    S11: rule rate limit bổ sung (gói Pro: tổng 2 rule, Business: 5) – mặc định rỗng để tương thích gói Free (1 rule = auth_rate_limit).
+    Ví dụ staging/prod: OTP chặt hơn login, webhook theo IP cổng. Mỗi phần tử: ref, path_prefix, requests_per_period, period,
+    mitigation_timeout, action (block | managed_challenge | log).
+  EOT
+  type = list(object({
+    ref                 = string
+    path_prefix         = string
+    requests_per_period = number
+    period              = optional(number, 60)
+    mitigation_timeout  = optional(number, 60)
+    action              = optional(string, "block")
+  }))
+  default = []
+}
+
+variable "webhook_ip_allowlist" {
+  description = <<-EOT
+    S11: IP allowlist webhook theo cổng thanh toán (nếu cổng công bố dải IP): provider → danh sách CIDR. Request tới
+    /v1/webhooks/payments/<provider> từ IP ngoài danh sách bị chặn ở edge (API vẫn xác minh chữ ký). Rỗng = không áp.
+    Ví dụ (dải tài liệu RFC 5737, KHÔNG phải IP thật): { vnpay = ["203.0.113.10/32"] } – lấy dải IP từ tài liệu/hợp đồng tích hợp của cổng.
+  EOT
+  type        = map(list(string))
+  default     = {}
+}

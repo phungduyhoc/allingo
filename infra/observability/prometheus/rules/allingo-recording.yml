@@ -1,0 +1,27 @@
+# Recording rules SLO (S11 – docs/slo.md). Nhóm endpoint: read (GET), draft_save (PUT answers), submit, explain.
+groups:
+  - name: allingo-slo-recording
+    interval: 30s
+    rules:
+      - record: allingo:http_requests:rate5m
+        expr: sum by (service) (rate(http_server_requests_total{route!~"/v1/(health|metrics).*"}[5m]))
+      - record: allingo:http_errors_5xx:rate5m
+        expr: sum by (service) (rate(http_server_requests_total{status=~"5..",route!~"/v1/(health|metrics).*"}[5m]))
+      - record: allingo:http_error_ratio:rate5m
+        expr: allingo:http_errors_5xx:rate5m / clamp_min(allingo:http_requests:rate5m, 1e-9)
+      - record: allingo:http_error_ratio:rate1h
+        expr: sum by (service) (rate(http_server_requests_total{status=~"5..",route!~"/v1/(health|metrics).*"}[1h])) / clamp_min(sum by (service) (rate(http_server_requests_total{route!~"/v1/(health|metrics).*"}[1h])), 1e-9)
+      - record: allingo:http_error_ratio:rate6h
+        expr: sum by (service) (rate(http_server_requests_total{status=~"5..",route!~"/v1/(health|metrics).*"}[6h])) / clamp_min(sum by (service) (rate(http_server_requests_total{route!~"/v1/(health|metrics).*"}[6h])), 1e-9)
+      - record: allingo:read_latency_p95:5m
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{method="GET",route!~"/v1/(health|metrics).*"}[5m])))
+      - record: allingo:draft_save_latency_p95:10m
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{method="PUT",route="/v1/attempts/:attemptId/answers"}[10m])))
+      - record: allingo:submit_latency_p95:10m
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{method="POST",route="/v1/attempts/:attemptId/submit"}[10m])))
+      - record: allingo:ai_fallback_ratio:15m
+        expr: sum(rate(ai_task_fallbacks_total[15m])) / clamp_min(sum(rate(ai_task_duration_seconds_count{model!="cache",status="succeeded"}[15m])), 1e-9)
+      - record: allingo:ai_cost_usd:1h
+        expr: sum(increase(ai_task_cost_usd_total[1h]))
+      - record: allingo:db_connection_ratio
+        expr: max(sum by (instance) (db_connections)) / max(db_max_connections)
