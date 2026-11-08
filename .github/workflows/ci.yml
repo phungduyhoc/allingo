@@ -94,7 +94,7 @@ jobs:
   e2e:
     name: E2E (Playwright, API giả lập)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 50 # S12: 168 ca (desktop + mobile) ≈ 30–40 phút với 1 worker
     continue-on-error: true # Sprint 0: chưa chặn merge; E2E với API thật chạy thủ công (E2E_REAL_API=1)
     needs: [quality]
     steps:
