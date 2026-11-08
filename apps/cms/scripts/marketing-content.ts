@@ -176,7 +176,7 @@ export const SEED_PAGES = [
       description: { vi: 'Làm đề đúng định dạng, giải thích AI song ngữ từng câu, lộ trình đến ngày thi, sổ lỗi và ôn từ vựng FSRS.', en: 'Exam-format practice, bilingual AI explanations, a plan to exam day, an error log and FSRS vocabulary reviews.' },
     },
     layout: [
-      { blockType: 'hero', eyebrow: { vi: 'Ngoại ngữ cho tất cả', en: 'Languages for everyone' }, heading: { vi: 'Luyện thi ngoại ngữ cùng AI – đúng định dạng, đúng lộ trình', en: 'AI test prep – the right format, the right plan' }, subheading: { vi: 'Bắt đầu với bài chẩn đoán miễn phí, nhận lộ trình theo ngày thi và học mỗi ngày với giải thích AI song ngữ.', en: 'Start with a free diagnostic, get a plan for your exam date and study daily with bilingual AI explanations.' }, primaryCta: cta('Làm bài chẩn đoán', 'Take the diagnostic', '/register?next=/diagnostic'), secondaryCta: cta('Xem bảng giá', 'See pricing', '/pricing') },
+      { blockType: 'hero', eyebrow: { vi: 'Ngoại ngữ cho tất cả', en: 'Languages for everyone' }, heading: { vi: 'Luyện thi ngoại ngữ cùng AI – đúng định dạng, đúng lộ trình', en: 'AI test prep – the right format, the right plan' }, subheading: { vi: 'Bắt đầu với bài chẩn đoán miễn phí, nhận lộ trình theo ngày thi và học mỗi ngày với giải thích AI song ngữ.', en: 'Start with a free diagnostic, get a plan for your exam date and study daily with bilingual AI explanations.' }, primaryCta: cta('Làm bài chẩn đoán', 'Take the diagnostic', '/register?next=/toeic/diagnostic'), secondaryCta: cta('Xem bảng giá', 'See pricing', '/pricing') },
       {
         blockType: 'features',
         heading: { vi: 'Mọi thứ bạn cần để lên điểm', en: 'Everything you need to raise your score' },
@@ -210,7 +210,7 @@ export const SEED_PAGES = [
       description: { vi: 'Đề TOEIC đúng định dạng 7 Part, chế độ thi thật, giải thích AI song ngữ, sổ lỗi và lộ trình theo mục tiêu điểm.', en: 'TOEIC practice in the real 7-part format, exam mode, bilingual AI explanations, an error log and a target-based plan.' },
     },
     layout: [
-      { blockType: 'hero', eyebrow: { vi: 'TOEIC Listening & Reading', en: 'TOEIC Listening & Reading' }, heading: { vi: 'Luyện TOEIC đúng định dạng, biết rõ mình sai ở đâu', en: 'Practise TOEIC in the real format and see exactly where you slip' }, subheading: { vi: '7 Part, 200 câu, 120 phút – luyện từng Part hoặc làm đề full ở chế độ thi thật, rồi xem giải thích từng câu.', en: '7 parts, 200 items, 120 minutes – drill each part or take a full test in exam mode, then review every item.' }, primaryCta: cta('Làm bài chẩn đoán TOEIC', 'Take the TOEIC diagnostic', '/register?next=/diagnostic'), secondaryCta: cta('Đọc mẹo Part 5', 'Read Part 5 tips', '/blog/meo-toeic-part-5') },
+      { blockType: 'hero', eyebrow: { vi: 'TOEIC Listening & Reading', en: 'TOEIC Listening & Reading' }, heading: { vi: 'Luyện TOEIC đúng định dạng, biết rõ mình sai ở đâu', en: 'Practise TOEIC in the real format and see exactly where you slip' }, subheading: { vi: '7 Part, 200 câu, 120 phút – luyện từng Part hoặc làm đề full ở chế độ thi thật, rồi xem giải thích từng câu.', en: '7 parts, 200 items, 120 minutes – drill each part or take a full test in exam mode, then review every item.' }, primaryCta: cta('Làm bài chẩn đoán TOEIC', 'Take the TOEIC diagnostic', '/register?next=/toeic/diagnostic'), secondaryCta: cta('Đọc mẹo Part 5', 'Read Part 5 tips', '/blog/meo-toeic-part-5') },
       {
         blockType: 'features',
         heading: { vi: 'Luyện cả 7 Part', en: 'Cover all 7 parts' },
@@ -231,7 +231,7 @@ export const SEED_PAGES = [
           { question: { vi: 'Có luyện được trên điện thoại không?', en: 'Can I practise on my phone?' }, answer: { vi: 'Có. Allingo chạy trên trình duyệt di động và có thể cài như ứng dụng (PWA).', en: 'Yes. Allingo works in mobile browsers and can be installed as an app (PWA).' } },
         ],
       },
-      { blockType: 'cta', heading: { vi: 'Biết điểm TOEIC ước tính của bạn trong 25 phút', en: 'Get your estimated TOEIC score in 25 minutes' }, button: cta('Bắt đầu miễn phí', 'Start free', '/register?next=/diagnostic') },
+      { blockType: 'cta', heading: { vi: 'Biết điểm TOEIC ước tính của bạn trong 25 phút', en: 'Get your estimated TOEIC score in 25 minutes' }, button: cta('Bắt đầu miễn phí', 'Start free', '/register?next=/toeic/diagnostic') },
     ],
   },
 ];

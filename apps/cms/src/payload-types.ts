@@ -82,6 +82,7 @@ export interface Config {
     posts: Post;
     pages: Page;
     redirects: Redirect;
+    'content-reports': ContentReport;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -104,6 +105,7 @@ export interface Config {
     posts: PostsSelect<false> | PostsSelect<true>;
     pages: PagesSelect<false> | PagesSelect<true>;
     redirects: RedirectsSelect<false> | RedirectsSelect<true>;
+    'content-reports': ContentReportsSelect<false> | ContentReportsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -934,6 +936,35 @@ export interface Redirect {
   createdAt: string;
 }
 /**
+ * Learner question reports (source: API). Handle within 48 hours. The list syncs every 30 seconds when opened.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "content-reports".
+ */
+export interface ContentReport {
+  id: string;
+  reportId: string;
+  status: 'open' | 'confirmed' | 'rejected' | 'fixed';
+  overdue?: boolean | null;
+  slaDueAt?: string | null;
+  resolutionNote?: string | null;
+  reason:
+    'wrong_answer' | 'typo' | 'unclear' | 'audio_issue' | 'image_issue' | 'translation' | 'explanation_wrong' | 'other';
+  reportsForQuestion?: number | null;
+  message?: string | null;
+  stemPreview?: string | null;
+  externalRef?: string | null;
+  sectionCode?: string | null;
+  versionNo?: number | null;
+  questionId?: string | null;
+  questionVersionId: string;
+  reportedAt?: string | null;
+  resolvedAt?: string | null;
+  apiUpdatedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
@@ -1016,6 +1047,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'redirects';
         value: string | Redirect;
+      } | null)
+    | ({
+        relationTo: 'content-reports';
+        value: string | ContentReport;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -1722,6 +1757,31 @@ export interface RedirectsSelect<T extends boolean = true> {
   to?: T;
   type?: T;
   enabled?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "content-reports_select".
+ */
+export interface ContentReportsSelect<T extends boolean = true> {
+  reportId?: T;
+  status?: T;
+  overdue?: T;
+  slaDueAt?: T;
+  resolutionNote?: T;
+  reason?: T;
+  reportsForQuestion?: T;
+  message?: T;
+  stemPreview?: T;
+  externalRef?: T;
+  sectionCode?: T;
+  versionNo?: T;
+  questionId?: T;
+  questionVersionId?: T;
+  reportedAt?: T;
+  resolvedAt?: T;
+  apiUpdatedAt?: T;
   updatedAt?: T;
   createdAt?: T;
 }

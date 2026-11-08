@@ -237,3 +237,36 @@ export function describeError(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
 }
+
+// ----------------------------------------------------------------------------- S12: báo lỗi câu hỏi (hàng đợi duyệt)
+export interface ContentReportItem {
+  id: string;
+  question_id: string | null;
+  question_version_id: string;
+  version_no: number | null;
+  external_ref: string | null;
+  section_code: string | null;
+  stem_preview: string | null;
+  reason: string;
+  message: string | null;
+  status: 'open' | 'confirmed' | 'rejected' | 'fixed';
+  resolution_note: string | null;
+  sla_due_at: string | null;
+  overdue: boolean;
+  reports_for_question: number;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+}
+
+/** GET /internal/content-reports?updated_since=&cursor= – kéo thay đổi tăng dần theo updated_at (đồng bộ collection content-reports) */
+export function listContentReports(q: { updated_since: string; cursor?: string | null; limit?: number }): Promise<{ data: ContentReportItem[]; next_cursor: string | null }> {
+  const params = new URLSearchParams({ updated_since: q.updated_since, limit: String(q.limit ?? 200) });
+  if (q.cursor) params.set('cursor', q.cursor);
+  return request<{ data: ContentReportItem[]; next_cursor: string | null }>({ method: 'GET', path: `/internal/content-reports?${params.toString()}`, timeoutMs: 10_000 });
+}
+
+/** POST /internal/content-reports/{id}/status – xác nhận/từ chối/đã sửa + ghi chú (API ghi audit, báo người học) */
+export function setContentReportStatus(id: string, body: { status: ContentReportItem['status']; resolution_note?: string; resolved_by_email?: string }): Promise<ContentReportItem> {
+  return request<ContentReportItem>({ method: 'POST', path: `/internal/content-reports/${encodeURIComponent(id)}/status`, body });
+}

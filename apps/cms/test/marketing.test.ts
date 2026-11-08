@@ -104,7 +104,7 @@ describe('S10 marketing – JSON-LD', () => {
       { slug: 'meo-toeic-part-5', title: { vi: 'Tiêu đề', en: 'Title' }, excerpt: { vi: 'Tóm tắt' }, seo: { title: { vi: 'SEO vi' }, ogImage: { url: '/media/og.png' } }, publishedAt: '2026-11-02T01:00:00.000Z', authors: [{ name: 'Ban biên tập Allingo' }], faq: [{ question: { vi: 'Hỏi?', en: 'Q?' }, answer: { vi: 'Đáp.', en: 'A.' } }] },
       'https://allingo.vn',
     );
-    expect(ld.vi[0]).toMatchObject({ '@type': 'BlogPosting', headline: 'SEO vi', description: 'Tóm tắt', inLanguage: 'vi', url: 'https://allingo.vn/blog/meo-toeic-part-5', image: ['https://allingo.vn/media/og.png'], author: [{ '@type': 'Person', name: 'Ban biên tập Allingo' }] });
+    expect(ld.vi[0]).toMatchObject({ '@type': 'BlogPosting', headline: 'SEO vi', description: 'Tóm tắt', inLanguage: 'vi', url: 'https://allingo.vn/vi/blog/meo-toeic-part-5', image: ['https://allingo.vn/media/og.png'], author: [{ '@type': 'Person', name: 'Ban biên tập Allingo' }] });
     expect(ld.en[0]).toMatchObject({ headline: 'Title', url: 'https://allingo.vn/en/blog/meo-toeic-part-5' });
     expect(ld.vi[1]).toMatchObject({ '@type': 'FAQPage', mainEntity: [{ '@type': 'Question', name: 'Hỏi?', acceptedAnswer: { text: 'Đáp.' } }] });
     expect(faqJsonLd([], 'vi')).toBeNull();

@@ -195,7 +195,7 @@ export function postJsonLd(doc: PostLike, site: string): Record<MarketingLocale,
   const base = site.replace(/\/+$/, '');
   const out = {} as Record<MarketingLocale, Array<Record<string, unknown>>>;
   for (const locale of MARKETING_LOCALES) {
-    const url = doc.seo?.canonical ? (/^https?:\/\//.test(doc.seo.canonical) ? doc.seo.canonical : `${base}${doc.seo.canonical}`) : `${base}${locale === 'vi' ? '' : '/en'}/blog/${doc.slug ?? ''}`;
+    const url = doc.seo?.canonical ? (/^https?:\/\//.test(doc.seo.canonical) ? doc.seo.canonical : `${base}${doc.seo.canonical}`) : `${base}/${locale}/blog/${doc.slug ?? ''}`;
     const authors = (doc.authors ?? []).map((a) => (typeof a === 'string' ? null : a.name)).filter((n): n is string => !!n);
     const article: Record<string, unknown> = {
       '@context': 'https://schema.org',

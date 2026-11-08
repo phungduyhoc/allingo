@@ -6,7 +6,7 @@ import { buildConfig } from 'payload';
 import { en } from 'payload/i18n/en';
 import { vi } from 'payload/i18n/vi';
 import sharp from 'sharp';
-import { Authors, buildMarketingMedia, buildMedia, Categories, Lessons, Pages, Passages, Posts, PromptTemplates, PromptVersions, Questions, Redirects, TestSets, Users, VocabItems } from './collections/index';
+import { Authors, buildMarketingMedia, buildMedia, Categories, ContentReports, Lessons, Pages, Passages, Posts, PromptTemplates, PromptVersions, Questions, Redirects, TestSets, Users, VocabItems } from './collections/index';
 import { getEnv } from './lib/env';
 
 const filename = fileURLToPath(import.meta.url);
@@ -56,6 +56,8 @@ export default buildConfig({
     Posts,
     Pages,
     Redirects,
+    // S12 – báo lỗi câu hỏi (bản sao ops.content_reports, đồng bộ qua API nội bộ)
+    ContentReports,
   ],
   graphQL: { disable: true },
   typescript: { outputFile: path.resolve(dirname, 'payload-types.ts') },

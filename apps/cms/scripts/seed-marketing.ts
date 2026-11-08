@@ -9,6 +9,9 @@ import config from '../src/payload.config';
 import { lexical, readingMinutes } from '../src/lib/lexical';
 import { SEED_AUTHOR, SEED_CATEGORIES, SEED_PAGES, SEED_POSTS } from './marketing-content';
 
+export const LEGACY_CTA = '"/register?next=/diagnostic"';
+export const FIXED_CTA = '"/register?next=/toeic/diagnostic"';
+
 async function findBySlug(payload: Payload, collection: 'categories' | 'authors' | 'posts' | 'pages', slug: string) {
   const r = await payload.find({ collection, where: { slug: { equals: slug } }, limit: 1, depth: 0, draft: true, overrideAccess: true });
   return r.docs[0] ?? null;
@@ -62,8 +65,13 @@ export async function seedMarketing(payload: Payload): Promise<{ created: number
     created++;
   }
   for (const pg of SEED_PAGES) {
-    if (await findBySlug(payload, 'pages', pg.slug)) {
+    const existing = await findBySlug(payload, 'pages', pg.slug);
+    if (existing) {
       kept++;
+      // S12 (fix web S10): sửa CTA cũ `/register?next=/diagnostic` → `/register?next=/toeic/diagnostic` (chỉ đúng chuỗi seed cũ –
+      // nội dung biên tập viên đã đổi khác thì giữ nguyên)
+      const json = JSON.stringify((existing as { layout?: unknown }).layout ?? []);
+      if (json.includes(LEGACY_CTA)) await payload.update({ collection: 'pages', id: existing.id, data: { layout: JSON.parse(json.split(LEGACY_CTA).join(FIXED_CTA)) as never }, overrideAccess: true });
       continue;
     }
     await payload.create({ collection: 'pages', draft: false, overrideAccess: true, data: { _status: 'published', slug: pg.slug, title: pg.title, layout: pg.layout as never, seo: { ...pg.seo, noindex: false } } });

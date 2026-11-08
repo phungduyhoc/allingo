@@ -8,3 +8,5 @@ export { VocabItems } from './vocab-items';
 export { PromptTemplates, PromptVersions } from './prompts';
 // S10 – marketing & blog
 export { Authors, Categories, Pages, Posts, Redirects, buildMarketingMedia, PAGE_BLOCKS } from './marketing';
+// S12 – hàng đợi báo lỗi câu hỏi
+export { ContentReports } from './content-reports';
