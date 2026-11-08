@@ -9,14 +9,15 @@ import { ErrorState } from '@/components/states';
 
 /** Khối dựng dùng chung của trang billing admin: danh sách cursor, bảng cuộn ngang trên mobile, bộ lọc, ô thời gian */
 
-export function useCursorList<T>(key: QueryKey, fetcher: (cursor: string | null) => Promise<Page<T>>) {
+/** S12: kiểu trang `P` giữ trường thêm của trang đầu (`counts`, `today`, `computed_at`…) – hàng suy ra từ `P['data']` */
+export function useCursorList<P extends Page<unknown>>(key: QueryKey, fetcher: (cursor: string | null) => Promise<P>) {
   const q = useInfiniteQuery({
     queryKey: key,
     queryFn: ({ pageParam }) => fetcher(pageParam),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor,
   });
-  const rows = q.data?.pages.flatMap((p) => p.data) ?? [];
+  const rows = (q.data?.pages.flatMap((p) => p.data) ?? []) as P['data'];
   return { q, rows };
 }
 
@@ -35,7 +36,10 @@ export function DataTable<T>({
   rowAttrs,
   empty,
   list,
+  label,
 }: {
+  /** Tên vùng bảng cho trình đọc màn hình (mặc định "Bảng dữ liệu") */
+  label?: string;
   columns: Column<T>[];
   rows: T[];
   rowKey: (row: T) => string;
@@ -55,7 +59,8 @@ export function DataTable<T>({
   if (list?.q.isError) return <ErrorState error={list.q.error} onRetry={() => void list.q.refetch()} />;
   return (
     <div className="space-y-3">
-      <div className="overflow-x-auto rounded-xl border border-border">
+      {/* S12 (axe scrollable-region-focusable): vùng cuộn ngang tới được bằng bàn phím + có tên */}
+      <div className="overflow-x-auto rounded-xl border border-border focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none" tabIndex={0} role="region" aria-label={label ?? tc('dataTable')}>
         <table className="w-full min-w-[44rem] text-sm">
           <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
             <tr>
