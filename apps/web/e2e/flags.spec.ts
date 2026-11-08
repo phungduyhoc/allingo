@@ -114,7 +114,7 @@ test('GET /flags: công khai, cache ≤ 30 s, chỉ boolean của khoá công kh
   test.skip(!REAL, 'Hợp đồng API thật');
   const res = await page.request.get(`${API}/flags`);
   expect(res.status()).toBe(200);
-  expect(res.headers()['cache-control']).toMatch(/max-age=30/);
+  expect(res.headers()['cache-control']).toMatch(/no-cache/);
   const body = (await res.json()) as { flags: Record<string, unknown>; ttl_sec: number };
   expect(body.ttl_sec).toBe(30);
   expect(Object.keys(body.flags)).toEqual(expect.arrayContaining(['ff.ai.explain', 'ff.ai.tutor', 'ff.billing.checkout', 'ff.learning.study_plan']));

@@ -16,10 +16,10 @@ describe('cờ công khai GET /flags (S11)', () => {
 
   it('isFlagOn: theo server khi có, không thì mặc định như FLAG_FALLBACKS của API; khoá lạ → tắt', () => {
     expect(isFlagOn(null, 'ff.ai.explain')).toBe(true);
-    expect(isFlagOn(null, 'ff.ai.diagnose')).toBe(false);
+    expect(isFlagOn(null, 'ff.ai.diagnose')).toBe(true);
     expect(isFlagOn(null, 'ff.catalog.program.ielts')).toBe(false);
     expect(isFlagOn({ flags: { 'ff.ai.explain': false }, ttlSec: 30, evaluatedAt: null }, 'ff.ai.explain')).toBe(false);
-    expect(isFlagOn({ flags: { 'ff.ai.diagnose': true }, ttlSec: 30, evaluatedAt: null }, 'ff.ai.diagnose')).toBe(true);
+    expect(isFlagOn({ flags: { 'ff.ai.diagnose': false }, ttlSec: 30, evaluatedAt: null }, 'ff.ai.diagnose')).toBe(false);
     expect(isFlagOn({ flags: {}, ttlSec: 30, evaluatedAt: null }, 'ff.unknown.key')).toBe(false);
     // Mọi khoá công khai có mặc định
     for (const k of PUBLIC_FLAG_KEYS) expect(typeof FLAG_DEFAULTS[k]).toBe('boolean');

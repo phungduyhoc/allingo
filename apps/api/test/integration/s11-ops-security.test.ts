@@ -53,13 +53,13 @@ describe('S11 ops & security (integration)', () => {
     env = app.get(ENV);
     admin = client(app);
     expect((await admin.call('POST', '/auth/login', { email: 'admin@allingo.dev', password: PASSWORD })).status).toBe(200);
-    for (const k of ['ff.ai.explain', 'ff.ai.tutor']) await admin.call('PUT', `/admin/flags/${k}`, { enabled: true, rules: {} });
+    for (const k of ['ff.ai.explain', 'ff.ai.tutor', 'ff.ai.diagnose']) await admin.call('PUT', `/admin/flags/${k}`, { enabled: true, rules: {} });
     const sets = await admin.call('GET', '/programs/toeic/test-sets?kind=mini');
     miniSetId = sets.body.data.find((t: { code: string }) => t.code === 'toeic-mini-part5-01').id;
   });
 
   afterAll(async () => {
-    for (const k of ['ff.ai.explain', 'ff.ai.tutor']) await admin?.call('PUT', `/admin/flags/${k}`, { enabled: true, rules: {} });
+    for (const k of ['ff.ai.explain', 'ff.ai.tutor', 'ff.ai.diagnose']) await admin?.call('PUT', `/admin/flags/${k}`, { enabled: true, rules: {} });
     for (const k of ENV_KEYS) {
       if (saved[k] === undefined) delete process.env[k];
       else process.env[k] = saved[k];
@@ -231,7 +231,8 @@ describe('S11 ops & security (integration)', () => {
       expect(pub.json().flags['ff.ai.explain']).toBe(true);
       expect(pub.json().flags['ff.growth.beta_gate']).toBeUndefined();
       expect(JSON.stringify(pub.json())).not.toContain('user_ids');
-      expect(pub.headers['cache-control']).toBe('private, max-age=30');
+      expect(pub.headers['cache-control']).toBe('private, no-cache');
+      expect(pub.json().ttl_sec).toBe(30);
     });
 
     it('ff.ai.explain tắt → POST /ai/explain 503 feature_disabled (+Retry-After, message_key) ngay (< 60 s), replica khác qua pub/sub < 2 s; bật lại → chạy', async () => {
@@ -263,6 +264,14 @@ describe('S11 ops & security (integration)', () => {
       expect((await admin.call('PUT', '/admin/flags/ff.ai.tutor', { enabled: false })).status).toBe(200);
       expect((await u.api.call('POST', '/ai/threads', { title: 'kill-switch' })).status).toBe(503);
       expect((await admin.call('PUT', '/admin/flags/ff.ai.tutor', { enabled: true })).status).toBe(200);
+      // ff.ai.diagnose (S12): guard chặn trước khi đọc attempt → 503 cả với id bất kỳ; bật lại → không còn 503 (404 attempt lạ)
+      const anyAttempt = crypto.randomUUID();
+      expect((await admin.call('PUT', '/admin/flags/ff.ai.diagnose', { enabled: false })).status).toBe(200);
+      const diagOff = await u.api.call('POST', `/attempts/${anyAttempt}/diagnosis`);
+      expect(diagOff.status).toBe(503);
+      expect(diagOff.body.error).toMatchObject({ code: 'feature_disabled', details: { flag: 'ff.ai.diagnose' } });
+      expect((await admin.call('PUT', '/admin/flags/ff.ai.diagnose', { enabled: true })).status).toBe(200);
+      expect((await u.api.call('POST', `/attempts/${anyAttempt}/diagnosis`)).status).not.toBe(503);
       expect((await admin.call('PUT', '/admin/flags/ff.ai.explain', { enabled: true })).status).toBe(200);
       const on = await u.api.call('POST', '/ai/explain', { question_version_id: qv, chosen_option: 'A' });
       expect(on.status).toBe(200);

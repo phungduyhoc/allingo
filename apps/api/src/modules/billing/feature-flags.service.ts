@@ -46,7 +46,7 @@ export const PUBLIC_FLAG_KEYS = [
 export const FLAG_FALLBACKS: Record<string, boolean> = {
   'ff.ai.explain': true,
   'ff.ai.tutor': true,
-  'ff.ai.diagnose': false,
+  'ff.ai.diagnose': true,
   'ff.billing.checkout': true,
   'ff.growth.referral': true,
   'ff.learning.study_plan': true,

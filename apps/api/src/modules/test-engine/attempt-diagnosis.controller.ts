@@ -6,6 +6,7 @@ import { attemptAiDiagnosisSchema } from '@allingo/schemas';
 import { CurrentUser, type AuthUser } from '../../shared/auth/auth.guard.js';
 import { writeSse } from '../../shared/http/sse.js';
 import { ApiZod, ZodParams } from '../../shared/http/zod.js';
+import { KillSwitch } from '../billing/index.js';
 import { AttemptDiagnosisService } from './attempt-diagnosis.service.js';
 
 const attemptParam = z.object({ attemptId: z.uuid() });
@@ -18,6 +19,7 @@ export class AttemptDiagnosisController {
 
   @Post(':attemptId/diagnosis')
   @HttpCode(200)
+  @KillSwitch('ff.ai.diagnose')
   @ApiZod({ responses: { 200: 'sse', 402: 'empty', 403: 'empty', 404: 'empty', 409: 'empty' } })
   async diagnose(@CurrentUser() user: AuthUser, @ZodParams(attemptParam) p: z.infer<typeof attemptParam>, @Req() req: FastifyRequest, @Res() reply: FastifyReply) {
     const events = await this.diagnosis.diagnose(user.id, p.attemptId, (req as FastifyRequest & { traceId?: string }).traceId);

@@ -22,12 +22,12 @@ export type FlagKey = (typeof PUBLIC_FLAG_KEYS)[number];
 
 /**
  * Giá trị khi chưa tải được cờ (API lỗi/ngoại tuyến, chưa có bản SSR): đúng `FLAG_FALLBACKS` của API – kill-switch mặc định BẬT
- * tính năng, chương trình chưa ra mắt và `ff.ai.diagnose` mặc định tắt.
+ * tính năng (gồm `ff.ai.diagnose` từ S12), chương trình chưa ra mắt mặc định tắt.
  */
 export const FLAG_DEFAULTS: Record<FlagKey, boolean> = {
   'ff.ai.explain': true,
   'ff.ai.tutor': true,
-  'ff.ai.diagnose': false,
+  'ff.ai.diagnose': true,
   'ff.billing.checkout': true,
   'ff.growth.referral': true,
   'ff.learning.study_plan': true,
@@ -76,8 +76,8 @@ export function markFlagDisabled(data: PublicFlags | null | undefined, key: stri
  */
 export async function fetchPublicFlags(apiUrl: string, init: { fetch?: typeof fetch; signal?: AbortSignal; credentials?: RequestCredentials } = {}): Promise<PublicFlags> {
   const f = init.fetch ?? fetch;
-  // `no-store`: API trả `Cache-Control: private, max-age=30` → không bỏ qua cache HTTP thì lần tải lại ngay sau 503 kill-switch
-  // nhận bản cũ (cờ còn bật) – nhịp ≥ 30 s do TanStack (staleTime/refetchInterval) quyết định
+  // `no-store`: không dùng cache HTTP (API trả `private, no-cache` từ S12; bản cũ `max-age=30` khiến lần tải lại ngay sau 503
+  // kill-switch nhận cờ cũ) – nhịp ≥ 30 s do TanStack (staleTime/refetchInterval) quyết định
   const res = await f(`${apiUrl}/flags`, { method: 'GET', cache: 'no-store', credentials: init.credentials ?? 'include', headers: { Accept: 'application/json' }, signal: init.signal });
   if (!res.ok) throw new Error(`GET /flags ${res.status}`);
   const parsed = parsePublicFlags(await res.json());

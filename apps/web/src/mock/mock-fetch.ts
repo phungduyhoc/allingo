@@ -129,15 +129,13 @@ function mockPasswordIssue(password: string, context: Array<string | undefined>)
   return null;
 }
 
-/**
- * S11: cờ mặc định của "máy chủ" giả = FLAG_FALLBACKS của API, riêng `ff.ai.diagnose` bật (seed API để false nhưng chẩn đoán AI
- * Pro của S5 vẫn chạy – SPEC-ISSUES S51) để kịch bản E2E mock của S5 giữ nguyên.
- */
-const MOCK_FLAG_DEFAULTS: Record<string, boolean> = { ...FLAG_DEFAULTS, 'ff.ai.diagnose': true };
+/** Cờ mặc định của "máy chủ" giả = FLAG_FALLBACKS của API (S12: `ff.ai.diagnose` bật mặc định cả hai phía) */
+const MOCK_FLAG_DEFAULTS: Record<string, boolean> = { ...FLAG_DEFAULTS };
 /** Route có `@KillSwitch(flag)` ở API (S11) */
 const KILL_SWITCHES: Array<[string, RegExp, string]> = [
   ['POST', /^\/ai\/explain$/, 'ff.ai.explain'],
   ['POST', /^\/ai\/threads$/, 'ff.ai.tutor'],
+  ['POST', /^\/attempts\/[^/]+\/diagnosis$/, 'ff.ai.diagnose'],
   ['POST', /^\/ai\/threads\/[^/]+\/messages$/, 'ff.ai.tutor'],
 ];
 const killSwitchFor = (method: string, path: string) => KILL_SWITCHES.find(([m, re]) => m === method && re.test(path))?.[2] ?? null;
@@ -1166,7 +1164,7 @@ export function createMockFetch(): typeof fetch {
   const mockFlagOn = (key: string) => state.flags[key]?.enabled ?? MOCK_FLAG_DEFAULTS[key] ?? false;
   const flagRoutes: Route[] = [
     route('GET', '/flags', () =>
-      json(200, { flags: Object.fromEntries(PUBLIC_FLAG_KEYS.map((k) => [k, mockFlagOn(k)])), ttl_sec: 30, evaluated_at: nowIso() }, { 'Cache-Control': 'private, max-age=30' }),
+      json(200, { flags: Object.fromEntries(PUBLIC_FLAG_KEYS.map((k) => [k, mockFlagOn(k)])), ttl_sec: 30, evaluated_at: nowIso() }, { 'Cache-Control': 'private, no-cache' }),
     ),
     route('GET', '/admin/flags', () => {
       const u = currentUser();

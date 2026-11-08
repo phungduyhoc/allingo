@@ -190,7 +190,8 @@ const REFERRAL_FLAG_RULES = {
 const FLAGS: Array<{ key: string; enabled: boolean; rules?: Record<string, unknown> }> = [
   { key: 'ff.ai.explain', enabled: true },
   { key: 'ff.ai.tutor', enabled: true },
-  { key: 'ff.ai.diagnose', enabled: false },
+  // S12: chẩn đoán AI chạy từ S5 (gating ai_diagnose = Pro) – bật mặc định cho DB mới; kill-switch qua PUT /admin/flags
+  { key: 'ff.ai.diagnose', enabled: true },
   // S7: checkout bật mặc định cho DB mới (seed onConflictDoNothing – DB đã có giữ giá trị hiện tại); tắt bằng PUT /admin/flags
   { key: 'ff.billing.checkout', enabled: true },
   // S8: referral bật mặc định cho DB mới (DB đã có giữ giá trị – bật bằng PUT /admin/flags/ff.growth.referral)
