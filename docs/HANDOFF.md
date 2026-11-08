@@ -120,7 +120,7 @@ Web Sprint 7–8: bảng giá thật, checkout, kết quả thanh toán (polling
 | 4 | Nhắc học đúng 19:00 giờ người học; đã học → không nhắc | ĐẠT (giả lập) | Nhắc giữ chuỗi 20:00; push thật cần thiết bị |
 | 5 | Huy hiệu "7 ngày liên tiếp" đúng ngày thứ 7 + in-app | ĐẠT | |
 | 6 | `api:diff`, `db:diff` xanh; property test 500 ca | ĐẠT | Migration 0006, ADR-0031/0032 |
-| Web | Onboarding 4 bước, plan kéo thả, Hôm nay, check-in, huy hiệu | (điền khi giao diện xong) | |
+| Web | Onboarding 4 bước, plan kéo thả, Hôm nay, check-in, huy hiệu | ĐẠT | Unit 235; E2E S9 10/10 mock (desktop + mobile), 5/5 API thật; phát hiện `POST /submit` 500 khi truyền Date vào SQL thô (đã sửa ở API) |
 
 ### Sprint 10 — FSRS từ vựng, sổ lỗi, thống kê & dashboard, marketing & blog
 
