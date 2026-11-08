@@ -8,6 +8,7 @@ Thống kê từ `pnpm licenses list --json` trên toàn workspace (prod + dev).
 | --- | --- | --- |
 | MIT / MIT-0 / ISC / 0BSD / BSD-2 / BSD-3 / BlueOak-1.0.0 / Unlicense / Apache-2.0 | ~1.070 | Permissive – dùng tự do, giữ thông báo bản quyền khi phân phối |
 | MPL-2.0 (`lightningcss` – phụ thuộc của Tailwind/Next) | 3 | Copyleft theo tệp: chỉ áp dụng nếu sửa mã nguồn của chính thư viện; dùng nguyên bản không phát sinh nghĩa vụ |
+| MPL-2.0 (`@axe-core/playwright`, `axe-core` – S11, devDependency e2e a11y của `apps/web`) | 2 | Như trên; chỉ chạy trong test, không đóng gói vào sản phẩm |
 | LGPL-3.0-or-later (`@img/sharp-libvips-*` – binary libvips do `sharp` dùng, phụ thuộc của Next/Payload) | 2 | Liên kết động với thư viện LGPL, không sửa đổi → chỉ cần giữ thông báo và cho phép thay thế thư viện; chạy phía server nên không phân phối tới người dùng cuối |
 | CC-BY-4.0 (`caniuse-lite` – dữ liệu) | 1 | Ghi nguồn khi phân phối dữ liệu; chỉ dùng lúc build |
 | WTFPL / Python-2.0 / PSF-2.0 / tổ hợp OR | 6 | Permissive |

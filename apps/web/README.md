@@ -341,3 +341,66 @@ packages/ui/src                component dùng chung (Button, Card, Dialog/Sheet
   Dashboard `/vi/toeic/dashboard` (khách, bản build phục vụ ở :3000 – API S11 chặn POST từ origin lạ `csrf_origin_mismatch` nên không đo
   ở :3100 được nữa): mobile Performance 75–77 (TBT 1,1–1,3 s – tương đương S6 dù thêm thẻ S10), desktop 95; A11y 100; BP 100; SEO 63 do
   `robots.txt` chặn khu vực học (cố ý). `/vi/toeic/vocab` mobile 85, `/vi/toeic/errors` 80.
+
+## Sprint 11 – feature flag, giới hạn tốc độ, CSP nonce, Sentry/Web Vitals, hiệu năng dashboard, a11y, i18n lint (giao diện)
+
+- **Feature flag** – `lib/flags.ts` (thuần, có test: `PUBLIC_FLAG_KEYS`/mặc định = `FLAG_FALLBACKS` của API, đọc `GET /flags`, 503 kill-switch
+  `parseFeatureDisabled` – chỉ 503 có `details.flag`), `lib/flags-server.ts` (SSR lần đầu: `GET /flags` ẩn danh, Data Cache 30 s, ≤ 400 ms;
+  `API_INTERNAL_URL` tuỳ chọn), `features/flags/flags-provider.tsx` (MỘT observer TanStack: bản SSR → tải lại kèm cookie, làm mới mỗi
+  `ttl_sec` khi tab hiện + khi quay lại tab; `useFlag(key)`, `<FeatureGate>`; sự kiện 503 → tắt cờ ngay trong cache + toast
+  `errors.feature_disabled` + tải lại cờ). Ẩn khi tắt: `ff.ai.explain` (nút Giải thích ở Review – đã giải thích vẫn hiện; bật lại → bấm lại
+  được), `ff.ai.tutor` (Hỏi gia sư, thẻ dashboard, panel khoá ô nhập + thông báo), `ff.ai.diagnose` (thẻ Phân tích của AI – phân tích có sẵn
+  vẫn hiện), `ff.billing.checkout` (nút mua ở /pricing + checkout, cộng với `checkout_enabled`), `ff.growth.referral` (trang + liên kết giới
+  thiệu), `ff.learning.study_plan` (Hôm nay/Lộ trình: menu, thẻ dashboard, trang → `FeatureDisabledNotice`). Admin bật/tắt
+  `ff.billing.checkout` trong /admin/billing làm mới cờ ngay. Mock: `GET /flags`, `GET /admin/flags`, kill-switch 503 ở explain/threads,
+  hook E2E `__ALLINGO_MOCK__.setFlag(key, on)`; mặc định mock bật `ff.ai.diagnose` (seed API đang `false` – xem báo cáo S11).
+- **Lỗi API chung** – `lib/api-error-events.ts` (thuần, có test): `notifyApiError` từ QueryCache/MutationCache và các luồng SSE (giải thích,
+  gia sư, chẩn đoán) → 429 `rate_limited` (`login_locked` | `global_ip` | `bucket`) → `ApiErrorToasts` (layout gốc, một toast, đếm ngược
+  `Retry-After`), 503 kill-switch → FlagsProvider, 429 `quota_exceeded` giữ luồng S5. Query không tự retry 401/402/403/404/429 và 503
+  `feature_disabled`; mutation `meta.inlineErrors` (đăng nhập/đăng ký/OTP) chỉ báo tại chỗ (`useErrorMessage`: khoá đăng nhập "…thử lại sau
+  15 phút"). `lib/api.ts`: fetch wrapper chép `Retry-After`/`X-Trace-Id` vào envelope 429/503 khi thiếu; request ghi gửi `traceparent`
+  (GET không – tránh preflight CORS).
+- **CSP nghiêm có nonce** – `src/proxy.ts` + `lib/security/csp.ts` (thuần, có test): mỗi request một nonce 128 bit, CSP đặt ở header
+  request (Next tự gắn nonce cho script khung/chunk/RSC inline) và response: `script-src 'self' 'nonce-…' 'strict-dynamic'` (dev thêm
+  `'unsafe-eval'`), `style-src 'self' 'unsafe-inline'` (thuộc tính style của React/Radix + style sonner – không ảnh hưởng chặn script),
+  `connect-src` API + `ws(s)` API (+ Sentry, GIS), `img-src`/`media-src` self data blob + API + `CSP_MEDIA_ORIGINS` (+ CMS cho ảnh blog),
+  `frame-ancestors 'none'` (dev `'self'` – iframe làm nóng trang offline), `base-uri 'self'`, `form-action 'self'` (+ `CSP_FORM_ACTION_ORIGINS`
+  nếu cổng thanh toán dùng form POST), `object-src 'none'`, `upgrade-insecure-requests` khi https, `report-uri` Sentry. Nonce gắn cho script
+  đồng ý cookie (`layout.tsx`), next-themes, JSON-LD. Layout gốc đọc `headers()` ⇒ **mọi trang render động** (bắt buộc với nonce; dữ liệu CMS
+  vẫn qua Data Cache/`revalidateTag`). Zod `jitless` (`lib/zod-csp.ts`) để Zod không thử `new Function` (vi phạm `unsafe-eval`).
+  `next.config.ts`: `poweredByHeader: false`, header tĩnh (nosniff, Referrer-Policy, X-Frame-Options, Permissions-Policy, COOP
+  `same-origin-allow-popups` cho Google Sign-In) + HSTS 2 năm `preload` khi production.
+- **Sentry web không SDK** – `lib/telemetry/sentry.ts` (Envelope HTTP, xác thực bằng query → dùng được `sendBeacon`), `scrub.ts` (email,
+  SĐT VN, JWT, Bearer, tham số bí mật; URL bỏ query + id → `:id`), `trace.ts` (trace mỗi route; `traceparent` request ghi cùng trace →
+  `trace_id` sự kiện = trace API), `components/telemetry.tsx` (nạp lười khi có `NEXT_PUBLIC_SENTRY_DSN`; `window.error`/`unhandledrejection` →
+  phiên `crashed`, `app/[locale]/error.tsx` → `errored`; phiên `exited` khi rời trang ⇒ crash-free sessions; Web Vitals `next/web-vitals`
+  → một sự kiện `transaction` có `measurements` LCP/INP/CLS/FCP/TTFB mỗi route). Biến: `NEXT_PUBLIC_SENTRY_DSN`, `…_ENVIRONMENT`, `…_RELEASE`
+  (hoặc `NEXT_PUBLIC_GIT_SHA`), `…_SAMPLE_RATE`, `…_VITALS_SAMPLE_RATE`; source map trình duyệt khi build `WEB_SOURCE_MAPS=1` (CI tải lên rồi
+  xoá *.map). Test bằng transport giả (`sentry.test.ts`).
+- **Hiệu năng dashboard** – (1) thông điệp theo trang ở khu vực học: `(app)/layout` chỉ `APP_LAYOUT_MESSAGES`, mỗi page bọc `<PageIntl page=…>`
+  với nhánh sinh tự động từ đồ thị import client (`node scripts/i18n-scopes.mjs` → `lib/i18n-app-scopes.ts`; `i18n-app-scopes.test.ts` đỏ
+  khi tệp sinh cũ) → HTML dashboard 142 KB → 68 KB; (2) `Link` của `@/i18n/navigation` mặc định `prefetch={false}` (trước: ~30 request RSC +
+  ~200 KB JS route tải trước khi dashboard đang dựng); (3) AuthGate dựng AppShell + trang trong `startTransition` (React chia nhỏ ~5 ms);
+  (4) dashboard tách khối tự đăng ký query (kết quả về chỉ dựng lại khối đó), phần dưới màn đầu + Hôm nay dựng khi rảnh (`components/
+  deferred.tsx`, khung chờ cùng cỡ); chuông thông báo nạp lười.
+  **Lighthouse 13.6 + Chrome for Testing 153, mobile, `/vi/toeic/dashboard` (khách), bản build `next start -p 3000`, mỗi lượt một Chrome mới
+  (cookie phiên nạp qua CDP, `--disable-storage-reset`), 2026-11-08, mỗi phiên đo bản trước (HEAD S10 dựng lại) và bản sau liền nhau:**
+  phiên 1 (máy rảnh): trước **78–81** (TBT 0,81–1,0 s) → sau **84–87, trung vị 86** (TBT 0,51–0,64 s); phiên 2 (sau khi container khởi động
+  lại, máy dùng chung tải cao hơn): trước **73–76** (TBT 1,2–1,8 s) → sau **81–86, trung vị 82** (TBT 0,57–0,77 s). FCP/LCP 0,64–0,74 s,
+  CLS 0; A11y 100, BP 100 (trước 96), SEO 63 (robots chặn khu vực học – cố ý). TBT thực đo bằng PerformanceObserver `longtask` với CPU ×4
+  (không mô phỏng Lantern) ~145 ms. Landing `/vi` 96–97 (trước 96–98; trang động thay vì SSG: FCP +~60 ms). Ghi chú: ~190–550 ms TBT mô phỏng là tác vụ DevTools gắn vào renderer lúc
+  điều hướng (GC "heap object iterator" – không có ở người dùng thật); chi phí JS còn lớn nhất là dựng toàn bộ schema Zod của
+  `@allingo/schemas` (một module 231 KB, `splitting: false`) ngay khi nạp – cần tách gói/`/*#__PURE__*/` ở packages/schemas để tree-shake.
+- **a11y** – `e2e/a11y.spec.ts` (axe WCAG 2.0/2.1 A+AA): dashboard, màn thi Exam, hộp thoại nộp (giữ focus), kết quả, Review + giải thích,
+  Listening (màn "Bắt đầu nghe" + thanh nghe) → 0 serious/critical; luồng thi chỉ bằng bàn phím (Tab → Space chọn, ←/→, phím số, F, Tab →
+  Nộp → Enter). Sửa: tên truy cập tab Part bắt đầu bằng chữ hiển thị (WCAG 2.5.3 – `attempt.partTabAria`), `aria-controls` của `Tabs`
+  (`@allingo/ui`) chỉ trỏ tới panel tồn tại, màu chữ toast sonner (≥ 6:1), `aria-label` thanh điều hướng qua i18n.
+- **i18n lint** – quy tắc cục bộ `allingo/no-jsx-literal-text` (`eslint-rules/`, có RuleTester): chuỗi chữ trong JSX/thuộc tính hiển thị
+  (`aria-label`, `title`, `placeholder`, `alt`, `label`…) phải qua next-intl; cho phép tên riêng (`I18N_ALLOW` trong `eslint.config.js`),
+  một chữ cái, nội dung `<code>/<kbd>/<pre>`, chú thích `i18n-ignore – lý do`; bỏ qua `src/mock`, test, cổng thanh toán giả (công cụ dev).
+- **Mật khẩu (API S12)** – đăng ký ≥ 12 ký tự (`lib/password-policy.ts`), lỗi server `password_too_short|password_breached|password_weak`
+  → thông điệp i18n `auth.passwordPolicy.*` ở ô mật khẩu; mock kiểm tra như API; E2E dùng mật khẩu ≥ 12 ký tự không phổ biến.
+- **E2E S11**: `flags.spec.ts` (admin tắt `ff.ai.explain` → bấm → 503 + thông điệp + ẩn ngay; tự làm mới → ẩn < 60 s; bật lại → hiện lại;
+  hợp đồng `GET /flags`), `csp.spec.ts` (nonce mỗi request, mọi `<script>` có nonce; không vi phạm CSP ở landing, dashboard, Exam, kết quả,
+  Review + giải thích, Listening, checkout cổng mock, blog CMS; không `MISSING_MESSAGE` trên 17 trang + điều hướng client), `a11y.spec.ts`.
+  `ai-explain.spec.ts` (API thật) bật `ff.ai.diagnose` trong lúc chạy rồi trả lại trạng thái cũ.

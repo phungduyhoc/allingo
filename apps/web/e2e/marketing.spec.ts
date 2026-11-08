@@ -203,7 +203,7 @@ test('đồng ý cookie: trước đồng ý không có request phân tích/Post
   else await expect.poll(async () => (await mockEvents(page)).some((e) => e.event === 'signup_start' && e.consent)).toBe(true);
   await page.getByLabel('Tên hiển thị').fill('E2E Attribution');
   await page.getByLabel('Email', { exact: true }).fill(`attr-${Date.now()}@allingo.test`);
-  await page.getByLabel('Mật khẩu').fill('password123');
+  await page.getByLabel('Mật khẩu').fill('Allingo-e2e-2026!');
   await page.getByTestId('accept-terms').check();
   await page.getByRole('button', { name: 'Đăng ký' }).click();
   await expect(page).toHaveURL(/dashboard/);

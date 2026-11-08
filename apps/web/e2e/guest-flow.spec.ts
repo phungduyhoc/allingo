@@ -112,7 +112,7 @@ test('đăng ký tài khoản ghép tiến độ khách', async ({ page }) => {
   const email = `e2e-${Date.now()}@allingo.test`;
   await page.getByLabel('Tên hiển thị').fill('Học viên E2E');
   await page.getByLabel('Email', { exact: true }).fill(email);
-  await page.getByLabel('Mật khẩu').fill('password123');
+  await page.getByLabel('Mật khẩu').fill('Allingo-e2e-2026!');
   // Bắt buộc đồng ý điều khoản (PDPL) – chưa tick thì báo lỗi, không gửi
   await page.getByRole('button', { name: 'Đăng ký' }).click();
   await expect(page.getByText('Bạn cần đồng ý Điều khoản và Chính sách bảo mật')).toBeVisible();

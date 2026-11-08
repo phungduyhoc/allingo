@@ -129,5 +129,11 @@ test('CMS: editor soạn → AI kiểm tra → teacher duyệt 1 → admin duy�
   await page.getByTestId('practice-keyword').fill(keyword);
   await page.getByTestId('practice-start').click();
   await expect(page).toHaveURL(/\/vi\/attempts\/[0-9a-f-]+$/);
+  // Tìm kiếm có dung sai chính tả (Meilisearch) → câu của các lần chạy trước (`ledger<khác>`) có thể đứng trước: duyệt tối đa 10 câu
+  await expect(page.getByTestId('question-card')).toBeVisible();
+  for (let i = 0; i < 10 && !(await page.getByText(keyword).isVisible()); i++) {
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(150);
+  }
   await expect(page.getByText(keyword)).toBeVisible();
 });

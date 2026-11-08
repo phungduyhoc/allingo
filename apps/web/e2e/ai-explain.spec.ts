@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { freshGuestStorage, REAL, startAsGuest, startTestSet } from './helpers';
+import { adminApi } from './billing-helpers';
 
 /**
  * Sprint 5 – giao diện AI: giải thích SSE trong Review (chữ hiện dần → nội dung có cấu trúc, "Giải thích có sẵn" khi cache,
@@ -19,6 +20,32 @@ const FREE_EXPLAIN_LIMIT = 10;
 
 test.beforeEach(async ({ page }) => {
   await freshGuestStorage(page);
+});
+
+/**
+ * S11: thẻ "Phân tích của AI" ẩn khi kill-switch `ff.ai.diagnose` tắt – seed API để cờ này `false` (SPEC-ISSUES S51, chẩn đoán
+ * chỉ chặn bằng quyền gói). API thật: bật cờ trong lúc chạy spec rồi trả về trạng thái cũ. Mock: cờ mặc định bật.
+ */
+let diagnoseWas: boolean | null = null;
+test.beforeAll(async () => {
+  if (!REAL) return;
+  const admin = await adminApi();
+  try {
+    const cur = await admin.get('admin/flags/ff.ai.diagnose');
+    diagnoseWas = cur.ok() ? ((await cur.json()) as { enabled: boolean }).enabled : false;
+    if (!diagnoseWas) expect((await admin.put('admin/flags/ff.ai.diagnose', { data: { enabled: true } })).status()).toBe(200);
+  } finally {
+    await admin.dispose();
+  }
+});
+test.afterAll(async () => {
+  if (!REAL || diagnoseWas !== false) return;
+  const admin = await adminApi();
+  try {
+    await admin.put('admin/flags/ff.ai.diagnose', { data: { enabled: false } });
+  } finally {
+    await admin.dispose();
+  }
 });
 
 async function submitNow(page: Page): Promise<void> {

@@ -42,21 +42,26 @@ test('dashboard: trạng thái người mới → sau một đề mini có đi�
   const wrong = 10 - correct;
 
   await page.goto('/vi/toeic/dashboard');
-  await expect(page.getByTestId('estimate')).toBeVisible({ timeout: 20_000 });
+  // API S12: điểm ước tính hiện tại / dự báo / phân vị chỉ tính từ bài có thang TỔNG – đề mini Part 5 chỉ có thang Reading 5–495
+  // (score_history ghi `part: reading`) → API thật: chưa có ước tính tổng; mock giữ hành vi S10 (ước tính từ đề mini)
+  const totalEstimate = !REAL;
+  if (totalEstimate) await expect(page.getByTestId('estimate')).toBeVisible({ timeout: 20_000 });
+  else await expect(page.getByTestId('kpi-errors')).toContainText(String(wrong), { timeout: 20_000 });
   await expect(page.getByTestId('score-empty')).toContainText('Mới có một điểm ước tính');
   const acc = page.getByTestId('accuracy-table');
   await expect(acc.locator('tr[data-key="part5"]')).toContainText(`${correct * 10}%`);
   await expect(page.getByTestId('chart-accuracy')).toBeVisible();
   await expect(page.getByTestId('dashboard-errors')).toContainText(String(wrong));
   await expect(page.getByTestId('kpi-errors')).toContainText(String(wrong));
-  await expect(page.getByTestId('forecast-score')).toBeVisible();
+  if (totalEstimate) await expect(page.getByTestId('forecast-score')).toBeVisible();
+  else await expect(page.getByTestId('forecast-recommendation')).toContainText('bài chẩn đoán');
   await expect(page.getByTestId('forecast-label')).toHaveText('Ước tính sơ bộ');
-  // Cộng đồng: đủ dữ liệu → phân vị; chưa đủ 10 người cùng mục tiêu → lý do
+  // Cộng đồng: đủ dữ liệu → phân vị; chưa đủ 10 người cùng mục tiêu → lý do; chưa có ước tính tổng (API thật) → no_estimate
   const community = page.getByTestId('community-card');
   const reason = await community.getAttribute('data-reason');
-  expect(['ok', 'cohort_too_small']).toContain(reason);
+  expect(totalEstimate ? ['ok', 'cohort_too_small'] : ['no_estimate']).toContain(reason);
   if (reason === 'ok') await expect(page.getByTestId('percentile')).toHaveText(/Hơn \d+%/);
-  else await expect(community).toContainText('chưa đủ 10 người');
+  else if (reason === 'cohort_too_small') await expect(community).toContainText('chưa đủ 10 người');
   await expect(page.getByTestId('week-summary')).toContainText('1 bài làm');
 
   // Lỗi cần ôn → sổ lỗi

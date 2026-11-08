@@ -33,8 +33,11 @@ async function waitForSw(page: Page): Promise<void> {
     undefined,
     { timeout: 60_000 },
   );
-  if (!(await page.evaluate(() => !!navigator.serviceWorker.controller))) await page.reload();
-  await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller), { timeout: 30_000 }).toBe(true);
+  // SW vừa kích hoạt có thể chưa nhận điều khiển trang đang mở (bản dev: chunk HMR/iframe làm nóng) → tải lại tới khi có controller
+  await expect(async () => {
+    if (!(await page.evaluate(() => !!navigator.serviceWorker.controller))) await page.reload();
+    expect(await page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+  }).toPass({ timeout: 45_000, intervals: [1_000, 3_000, 5_000] });
   // Precache của Serwist lưu khoá kèm `__WB_REVISION__` → so khớp bỏ query
   await expect
     .poll(() => page.evaluate(async () => !!(await caches.match('/vi/offline', { ignoreSearch: true }))), {

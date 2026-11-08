@@ -23,6 +23,10 @@
 | web-push | 3.6.x | Sprint 6 – Web Push VAPID (aes128gcm) trong `apps/api` (growth); khoá qua env `VAPID_*` |
 | handlebars / nodemailer | 4.7.x / 10.3.x | Sprint 8 dùng lại (đã có từ S0/S1): mẫu thông báo vi/en, email SMTP/SES; Resend gọi HTTP bằng fetch; PDF hoá đơn mock tự dựng – không thêm thư viện |
 | fast-check | 4.10.x | Sprint 9 – devDependency `packages/planner` (property-based test PlanGenerator, 500 ca/thuộc tính) |
+| @axe-core/playwright (axe-core) | 4.14.0 (4.14.0) | Sprint 11 web – devDependency `apps/web`: `e2e/a11y.spec.ts` (WCAG 2.0/2.1 A+AA, 0 serious/critical) |
+| happy-dom | 21.0.4 | Sprint 11 web – devDependency `apps/web` (môi trường DOM cho test FlagsProvider – `// @vitest-environment happy-dom`); cùng phiên bản override S12 |
+
+Sprint 11 web không thêm SDK Sentry: báo lỗi + phiên (crash-free) + Web Vitals gửi Envelope HTTP tự viết (`apps/web/src/lib/telemetry/sentry.ts`, như `SentryReporter` của API); Web Vitals qua `next/web-vitals` có sẵn trong Next.
 
 ## Sprint 12 – không thêm thư viện; overrides bảo mật (`package.json` gốc `pnpm.overrides`)
 
