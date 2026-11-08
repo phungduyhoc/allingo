@@ -140,10 +140,12 @@ Web Sprint 7–8: bảng giá thật, checkout, kết quả thanh toán (polling
 | 1 | Grafana 6 dashboard có dữ liệu; tắt Redis → alert Slack < 2′, link runbook; bật lại → resolve | ĐẠT một phần | Dashboard/alert as code, 71 biểu thức chạy trên dữ liệu :4000; diễn tập alert bằng Prometheus + Alertmanager thật (webhook giả thay Slack): kill Redis → cảnh báo 88 s, resolve 111 s. Stack compose Grafana/Loki/Tempo chưa chạy (không Docker) |
 | 2 | k6 5.000 VU/30′ đạt ngưỡng; báo cáo trước/sau | CHƯA (staging) | Máy phiên ≈ 1.500 VU thời gian thực: p95 PUT /answers 50 ms, submit 116 ms, review 49 ms, lỗi 0 % (trước: timeout, 8,3 % lỗi) – `docs/perf/report-S11.md`; sửa deadlock pool (Critical) |
 | 3 | Log không email/phone/token | ĐẠT | Test redaction + log trong lượt tải |
-| 4 | ZAP baseline 0 high; 10 kịch bản pentest tay đã vá + test hồi quy; CSP không lỗi | ĐẠT phía API | ZAP cục bộ 0 High/Medium/Low; vá XSS ghi chú (High), quota race, khoá đăng nhập, CSRF; CSP nonce phía web làm ở giao diện Sprint 11; 3 bảng billing có `org_id` chưa bật RLS (Medium, S124) |
+| 4 | ZAP baseline 0 high; 10 kịch bản pentest tay đã vá + test hồi quy; CSP không lỗi | ĐẠT | ZAP cục bộ 0 High/Medium/Low; vá XSS ghi chú (High), quota race, khoá đăng nhập, CSRF; web: CSP nonce + `strict-dynamic`, bản production 0 vi phạm CSP trên landing → exam → kết quả → review/giải thích, listening, checkout, blog, 17 trang app (`e2e/csp.spec.ts`); 3 bảng billing có `org_id` chưa bật RLS (Medium, S124) |
 | 5 | Restore PITR về 10′ trước < 60′; runbook ghi thời gian thật | ĐẠT (cục bộ) | RTO kỹ thuật 3,2 s, RPO 0 trên PG cục bộ; quy trình có người ước 15–25′; Azure đo trên staging |
-| 6 | Kill-switch `ff.ai.explain` → UI ẩn, API 503 i18n < 60 s | ĐẠT phía API | Pub/sub tới các replica; UI ở giao diện Sprint 11 |
+| 6 | Kill-switch `ff.ai.explain` → UI ẩn, API 503 i18n < 60 s | ĐẠT | Pub/sub tới các replica; web làm mới cờ 30 s + khi focus, 503 → notice + toast i18n và làm mới cờ ngay (`e2e/flags.spec.ts`, API thật); thêm kill-switch `ff.ai.diagnose` (A213) |
 | 7 | lint/typecheck/test xanh, CI có security jobs, diff xanh | ĐẠT | 905 test (không tính web); gitleaks, audit high, Semgrep, Trivy, ZAP nightly, migration guard |
+
+**Giao diện Sprint 11.** Cờ tính năng phía client (SSR + làm mới 30 s, `FeatureGate`), xử lý 429/503 (toast đếm ngược, `login_locked`), chính sách mật khẩu ≥ 12, telemetry Sentry Envelope tự viết (lỗi, phiên crash-free, Web Vitals, che PII, `traceparent`), message i18n theo trang (HTML dashboard 142 → 68 KB), ESLint `no-jsx-literal-text`, axe WCAG 2.1 AA luồng thi bằng bàn phím: 0 vi phạm serious/critical. Lighthouse dashboard mobile: trung vị **86** khi máy rảnh (trước 78–81), **82** khi máy chia tải với API/CMS (trước 73–76); CLS 0, A11y 100, BP 100 – đo lại trên staging (S141). Web unit 339, E2E mock 130 (12 skip chỉ chạy thật), E2E API thật 130 (12 skip).
 
 ### Sprint 12 — Beta kín, admin & vận hành, phân tích, GATE-2
 
@@ -155,7 +157,7 @@ Phiên không có người dùng/SMTP/PostHog/Sentry thật: cơ chế đã xây
 | 2 | Góp ý kèm trace_id + ảnh; báo lỗi câu vào CMS; ticket trả lời từ admin, người dùng nhận email/in-app | ĐẠT (API + CMS) | Content reports đồng bộ hai chiều API ↔ CMS; ticket SLA 24 giờ, credit bù; giao diện ở giao diện Sprint 12 |
 | 3 | Admin khoá tài khoản → thu hồi phiên ≤ 60 s; impersonate chỉ đọc có audit; DLQ replay | ĐẠT | Integration test |
 | 4 | `pnpm report:beta` đủ KPI, khớp PostHog/DB ±2 % | ĐẠT một phần | Chạy ra số từ dữ liệu giả lập (`docs/gates/beta-weekly-2026-W45.md`); đối chiếu PostHog cần key thật |
-| 5 | 2 tuần beta: SLO, crash-free ≥ 99,5 %, không lỗi chặn học > 48 giờ; i18n 0 chuỗi cứng; a11y luồng thi | CHƯA | Cần beta thật; lint i18n + axe làm ở giao diện Sprint 11 |
+| 5 | 2 tuần beta: SLO, crash-free ≥ 99,5 %, không lỗi chặn học > 48 giờ; i18n 0 chuỗi cứng; a11y luồng thi | CHƯA (beta) / ĐẠT (i18n, a11y) | Cần beta thật cho SLO/crash-free; lint i18n `no-jsx-literal-text` xanh, axe luồng thi 0 serious/critical (giao diện S11) |
 | 6 | GATE-2 report số liệu thật, đề xuất GĐ2, checklist; tag `v0.9.0-beta`; CI xanh | CHƯA | Báo cáo bản kỹ thuật đã có; tag sau khi CI GitHub xanh |
 
 Bổ sung bảo mật: MFA TOTP step-up cho admin (RFC 6238), mật khẩu ≥ 12 ký tự + danh sách mật khẩu lộ, `InternalTokenGuard` hằng thời gian, OpenAPI đủ path params, override GHSA.
