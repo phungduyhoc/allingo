@@ -74,8 +74,11 @@ RUN --mount=type=cache,id=allingo-pnpm-store,target=/pnpm/store \
 
 # ---------- runtime ----------------------------------------------------------
 FROM node:${NODE_VERSION}-alpine AS runtime
-# Vá gói hệ điều hành của base image (Trivy chặn CRITICAL/HIGH – vd. openssl, musl, zlib) giữa các bản node mới
-RUN apk upgrade --no-cache
+# Vá gói hệ điều hành của base image (Trivy chặn CRITICAL/HIGH – vd. openssl, musl, zlib) giữa các bản node mới; runtime chỉ cần
+# `node` nên gỡ npm/corepack/yarn đi kèm image (mang dependency bị CVE, không dùng khi chạy – payload migrate chạy từ máy có pnpm)
+RUN apk upgrade --no-cache \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-* \
+       /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg
 ARG APP_ENTRY=dist/main.js
 ENV NODE_ENV=production \
     APP_ENV=production \
