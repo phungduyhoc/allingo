@@ -152,6 +152,7 @@ export class FsStorageDriver implements StorageDriver {
     const tmp = `${p}.tmp-${randomBytes(6).toString('hex')}`;
     await fsp.writeFile(tmp, body);
     await fsp.rename(tmp, p);
+    // nosemgrep: ajinabraham.njsscan.crypto.crypto_node.node_md5 – ETag kiểu S3 (MD5 nội dung) cho driver dev, không phải mục đích bảo mật
     await this.writeMeta(bucket, key, { contentType: opts.contentType, size: body.length, etag: createHash('md5').update(body).digest('hex'), createdAt: new Date().toISOString() });
   }
 
@@ -160,6 +161,7 @@ export class FsStorageDriver implements StorageDriver {
     const p = this.filePath(bucket, key);
     await fsp.mkdir(path.dirname(p), { recursive: true });
     const tmp = `${p}.tmp-${randomBytes(6).toString('hex')}`;
+    // nosemgrep: ajinabraham.njsscan.crypto.crypto_node.node_md5 – ETag kiểu S3 (MD5 nội dung) cho driver dev, không phải mục đích bảo mật
     const hash = createHash('md5');
     const src = fs.createReadStream(filePath);
     src.on('data', (c) => hash.update(c));

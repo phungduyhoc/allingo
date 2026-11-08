@@ -15,6 +15,7 @@ export class PromptRenderer {
   private compile(key: string, source: string): Handlebars.TemplateDelegate {
     let tpl = this.cache.get(key);
     if (!tpl) {
+      // nosemgrep: ajinabraham.njsscan.xss.xss_templates.handlebars_noescape – prompt văn bản gửi LLM, không render HTML; nội dung người học bọc <user_input> (CLAUDE.md §5.4)
       tpl = Handlebars.compile(source, { noEscape: true, strict: false });
       this.cache.set(key, tpl);
     }
@@ -34,7 +35,9 @@ export class PromptRenderer {
     const env = this.hb(task);
     const locale = (variables.explain_locale as string | undefined) ?? 'vi';
     const vars = { ...variables, explain_locale: locale, explain_locale_name: LOCALE_NAMES[locale] ?? 'Vietnamese' };
+    // nosemgrep: ajinabraham.njsscan.xss.xss_templates.handlebars_noescape – prompt văn bản gửi LLM, không render HTML
     const system = env.compile(task.systemPrompt, { noEscape: true })(vars);
+    // nosemgrep: ajinabraham.njsscan.xss.xss_templates.handlebars_noescape – prompt văn bản gửi LLM, không render HTML
     const user = env.compile(task.userTemplate, { noEscape: true })(vars);
     const messages: ChatMessage[] = [{ role: 'system', content: system.trim() }];
     for (const shot of task.fewShots) {

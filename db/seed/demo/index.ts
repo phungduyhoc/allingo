@@ -36,6 +36,7 @@ import { seedGeneratedMinis, seedListeningFull01, seedLrFull01 } from './listeni
 import { seedReadingFull01 } from './reading-01.seed.js';
 import { seedDiagnostic01 } from './diagnostic-01.seed.js';
 
+// nosemgrep: ajinabraham.njsscan.generic.hardcoded_secrets.node_password – mật khẩu tài khoản demo cục bộ (công khai trong README), seed demo chặn chạy ở production
 export const DEMO_PASSWORD = 'Allingo@2026';
 
 export const DEMO_USERS = [

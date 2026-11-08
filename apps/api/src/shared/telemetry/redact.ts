@@ -82,6 +82,7 @@ const QUERY_SECRET_RE = /([?&;](?:access_token|refresh_token|id_token|token|code
 /** Che email/phone/JWT/Bearer/tham số bí mật trong một chuỗi */
 export function redactString(s: string): string {
   if (s.length < 6) return s;
+  // nosemgrep: ajinabraham.njsscan.generic.hardcoded_secrets.node_secret – đây là bộ che bí mật (thay token/secret bằng nhãn), không chứa bí mật
   return s.replace(JWT_RE, '[jwt]').replace(BEARER_RE, '$1 [redacted]').replace(QUERY_SECRET_RE, '$1[redacted]').replace(EMAIL_RE, '[email]').replace(PHONE_RE, '[phone]');
 }
 

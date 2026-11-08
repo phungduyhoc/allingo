@@ -63,6 +63,7 @@ export class PasswordPolicyService {
 
   /** Số lần xuất hiện trong HIBP (0 = không thấy hoặc không gọi được) */
   async pwnedCount(password: string): Promise<number> {
+    // nosemgrep: ajinabraham.njsscan.crypto.crypto_node.node_sha1 – giao thức k-anonymity của Have I Been Pwned bắt buộc SHA-1 (chỉ gửi 5 ký tự đầu), không dùng để lưu mật khẩu (Argon2id)
     const sha1 = createHash('sha1').update(password, 'utf8').digest('hex').toUpperCase();
     const prefix = sha1.slice(0, 5);
     const suffix = sha1.slice(5);

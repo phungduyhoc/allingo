@@ -60,6 +60,7 @@ const QUERY_SECRET_RE = /([?&;#](?:access_token|refresh_token|id_token|token|cod
 export function scrubString(s: string): string {
   const v = s.length > MAX_STRING ? `${s.slice(0, MAX_STRING)}…` : s;
   if (v.length < 6) return v;
+  // nosemgrep: ajinabraham.njsscan.generic.hardcoded_secrets.node_secret – đây là bộ che bí mật (thay token/secret bằng nhãn), không chứa bí mật
   return v.replace(JWT_RE, '[jwt]').replace(BEARER_RE, '$1 [redacted]').replace(QUERY_SECRET_RE, '$1[redacted]').replace(EMAIL_RE, '[email]').replace(PHONE_RE, '[phone]');
 }
 

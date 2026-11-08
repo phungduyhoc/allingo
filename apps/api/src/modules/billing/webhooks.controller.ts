@@ -94,7 +94,9 @@ export class WebhooksController {
     this.assertMock();
     const ref = esc(strRecord(req.query).ref ?? '');
     const btn = (outcome: string, label: string, drop = false) =>
+      // nosemgrep: javascript.express.security.injection.raw-html-format.raw-html-format – cổng thanh toán giả (assertMock: chỉ dev/test); `ref` đã esc(), outcome/label là hằng
       `<form method="post" action="/v1/payments/mock/checkout"><input type="hidden" name="ref" value="${ref}"><input type="hidden" name="outcome" value="${outcome}">${drop ? '<input type="hidden" name="drop_webhook" value="1">' : ''}<button type="submit" data-outcome="${outcome}${drop ? '-drop' : ''}">${label}</button></form>`;
+    // nosemgrep: javascript.express.security.injection.raw-html-format.raw-html-format – cổng thanh toán giả (assertMock: chỉ dev/test); mọi giá trị động đã esc()
     const html = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mock payment gateway</title><style>body{font-family:system-ui;max-width:420px;margin:40px auto;padding:0 16px}button{width:100%;padding:12px;margin:6px 0;font-size:16px;cursor:pointer}</style></head><body><h1>Mock gateway</h1><p>ref: <code>${ref}</code></p>${btn('paid', 'Pay (success)')}${btn('failed', 'Fail')}${btn('cancelled', 'Cancel')}${btn('paid', 'Success but webhook lost (test payment.reconcile)', true)}</body></html>`;
     await reply.status(200).header('content-type', 'text/html; charset=utf-8').header('cache-control', 'no-store').send(html);
   }

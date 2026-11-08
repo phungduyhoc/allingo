@@ -114,6 +114,7 @@ export class SentryReporter implements ErrorReporter {
 
   capture(err: unknown, ctx: ErrorContext = {}): string | null {
     if (!this.enabled || !this.dsn) return null;
+    // nosemgrep: ajinabraham.njsscan.crypto.crypto_node.node_insecure_random_generator – lấy mẫu sự kiện lỗi theo tỉ lệ, không sinh bí mật
     if (this.opts.sampleRate !== undefined && this.opts.sampleRate < 1 && Math.random() > this.opts.sampleRate) return null;
     const event = this.buildEvent(err, ctx);
     const d = this.dsn;

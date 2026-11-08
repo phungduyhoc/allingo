@@ -224,3 +224,4 @@
 | A220 | Chỉ admin bật được MFA (người học thấy giải thích); không vẽ QR (API không trả ảnh) – hiển thị khoá + nút sao chép | Giao diện S12 | Thêm QR nếu API trả SVG |
 | A221 | Mobile: icon Thanh toán ẩn khỏi header (vào qua Cài đặt) để có chỗ cho nút Góp ý; tiêu đề "Chính sách quyền riêng tư" theo API; `/terms`, `/privacy` → 308 sang `/legal/*` | Giao diện S12 | – |
 | A222 | E2E API thật S12 đọc mã mời bằng SMTP sink cổng 1025 (không Mailpit trong phiên), tạm nâng `daily_invite_limit`; E2E MFA cấp vai trò admin tạm qua psql rồi gỡ | Môi trường phiên không Docker | CI có Mailpit |
+| A223 | Chính sách SAST: sửa lỗi thật trước; loại trừ Semgrep chỉ theo `docs/security/semgrep-exclusions.md` (loại cả luật/thư mục phải ghi bảng, ngoại lệ dòng bắt buộc rule-id + lý do), rà lại mỗi quý | Chủ dự án duyệt phương án (a) ngày 08/11/2026 (S154) | Thêm lint ReDoS cho regex mới |

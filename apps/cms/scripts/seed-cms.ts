@@ -13,6 +13,7 @@ import config from '../src/payload.config';
 import { parseImportJson } from '../src/lib/import-questions';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
+// nosemgrep: ajinabraham.njsscan.generic.hardcoded_secrets.node_password – mật khẩu tài khoản demo cục bộ (công khai trong README), script chặn chạy ở production
 const DEMO_PASSWORD = 'Allingo@2026';
 
 const USERS = [

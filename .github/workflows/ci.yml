@@ -137,14 +137,17 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # S11: chặn lỗ hổng high/critical (ngoại lệ có hạn ở pnpm-workspace.yaml auditConfig.ignoreGhsas – docs/security/pentest-1.md)
       - run: pnpm audit --audit-level high
-      # Semgrep: ruleset TS/Node/Next + JWT + secrets + luật riêng (.semgrep/allingo.yml)
+      # Semgrep: ruleset TS/Node/Next + JWT + secrets + luật riêng (.semgrep/allingo.yml). Chính sách loại trừ (chủ dự án duyệt
+      # 08/11/2026, docs/security/semgrep-exclusions.md): bỏ thư mục mock web (test double chỉ dev/test) và luật heuristic
+      # njsscan regex_dos (đã rà 28 regex – không có lượng từ lồng nhau); ngoại lệ từng dòng dùng `nosemgrep: <rule> – <lý do>`.
       - name: Semgrep
         run: |
           pipx install semgrep==1.183.0
           semgrep scan --metrics=off --error \
             --config p/typescript --config p/nodejsscan --config p/jwt --config p/secrets --config p/react --config p/nextjs \
             --config .semgrep/ \
-            --exclude 'node_modules' --exclude '**/*.test.ts' --exclude 'apps/web/e2e/**' \
+            --exclude 'node_modules' --exclude '**/*.test.ts' --exclude 'apps/web/e2e/**' --exclude 'apps/web/src/mock/**' \
+            --exclude-rule ajinabraham.njsscan.dos.regex_dos.regex_dos \
             --text --sarif-output=semgrep.sarif apps packages db
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
