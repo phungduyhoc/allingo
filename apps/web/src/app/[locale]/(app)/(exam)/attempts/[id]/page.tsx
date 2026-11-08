@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { AttemptPage } from '@/features/attempt/attempt-page';
+import { PageIntl } from '@/components/page-intl';
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
@@ -11,5 +12,9 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
 export default async function Page({ params }: { params: Promise<{ locale: string; id: string }> }) {
   const { locale, id } = await params;
   setRequestLocale(locale);
-  return <AttemptPage attemptId={id} />;
+  return (
+    <PageIntl page="(exam)/attempts/[id]">
+      <AttemptPage attemptId={id} />
+    </PageIntl>
+  );
 }

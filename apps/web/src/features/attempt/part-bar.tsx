@@ -29,7 +29,8 @@ export function PartBar({ items, activeIndex, onSelect, className }: { items: Pa
                 type="button"
                 onClick={() => onSelect(i)}
                 aria-current={active ? 'step' : undefined}
-                aria-label={t('partTabLabel', { part: label(it.code), answered: it.answered, total: it.total })}
+                // S11 (a11y – WCAG 2.5.3): tên truy cập bắt đầu bằng đúng chữ hiển thị ("Part 1 0/6") rồi mới tới tên đầy đủ
+                aria-label={t('partTabAria', { short: label(it.code, { short: true }), title: label(it.code).split(' · ').slice(1).join(' · ') || label(it.code), answered: it.answered, total: it.total })}
                 data-testid={`part-tab-${it.code}`}
                 data-active={active}
                 className={cn(
@@ -37,8 +38,8 @@ export function PartBar({ items, activeIndex, onSelect, className }: { items: Pa
                   active ? 'border-navy bg-navy text-navy-foreground dark:border-primary dark:bg-primary dark:text-primary-foreground' : 'border-border bg-card text-foreground hover:bg-muted',
                 )}
               >
-                {label(it.code, { short: true })}
-                <span className={cn('tabular rounded px-1.5 text-xs font-medium', active ? 'bg-white/15' : done ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground')} aria-hidden>
+                {label(it.code, { short: true })}{' '}
+                <span className={cn('tabular rounded px-1.5 text-xs font-medium', active ? 'bg-white/15' : done ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground')}>
                   {it.answered}/{it.total}
                 </span>
               </button>

@@ -26,7 +26,7 @@ export function SiteHeader() {
             {t('pricing')}
           </Link>
         </nav>
-        <nav aria-label="main" className="flex items-center gap-1 sm:gap-2">
+        <nav aria-label={t('aria.account')} className="flex items-center gap-1 sm:gap-2">
           <LocaleSwitcher className="hidden h-9 w-auto sm:block" />
           <ThemeToggle />
           <Link href="/login" className={cn(buttonVariants({ variant: 'ghost' }), 'hidden sm:inline-flex')}>

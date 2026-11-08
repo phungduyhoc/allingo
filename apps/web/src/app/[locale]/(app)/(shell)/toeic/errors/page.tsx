@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { ErrorsPage } from '@/features/errors/errors-page';
+import { PageIntl } from '@/components/page-intl';
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
@@ -14,8 +15,10 @@ export default async function Page({ params }: { params: Promise<{ locale: strin
   setRequestLocale(locale);
   // Bộ lọc nằm trên URL (?kind=&part=&status=&days=) → useSearchParams cần Suspense
   return (
-    <Suspense>
-      <ErrorsPage />
-    </Suspense>
+    <PageIntl page="(shell)/toeic/errors">
+      <Suspense>
+        <ErrorsPage />
+      </Suspense>
+    </PageIntl>
   );
 }

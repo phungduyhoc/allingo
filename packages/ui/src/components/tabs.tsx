@@ -9,6 +9,9 @@ interface TabsContextValue {
   value: string;
   setValue: (v: string) => void;
   baseId: string;
+  /** S11 (a11y): giá trị có TabsContent thật – `aria-controls` chỉ trỏ tới panel tồn tại (axe aria-valid-attr-value) */
+  panels: ReadonlySet<string>;
+  registerPanel: (v: string) => () => void;
 }
 const TabsContext = React.createContext<TabsContextValue | null>(null);
 
@@ -35,8 +38,19 @@ export function Tabs({ value, defaultValue, onValueChange, className, ...props }
     },
     [value, onValueChange],
   );
+  const [panels, setPanels] = React.useState<ReadonlySet<string>>(() => new Set());
+  const registerPanel = React.useCallback((v: string) => {
+    setPanels((p) => (p.has(v) ? p : new Set([...p, v])));
+    return () =>
+      setPanels((p) => {
+        if (!p.has(v)) return p;
+        const n = new Set(p);
+        n.delete(v);
+        return n;
+      });
+  }, []);
   return (
-    <TabsContext.Provider value={{ value: current, setValue, baseId }}>
+    <TabsContext.Provider value={{ value: current, setValue, baseId, panels, registerPanel }}>
       <div data-slot="tabs" className={cn('flex flex-col gap-3', className)} {...props} />
     </TabsContext.Provider>
   );
@@ -79,7 +93,7 @@ export function TabsTrigger({ value, className, ...props }: React.ComponentProps
       role="tab"
       id={`${ctx.baseId}-tab-${value}`}
       aria-selected={selected}
-      aria-controls={`${ctx.baseId}-panel-${value}`}
+      aria-controls={ctx.panels.has(value) ? `${ctx.baseId}-panel-${value}` : undefined}
       tabIndex={selected ? 0 : -1}
       data-state={selected ? 'active' : 'inactive'}
       onClick={() => ctx.setValue(value)}
@@ -96,6 +110,8 @@ export function TabsTrigger({ value, className, ...props }: React.ComponentProps
 export function TabsContent({ value, className, ...props }: React.ComponentProps<'div'> & { value: string }) {
   const ctx = useTabs();
   const selected = ctx.value === value;
+  const { registerPanel } = ctx;
+  React.useEffect(() => registerPanel(value), [registerPanel, value]);
   return (
     <div
       role="tabpanel"

@@ -171,3 +171,14 @@ html[data-consent] [data-consent-banner]:not([data-open='true']) {
 .prose-blog img {
   border-radius: 12px;
 }
+
+/*
+ * S11 (a11y – axe color-contrast): màu "rich colors" mặc định của sonner ở giao diện sáng không đạt 4.5:1 (chữ xanh lá/cam/đỏ
+ * trên nền nhạt ~3–4.4:1) → chữ đậm hơn cùng sắc độ (≥ 6:1). Tiền tố `html` thắng CSS sonner chèn lúc chạy (cùng độ ưu tiên).
+ */
+html [data-sonner-toaster][data-sonner-theme='light'] {
+  --success-text: hsl(140, 100%, 22%);
+  --info-text: hsl(210, 92%, 35%);
+  --warning-text: hsl(31, 92%, 28%);
+  --error-text: hsl(360, 100%, 36%);
+}

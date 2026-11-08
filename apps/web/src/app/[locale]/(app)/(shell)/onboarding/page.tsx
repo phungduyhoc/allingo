@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { OnboardingPage } from '@/features/onboarding/onboarding-page';
+import { PageIntl } from '@/components/page-intl';
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
@@ -14,8 +15,10 @@ export default async function Page({ params }: { params: Promise<{ locale: strin
   setRequestLocale(locale);
   // useSearchParams (?step= (quay lại từ màn chẩn đoán)) cần Suspense boundary
   return (
-    <Suspense>
-      <OnboardingPage />
-    </Suspense>
+    <PageIntl page="(shell)/onboarding">
+      <Suspense>
+        <OnboardingPage />
+      </Suspense>
+    </PageIntl>
   );
 }

@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { CardSkeleton } from '@/components/states';
 import { AdminBillingPage } from '@/features/admin/admin-billing-page';
+import { PageIntl } from '@/components/page-intl';
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
@@ -14,8 +15,10 @@ export default async function Page({ params }: { params: Promise<{ locale: strin
   const { locale, tab } = await params;
   setRequestLocale(locale);
   return (
-    <React.Suspense fallback={<CardSkeleton lines={6} />}>
-      <AdminBillingPage tab={tab?.[0] ?? null} />
-    </React.Suspense>
+    <PageIntl page="(shell)/admin/billing/[[...tab]]">
+      <React.Suspense fallback={<CardSkeleton lines={6} />}>
+        <AdminBillingPage tab={tab?.[0] ?? null} />
+      </React.Suspense>
+    </PageIntl>
   );
 }

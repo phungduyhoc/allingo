@@ -6,7 +6,7 @@ import { ImageResponse } from 'next/og';
  */
 export const OG_SIZE = { width: 1200, height: 630 };
 
-export function ogImage(o: { title: string; kicker?: string | null; footer?: string | null }): ImageResponse {
+export function ogImage(o: { title: string; tagline: string; kicker?: string | null; footer?: string | null }): ImageResponse {
   const title = o.title.length > 110 ? `${o.title.slice(0, 107)}…` : o.title;
   return new ImageResponse(
     (
@@ -15,7 +15,7 @@ export function ogImage(o: { title: string; kicker?: string | null; footer?: str
           <div style={{ width: 56, height: 56, borderRadius: 14, background: '#E6B325', color: '#0B1F4B', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34 }}>A</div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <span style={{ fontSize: 34, letterSpacing: -0.5 }}>Allingo</span>
-            <span style={{ fontSize: 20, color: 'rgba(255,255,255,0.7)' }}>Ngoại ngữ cho tất cả</span>
+            <span style={{ fontSize: 20, color: 'rgba(255,255,255,0.7)' }}>{o.tagline}</span>
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>

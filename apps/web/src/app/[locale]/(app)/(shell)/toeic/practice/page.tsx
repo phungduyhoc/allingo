@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { PracticePage } from '@/features/practice/practice-page';
+import { PageIntl } from '@/components/page-intl';
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
@@ -14,8 +15,10 @@ export default async function Page({ params }: { params: Promise<{ locale: strin
   setRequestLocale(locale);
   // useSearchParams (?section= từ gợi ý chẩn đoán) cần Suspense boundary để trang vẫn prerender tĩnh
   return (
-    <Suspense>
-      <PracticePage />
-    </Suspense>
+    <PageIntl page="(shell)/toeic/practice">
+      <Suspense>
+        <PracticePage />
+      </Suspense>
+    </PageIntl>
   );
 }

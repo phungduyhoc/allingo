@@ -1,5 +1,7 @@
 import { NextIntlClientProvider } from 'next-intl';
-import { setRequestLocale } from 'next-intl/server';
+import { getMessages, setRequestLocale } from 'next-intl/server';
+import { pickMessages } from '@/lib/i18n-scope';
+import { APP_LAYOUT_MESSAGES } from '@/lib/i18n-app-scopes';
 import { AuthGate } from '@/features/auth/auth-gate';
 import { QuotaToastListener } from '@/features/quota/quota-toast-listener';
 import { RealtimeProvider } from '@/features/realtime/realtime-provider';
@@ -8,9 +10,10 @@ export default async function AppLayout({ children, params }: { children: React.
   const { locale } = await params;
   // Giữ render tĩnh (không đọc headers) khi NextIntlClientProvider lấy thông điệp
   setRequestLocale(locale);
-  // Khu vực học: toàn bộ thông điệp (S11: tách theo trang)
+  // S11: chỉ thông điệp của lớp khu vực học (AuthGate, AppShell, gia sư, thông báo…); từng trang cấp phần của mình qua <PageIntl>
+  const messages = pickMessages(await getMessages(), APP_LAYOUT_MESSAGES);
   return (
-    <NextIntlClientProvider>
+    <NextIntlClientProvider messages={messages}>
       <AuthGate>
         <RealtimeProvider>{children}</RealtimeProvider>
         <QuotaToastListener />

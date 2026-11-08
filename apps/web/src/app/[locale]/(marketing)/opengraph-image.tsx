@@ -9,5 +9,6 @@ export const alt = 'Allingo';
 export default async function Image({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: 'marketing' });
-  return ogImage({ title: t('ogTitle'), kicker: t('ogKicker'), footer: t('ogFooter') });
+  const tc = await getTranslations({ locale, namespace: 'common' });
+  return ogImage({ tagline: tc('tagline'), title: t('ogTitle'), kicker: t('ogKicker'), footer: t('ogFooter') });
 }

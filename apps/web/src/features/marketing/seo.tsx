@@ -1,11 +1,16 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { serializeJsonLd, type JsonLd } from '@/lib/seo/json-ld';
 import { alternatesFor, absoluteUrl } from '@/lib/seo/site';
 
-/** <script type="application/ld+json"> an toàn (serializeJsonLd escape `<`, `>`, `&`) */
-export function JsonLdScript({ data, id }: { data: JsonLd | JsonLd[] | null | undefined; id?: string }) {
+/**
+ * <script type="application/ld+json"> an toàn (serializeJsonLd escape `<`, `>`, `&`). S11: mang nonce CSP của request (khối dữ liệu
+ * không thực thi nhưng giữ quy tắc "mọi script inline có nonce" – Semgrep/ZAP không báo).
+ */
+export async function JsonLdScript({ data, id }: { data: JsonLd | JsonLd[] | null | undefined; id?: string }) {
   if (!data || (Array.isArray(data) && !data.length)) return null;
-  return <script type="application/ld+json" id={id} data-testid="json-ld" dangerouslySetInnerHTML={{ __html: serializeJsonLd(data) }} />;
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
+  return <script type="application/ld+json" id={id} nonce={nonce} data-testid="json-ld" dangerouslySetInnerHTML={{ __html: serializeJsonLd(data) }} />;
 }
 
 /** Metadata trang marketing: tiêu đề, mô tả, canonical + hreflang, Open Graph/Twitter (ảnh OG lấy từ opengraph-image theo route) */

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { TestSetsPage } from '@/features/test-sets/test-sets-page';
+import { PageIntl } from '@/components/page-intl';
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
@@ -12,5 +13,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const { locale } = await params;
   const { kind } = await searchParams;
   setRequestLocale(locale);
-  return <TestSetsPage initialKind={kind} />;
+  return (
+    <PageIntl page="(shell)/toeic/test-sets">
+      <TestSetsPage initialKind={kind} />
+    </PageIntl>
+  );
 }

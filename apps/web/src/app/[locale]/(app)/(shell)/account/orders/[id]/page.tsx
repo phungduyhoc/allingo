@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { OrderDetail } from '@/features/account/order-detail';
+import { PageIntl } from '@/components/page-intl';
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
@@ -12,6 +13,8 @@ export default async function Page({ params }: { params: Promise<{ locale: strin
   const { locale, id } = await params;
   setRequestLocale(locale);
   return (
-    <OrderDetail orderId={id} />
+    <PageIntl page="(shell)/account/orders/[id]">
+      <OrderDetail orderId={id} />
+    </PageIntl>
   );
 }
