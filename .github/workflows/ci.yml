@@ -108,6 +108,10 @@ jobs:
       - run: pnpm --filter './packages/*' build
       - run: pnpm --filter @allingo/web exec playwright install --with-deps chromium
       - run: pnpm test:e2e
+        env:
+          # Chromium đầy đủ ở chế độ headless mới (giống Chrome dùng khi chạy cục bộ): chromium-headless-shell mặc định luôn
+          # trả Notification.permission = "denied" dù đã grantPermissions → test Web Push đỏ
+          E2E_CHROME_CHANNEL: chromium
       - uses: actions/upload-artifact@v4
         if: always()
         with:
