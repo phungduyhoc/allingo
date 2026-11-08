@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq, sql } from 'drizzle-orm';
+import { CACHE_METRICS } from '../../../shared/telemetry/metrics.js';
 import { schema } from '@allingo/db';
 import type { ExplainMcqOutput } from '@allingo/schemas';
 import { DbService, type DbOrTx } from '../../../shared/db/db.module.js';
@@ -8,6 +9,8 @@ import { RedisService } from '../../../shared/cache/redis.module.js';
 const { aiExplanationCache } = schema;
 const NONE = '_';
 const TTL_SECONDS = 3600;
+/** Đánh dấu âm (chưa có giải thích) – put() ghi đè ngay khi có giải thích mới */
+const NEGATIVE_TTL_SECONDS = 300;
 
 /**
  * Cache giải thích (S5): khoá logic = (question_version_id, chosen_option, locale) theo `cache_key` của explain_mcq trong
@@ -28,7 +31,8 @@ export class ExplanationCacheService {
 
   async get(questionVersionId: string, chosenOption: string | null, locale: string, promptVersionId: string): Promise<{ content: ExplainMcqOutput; promptVersionId: string } | null> {
     const cached = await this.redis.safe((r) => r.get(this.rkey(questionVersionId, chosenOption, locale, promptVersionId)));
-    if (cached) {
+    if (cached && cached !== '~') {
+      CACHE_METRICS.requests.inc({ cache: 'explain', result: 'hit' });
       // Đếm hit cả khi trúng Redis để báo cáo admin phản ánh đúng số lần không tốn model (không chờ kết quả)
       void this.bumpHit(questionVersionId, chosenOption, locale);
       return JSON.parse(cached) as { content: ExplainMcqOutput; promptVersionId: string };
@@ -38,11 +42,56 @@ export class ExplanationCacheService {
       .from(aiExplanationCache)
       .where(and(eq(aiExplanationCache.questionVersionId, questionVersionId), eq(aiExplanationCache.chosenOption, chosenOption ?? NONE), eq(aiExplanationCache.locale, locale)))
       .limit(1);
-    if (!row || row.promptVersionId !== promptVersionId) return null;
+    if (!row || row.promptVersionId !== promptVersionId) {
+      CACHE_METRICS.requests.inc({ cache: 'explain', result: 'miss' });
+      return null;
+    }
+    CACHE_METRICS.requests.inc({ cache: 'explain', result: 'hit' });
     const value = { content: row.content as ExplainMcqOutput, promptVersionId };
     await this.redis.safe((r) => r.set(this.rkey(questionVersionId, chosenOption, locale, promptVersionId), JSON.stringify(value), 'EX', TTL_SECONDS));
     await this.dbs.db.update(aiExplanationCache).set({ hitCount: sql`${aiExplanationCache.hitCount} + 1` }).where(eq(aiExplanationCache.id, row.id));
     return value;
+  }
+
+  /**
+   * Tra nhiều khoá một lần (S11 – sửa N+1 ở GET /attempts/{id}/review: 200 câu × (Redis GET + DB SELECT + UPDATE hit_count)).
+   * Redis MGET → phần thiếu: MỘT truy vấn DB theo (question_version_id, chosen_option, locale) → ghi lại Redis (pipeline);
+   * không tìm thấy → đánh dấu âm 5 phút (`~`) để lượt xem lại sau không chạm DB. KHÔNG tăng hit_count (hiển thị trong Review
+   * không phải lượt giải thích – báo cáo chi phí chỉ đếm POST /ai/explain).
+   */
+  async getMany(keys: Array<{ questionVersionId: string; chosenOption: string | null }>, locale: string, promptVersionId: string): Promise<Map<string, { content: ExplainMcqOutput; promptVersionId: string }>> {
+    const out = new Map<string, { content: ExplainMcqOutput; promptVersionId: string }>();
+    if (!keys.length) return out;
+    const uniq = [...new Map(keys.map((k) => [`${k.questionVersionId}:${k.chosenOption ?? NONE}`, k])).values()];
+    const rkeys = uniq.map((k) => this.rkey(k.questionVersionId, k.chosenOption, locale, promptVersionId));
+    const cached = (await this.redis.safe((r) => r.mget(...rkeys))) ?? rkeys.map(() => null);
+    const missing: typeof uniq = [];
+    uniq.forEach((k, i) => {
+      const v = cached[i];
+      if (v === '~') return;
+      if (v) out.set(`${k.questionVersionId}:${k.chosenOption ?? NONE}`, JSON.parse(v) as { content: ExplainMcqOutput; promptVersionId: string });
+      else missing.push(k);
+    });
+    CACHE_METRICS.requests.inc({ cache: 'explain_review', result: 'hit' }, uniq.length - missing.length);
+    CACHE_METRICS.requests.inc({ cache: 'explain_review', result: 'miss' }, missing.length);
+    if (!missing.length) return out;
+    const rows = await this.dbs.db
+      .select({ qv: aiExplanationCache.questionVersionId, opt: aiExplanationCache.chosenOption, content: aiExplanationCache.content, pv: aiExplanationCache.promptVersionId })
+      .from(aiExplanationCache)
+      .where(and(eq(aiExplanationCache.locale, locale), sql`(${aiExplanationCache.questionVersionId}, ${aiExplanationCache.chosenOption}) in (${sql.join(missing.map((k) => sql`(${k.questionVersionId}::uuid, ${k.chosenOption ?? NONE})`), sql`, `)})`));
+    const found = new Map(rows.filter((r) => r.pv === promptVersionId).map((r) => [`${r.qv}:${r.opt}`, { content: r.content as ExplainMcqOutput, promptVersionId }]));
+    await this.redis.safe((r) => {
+      const p = r.pipeline();
+      for (const k of missing) {
+        const id = `${k.questionVersionId}:${k.chosenOption ?? NONE}`;
+        const v = found.get(id);
+        if (v) p.set(this.rkey(k.questionVersionId, k.chosenOption, locale, promptVersionId), JSON.stringify(v), 'EX', TTL_SECONDS);
+        else p.set(this.rkey(k.questionVersionId, k.chosenOption, locale, promptVersionId), '~', 'EX', NEGATIVE_TTL_SECONDS);
+      }
+      return p.exec();
+    });
+    for (const [id, v] of found) out.set(id, v);
+    return out;
   }
 
   private async bumpHit(questionVersionId: string, chosenOption: string | null, locale: string): Promise<void> {

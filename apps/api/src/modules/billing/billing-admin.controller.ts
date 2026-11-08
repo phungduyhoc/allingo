@@ -36,6 +36,7 @@ import {
   type ReconciliationRunInput,
 } from '@allingo/schemas';
 import { CurrentUser, Roles, type AuthUser } from '../../shared/auth/auth.guard.js';
+import { NotFound } from '../../shared/http/errors.js';
 import { JobsService } from '../../shared/queue/jobs.service.js';
 import { ApiZod, ZodBody, ZodParams, ZodQuery } from '../../shared/http/zod.js';
 import { BillingAdminService } from './billing-admin.service.js';
@@ -141,7 +142,23 @@ export class BillingAdminController {
     return { job, job_id: d.jobId, mode: d.mode, status: 'queued' };
   }
 
-  /** Bật/tắt feature flag theo quy tắc (`ff.billing.checkout`…) – audit `flag.update` */
+  /** v1.1 – S11: danh sách feature flag (kèm rules, `public` = có trong GET /flags) */
+  @Get('flags')
+  @ApiZod({ responses: { 200: z.record(z.string(), z.unknown()) } })
+  async listFlags() {
+    return { data: await this.flags.list() };
+  }
+
+  /** v1.1 – S11: một feature flag; chưa có trong DB → 404 */
+  @Get('flags/:key')
+  @ApiZod({ responses: { 200: z.record(z.string(), z.unknown()), 404: 'empty' } })
+  async getFlag(@ZodParams(flagParam) p: z.infer<typeof flagParam>) {
+    const f = await this.flags.getOne(p.key);
+    if (!f) throw new NotFound('feature_flag', p.key);
+    return f;
+  }
+
+  /** Bật/tắt feature flag theo quy tắc (`ff.billing.checkout`…) – audit `flag.update`; S11: xoá cache Redis + pub/sub tới replica */
   @Put('flags/:key')
   @ApiZod({ body: flagBody, responses: { 200: z.record(z.string(), z.unknown()) } })
   setFlag(@CurrentUser() user: AuthUser, @ZodParams(flagParam) p: z.infer<typeof flagParam>, @ZodBody(flagBody) body: z.infer<typeof flagBody>, @Req() req: FastifyRequest) {

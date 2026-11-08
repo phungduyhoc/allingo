@@ -1,13 +1,20 @@
-import pino, { type Logger } from 'pino';
+import pino, { type Logger, type LoggerOptions } from 'pino';
 import { type LoggerService } from '@nestjs/common';
 import type { Env } from '../../config/env.js';
+import { redactDeep, redactString } from './redact.js';
+import { currentContext, currentTraceId } from './request-context.js';
 
-/** Các khoá bị che trong log (CLAUDE.md §9: không email/phone/token/nội dung bài làm) */
-const REDACT_PATHS = [
+/**
+ * Các đường dẫn che nhanh của pino (lớp 1). Lớp 2 (S11): `formatters.log` che sâu theo tên khoá + giá trị chuỗi
+ * (email/phone/JWT/Bearer/tham số bí mật) và `hooks.logMethod` che chuỗi message – xem redact.ts (CLAUDE.md §9).
+ */
+export const REDACT_PATHS = [
   'req.headers.authorization',
   'req.headers.cookie',
   'headers.authorization',
   'headers.cookie',
+  'headers["set-cookie"]',
+  'headers["x-internal-token"]',
   '*.password',
   '*.password_hash',
   '*.refresh_token',
@@ -23,15 +30,39 @@ const REDACT_PATHS = [
   'body.text',
 ];
 
-let root: Logger | null = null;
-
-export function createRootLogger(env: Pick<Env, 'LOG_LEVEL' | 'APP_ENV'>): Logger {
-  if (root) return root;
-  root = pino({
+/** Tuỳ chọn pino dùng chung API/worker và test redaction (không transport) */
+export function buildLoggerOptions(env: Pick<Env, 'LOG_LEVEL' | 'APP_ENV'>, service = 'allingo-api'): LoggerOptions {
+  return {
     level: env.LOG_LEVEL,
-    base: { service: 'allingo-api', env: env.APP_ENV },
+    base: { service, env: env.APP_ENV },
     redact: { paths: REDACT_PATHS, censor: '[redacted]' },
     timestamp: pino.stdTimeFunctions.isoTime,
+    // trace_id của request/job hiện hành vào mọi dòng log (tương quan Loki ↔ Tempo)
+    mixin() {
+      const traceId = currentTraceId();
+      const ctx = currentContext();
+      return traceId ? { trace_id: traceId, ...(ctx?.spanId ? { span_id: ctx.spanId } : {}) } : {};
+    },
+    formatters: {
+      log(object) {
+        return redactDeep(object);
+      },
+    },
+    hooks: {
+      logMethod(args, method) {
+        const scrubbed = args.map((a) => (typeof a === 'string' ? redactString(a) : a)) as Parameters<typeof method>;
+        return method.apply(this, scrubbed);
+      },
+    },
+  };
+}
+
+let root: Logger | null = null;
+
+export function createRootLogger(env: Pick<Env, 'LOG_LEVEL' | 'APP_ENV'>, service = 'allingo-api'): Logger {
+  if (root) return root;
+  root = pino({
+    ...buildLoggerOptions(env, service),
     ...(env.APP_ENV === 'development' ? { transport: { target: 'pino-pretty', options: { colorize: true, translateTime: 'HH:MM:ss', ignore: 'pid,hostname,service,env' } } } : {}),
   });
   return root;

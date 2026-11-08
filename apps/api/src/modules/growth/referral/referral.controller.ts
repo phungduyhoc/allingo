@@ -37,6 +37,7 @@ export class ReferralController {
   @ApiZod({ query: utmQuery, responses: { 200: 'empty' } })
   async share(@ZodParams(codeParam) p: z.infer<typeof codeParam>, @ZodQuery(utmQuery) q: z.infer<typeof utmQuery>, @Res() reply: FastifyReply) {
     const html = await this.referrals.landingHtml(p.code, q);
-    return reply.status(200).header('content-type', 'text/html; charset=utf-8').header('cache-control', 'public, max-age=300').send(html);
+    // S11: trang chỉ có thẻ meta (OG + refresh) – CSP khoá script/style/frame (chống XSS phản chiếu nếu escape sót)
+    return reply.status(200).header('content-type', 'text/html; charset=utf-8').header('cache-control', 'public, max-age=300').header('content-security-policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'").send(html);
   }
 }

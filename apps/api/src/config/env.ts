@@ -20,6 +20,9 @@ export const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   DATABASE_URL_REPLICA: z.string().optional(),
   DB_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
+  // S11 – đo độ trễ mọi truy vấn (histogram db_query_duration_seconds) + log/counter truy vấn chậm hơn ngưỡng (0 = tắt log)
+  DB_QUERY_METRICS: bool(true),
+  DB_SLOW_QUERY_MS: z.coerce.number().int().min(0).max(60_000).default(200),
 
   REDIS_URL: z.string().default('redis://localhost:6379'),
   QUEUE_PREFIX: z.string().default('allingo'),
@@ -56,6 +59,21 @@ export const envSchema = z.object({
   CORS_ORIGINS: z.string().default('http://localhost:3000,http://localhost:3001'),
   TRUST_PROXY: bool(false),
   RATE_LIMIT_MAX: z.coerce.number().int().default(300),
+  // S11 – giới hạn tốc độ: IP bỏ qua (dấu phẩy; healthcheck nội bộ/test), store Redis cho giới hạn toàn cục, token bucket theo route
+  RATE_LIMIT_ALLOWLIST: z.string().default('127.0.0.1,::1'),
+  RATE_LIMIT_REDIS: bool(true),
+  RATE_LIMIT_BUCKETS_ENABLED: bool(true),
+  RATE_LIMIT_BUCKET_MULTIPLIER: z.coerce.number().min(0.01).max(1000).default(1),
+  // S11 – CSRF cho cookie-auth (kiểm Origin/Sec-Fetch-Site/Referer cho phương thức ghi) + origin tin cậy bổ sung (dấu phẩy)
+  CSRF_PROTECTION: bool(true),
+  CSRF_TRUSTED_ORIGINS: z.string().optional(),
+  SECURITY_HSTS_PRELOAD: bool(false),
+  // S11 – chống dò mật khẩu: N lần sai / cửa sổ → khoá đăng nhập theo email (áp như nhau cho email không tồn tại)
+  LOGIN_MAX_FAILURES: z.coerce.number().int().min(3).max(100).default(10),
+  LOGIN_FAILURE_WINDOW_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
+  LOGIN_LOCK_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
+  // S11 – thời gian phản hồi tối thiểu (ms, + jitter ≤ 10 %) cho login/register/otp – chống enumerate theo thời gian; 0 = tắt
+  AUTH_MIN_RESPONSE_MS: z.coerce.number().int().min(0).max(5000).default(400),
   BODY_LIMIT_BYTES: z.coerce.number().int().default(2 * 1024 * 1024),
   INTERNAL_API_TOKEN: z.string().default('dev-internal-token'),
 
@@ -226,7 +244,20 @@ export const envSchema = z.object({
   OTEL_ENABLED: bool(false),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().default('http://localhost:4318'),
   OTEL_SERVICE_NAME: z.string().default('allingo-api'),
+  // S11 – tỉ lệ lấy mẫu trace (0–1, ParentBased TraceIdRatio); metrics/log không bị ảnh hưởng
+  OTEL_TRACES_SAMPLER_RATIO: z.coerce.number().min(0).max(1).default(1),
+  // S11 – Sentry (adapter Envelope HTTP, không SDK): trống → tắt; release = SENTRY_RELEASE | GIT_SHA | allingo@<version>
   SENTRY_DSN: z.string().optional(),
+  SENTRY_RELEASE: z.string().optional(),
+  SENTRY_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1),
+  // S11 – cổng HTTP metrics của worker (GET /metrics, cùng token với API); 0 = tắt
+  WORKER_METRICS_PORT: z.coerce.number().int().min(0).max(65535).default(9464),
+  // S11 – cache trong process câu theo question_version_id (giây; 0 = tắt) – Review/đề lớn không lặp truy vấn catalog
+  CATALOG_CACHE_TTL_SECONDS: z.coerce.number().int().min(0).max(3600).default(30),
+  // S11 – feature flag: TTL cache Redis (giây; PUT /admin/flags xoá ngay + pub/sub tới replica khác) – kill-switch hiệu lực < 60 s
+  FLAGS_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(300).default(15),
+  // S11 – backpressure hàng đợi: khi grading có ≥ N job chờ → tạm dừng worker notify/analytics tới khi grading ≤ N/2
+  QUEUE_BACKPRESSURE_GRADING_DEPTH: z.coerce.number().int().min(1).max(1_000_000).default(200),
 });
 
 export type Env = z.infer<typeof envSchema>;

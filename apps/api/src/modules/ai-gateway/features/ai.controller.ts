@@ -9,6 +9,8 @@ import { ExamLocked } from '../../../shared/exam/exam-mode.js';
 import { writeSse } from '../../../shared/http/sse.js';
 import { ExplainService } from './explain.service.js';
 import { FeedbackService } from './feedback.service.js';
+import { RateLimit } from '../../../shared/http/rate-limit.js';
+import { KillSwitch } from '../../billing/index.js';
 
 export { writeSse };
 
@@ -23,6 +25,8 @@ export class AiController {
   @Post('explain')
   @HttpCode(200)
   @ExamLocked()
+  @KillSwitch('ff.ai.explain')
+  @RateLimit('explain')
   @ApiZod({ body: explainInputSchema, responses: { 200: explanationSchema, 402: 'empty', 403: 'empty', 429: 'empty' } })
   async explainQuestion(@CurrentUser() user: AuthUser, @ZodBody(explainInputSchema) body: ExplainInput, @Req() req: FastifyRequest, @Res() reply: FastifyReply) {
     const r = await this.explain.explain({ userId: user.id, questionVersionId: body.question_version_id, chosenOption: body.chosen_option ?? null, attemptId: body.attempt_id ?? null, traceId: (req as FastifyRequest & { traceId?: string }).traceId });

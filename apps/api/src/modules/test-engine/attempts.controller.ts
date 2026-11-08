@@ -5,6 +5,7 @@ import { attemptAnswersPutSchema, attemptCreateSchema, attemptEventSchema, attem
 import { CurrentUser, type AuthUser } from '../../shared/auth/auth.guard.js';
 import { ApiZod, ZodBody, ZodParams, ZodQuery } from '../../shared/http/zod.js';
 import { AttemptsService } from './attempts.service.js';
+import { RateLimit } from '../../shared/http/rate-limit.js';
 
 const attemptParam = z.object({ attemptId: z.uuid() });
 // Query string: 'false'/'0' phải là false (z.coerce.boolean coi mọi chuỗi khác rỗng là true)
@@ -44,6 +45,7 @@ export class AttemptsController {
   }
 
   @Post('attempts/:attemptId/submit')
+  @RateLimit('submit')
   @HttpCode(200)
   @ApiZod({ responses: { 200: attemptResultSchema } })
   submit(@CurrentUser() user: AuthUser, @ZodParams(attemptParam) p: z.infer<typeof attemptParam>) {

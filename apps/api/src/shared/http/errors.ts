@@ -61,13 +61,23 @@ export class ExamModeLocked extends AppError {
     super('exam_mode_locked', 'AI features are locked while an exam attempt is in progress', HttpStatus.FORBIDDEN, { attempt_id: attemptId });
   }
 }
+/**
+ * 503 `feature_disabled` (kill-switch – S11): `details = { flag, message_key: 'errors.feature_disabled', retry_after_sec }`.
+ * Web dịch theo `code`/`message_key` (không chuỗi cứng); header `Retry-After` do exception filter đặt từ `retry_after_sec`.
+ */
 export class FeatureDisabled extends AppError {
   constructor(flag: string) {
-    super('feature_disabled', 'Feature is disabled', HttpStatus.SERVICE_UNAVAILABLE, { flag });
+    super('feature_disabled', 'Feature is disabled', HttpStatus.SERVICE_UNAVAILABLE, { flag, message_key: 'errors.feature_disabled', retry_after_sec: 60 });
   }
 }
 export class RateLimited extends AppError {
-  constructor(retryAfterSec?: number) {
-    super('rate_limited', 'Too many requests', HttpStatus.TOO_MANY_REQUESTS, retryAfterSec ? { retry_after_sec: retryAfterSec } : undefined);
+  constructor(retryAfterSec?: number, extra?: Record<string, unknown>) {
+    super('rate_limited', 'Too many requests', HttpStatus.TOO_MANY_REQUESTS, retryAfterSec || extra ? { ...(retryAfterSec ? { retry_after_sec: retryAfterSec } : {}), ...(extra ?? {}) } : undefined);
+  }
+}
+/** 403 `forbidden` do kiểm tra nguồn gốc request ghi bằng cookie (CSRF – S11): `details.reason = 'csrf_origin_mismatch'` */
+export class CsrfRejected extends AppError {
+  constructor() {
+    super('forbidden', 'Cross-site request rejected', HttpStatus.FORBIDDEN, { reason: 'csrf_origin_mismatch' });
   }
 }

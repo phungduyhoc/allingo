@@ -20,7 +20,7 @@ export class MetricsController {
 
   @Public()
   @Get()
-  scrape(@Req() req: FastifyRequest, @Res({ passthrough: true }) reply: FastifyReply): string {
+  async scrape(@Req() req: FastifyRequest, @Res({ passthrough: true }) reply: FastifyReply): Promise<string> {
     const expected = this.env.METRICS_TOKEN || this.env.INTERNAL_API_TOKEN;
     const auth = req.headers.authorization;
     const bearer = typeof auth === 'string' && auth.startsWith('Bearer ') ? auth.slice(7) : '';
@@ -29,6 +29,6 @@ export class MetricsController {
     if (!ok) throw new Unauthorized('Invalid metrics token');
     // Đặt header chỉ khi thành công (lỗi đi qua exception filter dạng JSON)
     void reply.header('content-type', 'text/plain; version=0.0.4; charset=utf-8').header('cache-control', 'no-store');
-    return metrics.render();
+    return metrics.collectAndRender();
   }
 }

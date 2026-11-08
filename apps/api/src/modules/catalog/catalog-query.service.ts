@@ -1,10 +1,21 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, inArray, param, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import { isSpokenTextSection, questionContentSchema, redactSpokenText, toPublicContent, type LocalizedText, type ProgramCode, type QuestionContent, type QuestionPublic, type QuestionTypeCode, type TranscriptHighlight } from '@allingo/schemas';
 import { DbService, type DbOrTx } from '../../shared/db/db.module.js';
 import { StorageService } from '../../shared/storage/storage.module.js';
 import { NotFound } from '../../shared/http/errors.js';
+import { ENV, type Env } from '../../config/env.js';
+import { CACHE_METRICS } from '../../shared/telemetry/metrics.js';
+
+/** Đóng băng sâu (chỉ APP_ENV=test) – phát hiện code sửa nhầm đối tượng dùng chung trong cache câu hỏi */
+function deepFreeze<T>(o: T): T {
+  if (o && typeof o === 'object' && !Object.isFrozen(o)) {
+    Object.freeze(o);
+    for (const v of Object.values(o as Record<string, unknown>)) deepFreeze(v);
+  }
+  return o;
+}
 
 const { catalogPrograms, catalogSections, catalogSkills, catalogTestSets, catalogTestSetItems, catalogTestSetSections, catalogQuestions, catalogQuestionVersions, catalogPassages, catalogMediaAssets, catalogQuestionSubskills, catalogSubskills, catalogTopics } = schema;
 
@@ -114,9 +125,17 @@ export interface SectionRow {
 
 @Injectable()
 export class CatalogQueryService {
+  /**
+   * S11 – cache trong process cho câu theo question_version_id (nội dung phiên bản bất biến – CLAUDE.md §5.9): bỏ lặp truy vấn
+   * 6 bảng + map hàng của Drizzle cho Review/đề 200 câu. TTL ngắn (CATALOG_CACHE_TTL_SECONDS) vì thống kê cộng đồng
+   * (exposure/correct) và passage có thể đổi; chỉ dùng khi đọc qua pool (trong transaction luôn đọc DB).
+   */
+  private readonly versionCache = new Map<string, { at: number; q: LoadedQuestion }>();
+
   constructor(
     private readonly dbs: DbService,
     private readonly storage: StorageService,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   async programs() {
@@ -240,6 +259,36 @@ export class CatalogQueryService {
   /** Nạp theo question_version_id (review/explain) */
   async loadByVersionIds(versionIds: string[], db: DbOrTx = this.dbs.db): Promise<Map<string, LoadedQuestion>> {
     if (versionIds.length === 0) return new Map();
+    const ttlMs = this.env.CATALOG_CACHE_TTL_SECONDS * 1000;
+    if (db !== this.dbs.db || ttlMs <= 0) return this.loadByVersionIdsDb(versionIds, db);
+    const now = Date.now();
+    const out = new Map<string, LoadedQuestion>();
+    const missing: string[] = [];
+    for (const id of new Set(versionIds)) {
+      const hit = this.versionCache.get(id);
+      if (hit && now - hit.at < ttlMs) out.set(id, hit.q);
+      else missing.push(id);
+    }
+    CACHE_METRICS.requests.inc({ cache: 'question_version', result: 'hit' }, out.size);
+    CACHE_METRICS.requests.inc({ cache: 'question_version', result: 'miss' }, missing.length);
+    if (missing.length) {
+      const fresh = await this.loadByVersionIdsDb(missing, db);
+      if (this.versionCache.size + fresh.size > 20_000) this.versionCache.clear();
+      for (const [id, q] of fresh) {
+        const v = this.env.APP_ENV === 'test' ? deepFreeze(q) : q;
+        this.versionCache.set(id, { at: now, q: v });
+        out.set(id, v);
+      }
+    }
+    return out;
+  }
+
+  /** Xoá cache câu (sau khi phát hành/sửa nội dung trong cùng process – CMS đồng bộ qua /internal) */
+  invalidateVersionCache(): void {
+    this.versionCache.clear();
+  }
+
+  private async loadByVersionIdsDb(versionIds: string[], db: DbOrTx): Promise<Map<string, LoadedQuestion>> {
     const rows = await db
       .select({ q: catalogQuestions, v: catalogQuestionVersions, s: catalogSections, skill: catalogSkills.code, p: catalogPassages, topic: catalogTopics.code })
       .from(catalogQuestionVersions)

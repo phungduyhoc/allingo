@@ -1,9 +1,14 @@
+import { randomBytes } from 'node:crypto';
 import { Global, Inject, Injectable, Module, type OnModuleDestroy } from '@nestjs/common';
 import { Queue, type JobsOptions } from 'bullmq';
 import type { QueueName } from '@allingo/schemas';
 import { ENV, type Env } from '../../config/env.js';
 import { RedisService } from '../cache/redis.module.js';
 import { getLogger } from '../telemetry/logger.js';
+import { outgoingTraceparent } from '../telemetry/request-context.js';
+
+/** Khoá metadata trong job.data (worker tách ra trước khi gọi handler): W3C traceparent của request đã tạo job (S11) */
+export const TRACEPARENT_FIELD = '_traceparent';
 
 /**
  * jobId idempotent: `<job_name>__<business_id>`. BullMQ ≥ 5 từ chối custom id chứa ':' (dành cho khoá Redis nội bộ),
@@ -43,7 +48,10 @@ export class QueueService implements OnModuleDestroy {
   /** Đưa job vào hàng đợi; jobId = id nghiệp vụ (idempotent). Trả false nếu hàng đợi không sẵn sàng. */
   async enqueue(queue: QueueName, jobName: string, businessId: string, payload: Record<string, unknown>, opts: JobsOptions = {}): Promise<boolean> {
     try {
-      await this.get(queue).add(jobName, payload, { jobId: jobIdFor(jobName, businessId), ...opts });
+      // S11: truyền trace sang worker (span job là con của request – Tempo nối API → worker)
+      const tp = outgoingTraceparent(() => randomBytes(8).toString('hex'));
+      const data = tp && payload[TRACEPARENT_FIELD] === undefined ? { ...payload, [TRACEPARENT_FIELD]: tp } : payload;
+      await this.get(queue).add(jobName, data, { jobId: jobIdFor(jobName, businessId), ...opts });
       return true;
     } catch (err) {
       this.logger.warn({ err: (err as Error).message, queue, jobName }, 'enqueue failed');

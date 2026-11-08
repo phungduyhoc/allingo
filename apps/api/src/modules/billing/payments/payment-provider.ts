@@ -7,6 +7,8 @@
  *  - `refund?` → TODO S8 (S7 chỉ hoàn tiền thủ công qua admin)
  * Quyền chỉ được cấp từ webhook/queryStatus đã xác minh – return URL chỉ để hiển thị.
  */
+import { observeOutbound } from '../../../shared/telemetry/outbound.js';
+
 export type ProviderCode = 'vnpay' | 'momo' | 'zalopay' | 'mock';
 /** Giá trị enum billing.payment_provider tương ứng (mock lưu là `manual`, bị chặn ở production) */
 export type DbPaymentProvider = 'vnpay' | 'momo' | 'zalopay' | 'manual';
@@ -128,10 +130,12 @@ export interface HttpResponseLike {
 }
 export type HttpClient = (url: string, init: { method: 'POST' | 'GET'; headers: Record<string, string>; body?: string; timeoutMs: number }) => Promise<HttpResponseLike>;
 
-export const defaultHttpClient: HttpClient = async (url, init) => {
-  const res = await fetch(url, { method: init.method, headers: init.headers, body: init.body, signal: AbortSignal.timeout(init.timeoutMs) });
-  return { status: res.status, text: () => res.text() };
-};
+export const defaultHttpClient: HttpClient = (url, init) =>
+  // S11: span + histogram theo host cổng (không ghi query/body có chữ ký)
+  observeOutbound('payment', url, init.method, async () => {
+    const res = await fetch(url, { method: init.method, headers: init.headers, body: init.body, signal: AbortSignal.timeout(init.timeoutMs) });
+    return { status: res.status, text: () => res.text() };
+  });
 
 /** Chuỗi từ giá trị vô hướng của JSON cổng (số/chuỗi/bool); object/null/undefined → '' */
 export function scalar(v: unknown): string {

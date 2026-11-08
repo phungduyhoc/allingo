@@ -9,6 +9,7 @@ import { ApiZod, ZodBody, ZodParams, ZodValidationPipe } from '../../shared/http
 import { AuthService, type RequestMeta } from './auth.service.js';
 import { OAuthService } from './oauth/oauth.service.js';
 import type { IssuedTokens } from './sessions.service.js';
+import { RateLimit } from '../../shared/http/rate-limit.js';
 
 const providerParam = z.object({ provider: z.enum(OAUTH_PROVIDERS) });
 
@@ -41,6 +42,7 @@ export class AuthController {
 
   @Public()
   @Post('register')
+  @RateLimit('register_ip')
   @HttpCode(201)
   @ApiZod({ body: registerInputSchema, responses: { 201: authTokensSchema, 409: 'empty' } })
   async register(@Body(new ZodValidationPipe(registerInputSchema)) body: RegisterInput, @Req() req: FastifyRequest, @Res({ passthrough: true }) reply: FastifyReply) {
@@ -51,6 +53,7 @@ export class AuthController {
 
   @Public()
   @Post('login')
+  @RateLimit('login_ip')
   @HttpCode(200)
   @ApiZod({ body: loginInputSchema, responses: { 200: authTokensSchema, 401: 'empty' } })
   async login(@Body(new ZodValidationPipe(loginInputSchema)) body: LoginInput, @Req() req: FastifyRequest, @Res({ passthrough: true }) reply: FastifyReply) {
@@ -102,6 +105,7 @@ export class AuthController {
 
   @Public()
   @Post('otp/request')
+  @RateLimit('otp_ip')
   @HttpCode(202)
   @ApiZod({ body: otpRequestInputSchema, responses: { 202: otpRequestResultSchema, 429: 'empty' } })
   otpRequest(@ZodBody(otpRequestInputSchema) body: OtpRequestInput, @Req() req: FastifyRequest) {
@@ -111,6 +115,7 @@ export class AuthController {
 
   @Public()
   @Post('otp/verify')
+  @RateLimit('otp_ip')
   @HttpCode(200)
   @ApiZod({ body: otpVerifyInputSchema, responses: { 200: authTokensSchema, 401: 'empty', 429: 'empty' } })
   async otpVerify(@ZodBody(otpVerifyInputSchema) body: OtpVerifyInput, @Req() req: FastifyRequest, @Res({ passthrough: true }) reply: FastifyReply) {

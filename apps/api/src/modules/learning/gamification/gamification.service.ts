@@ -83,10 +83,19 @@ export class GamificationService {
     return amount;
   }
 
+  /**
+   * Ngữ cảnh ngày học (ngày theo múi giờ người học + quyền đóng băng) – S11: GỌI TRƯỚC khi mở transaction. Đọc qua pool chung
+   * (users, entitlement) trong lúc đang giữ một kết nối transaction gây deadlock pool khi tải cao (≥ DB_POOL_MAX transaction cùng
+   * chờ kết nối thứ hai – phát hiện ở load test S11, docs/perf/report-S11.md).
+   */
+  async studyDayContext(userId: string, program: string): Promise<{ today: string; canFreeze: boolean }> {
+    const [{ today }, canFreeze] = await Promise.all([this.todayOf(userId), this.canFreeze(userId, program)]);
+    return { today, canFreeze };
+  }
+
   /** Ghi nhận một ngày học (chuỗi theo giờ người học); +XP streak_day lần đầu trong ngày. Gọi trong transaction đã khoá người dùng. */
-  async recordStudyDay(tx: Tx, userId: string, program: string): Promise<{ streak: number; incremented: boolean; freezeUsed: boolean }> {
-    const { today } = await this.todayOf(userId);
-    const canFreeze = await this.canFreeze(userId, program);
+  async recordStudyDay(tx: Tx, userId: string, program: string, pre?: { today: string; canFreeze: boolean }): Promise<{ streak: number; incremented: boolean; freezeUsed: boolean }> {
+    const { today, canFreeze } = pre ?? (await this.studyDayContext(userId, program));
     const [row] = await tx.select().from(learnStreaks).where(eq(learnStreaks.userId, userId)).for('update').limit(1);
     const prev: StreakState | null = row ? { currentStreak: row.currentStreak, longestStreak: row.longestStreak, lastActiveDate: row.lastActiveDate ?? null, freezeAvailableAt: row.freezeAvailableAt ?? null, freezesUsed: row.freezesUsed } : null;
     const r = applyStudyDay(prev, today, canFreeze);
@@ -115,13 +124,15 @@ export class GamificationService {
     if (!p?.attempt_id || !p.user_id) return { xp: 0, awarded: [] };
     const program = p.program ?? 'toeic';
     const kind: XpKind = p.mode === 'diagnostic' ? 'diagnostic_completed' : p.mode === 'exam' && (p.total ?? 0) >= 100 ? 'attempt_full_test_submitted' : 'attempt_submitted';
+    // S11: mọi đọc ngoài transaction làm TRƯỚC (deadlock pool khi tải cao – xem studyDayContext)
+    const [pre, base] = await Promise.all([this.studyDayContext(p.user_id, program), this.badgeFactsBase(p.user_id, program)]);
     const awarded = await this.dbs.db.transaction(async (tx) => {
       await this.lockUser(tx, p.user_id);
       const [dup] = await tx.select({ id: learnXpEvents.id }).from(learnXpEvents).where(and(eq(learnXpEvents.refType, 'attempt'), eq(learnXpEvents.refId, p.attempt_id))).limit(1);
       if (dup) return null;
       await tx.insert(learnXpEvents).values({ userId: p.user_id, kind, amount: Math.max(0, p.xp_earned ?? 0), refType: 'attempt', refId: p.attempt_id, createdAt: new Date(this.clock.now()) });
-      await this.recordStudyDay(tx, p.user_id, program);
-      return this.evaluateBadges(tx, p.user_id, program);
+      await this.recordStudyDay(tx, p.user_id, program, pre);
+      return this.evaluateBadges(tx, p.user_id, program, base);
     });
     if (awarded === null) return { xp: 0, awarded: [] };
     for (const a of awarded) this.outbox.emitLocal(DOMAIN_EVENTS.BADGE_AWARDED, a);
@@ -129,14 +140,15 @@ export class GamificationService {
   }
 
   // ------------------------------------------------------------------ huy hiệu
-  async badgeFacts(userId: string, program: string, db: DbOrTx = this.dbs.db): Promise<BadgeFacts> {
-    const [graded, fulls, answered, history, streak] = await Promise.all([
-      this.attempts.countGraded(userId, program),
-      this.attempts.gradedCountByKind(userId, 'full'),
-      this.attempts.answeredTotal(userId),
-      this.attempts.statsSource(userId, program),
-      db.select().from(learnStreaks).where(eq(learnStreaks.userId, userId)).limit(1).then((r) => r[0] ?? null),
-    ]);
+  /** Phần dữ kiện huy hiệu đọc từ test-engine (pool chung, không đổi trong transaction gamification) */
+  async badgeFactsBase(userId: string, program: string) {
+    const [graded, fulls, answered, history] = await Promise.all([this.attempts.countGraded(userId, program), this.attempts.gradedCountByKind(userId, 'full'), this.attempts.answeredTotal(userId), this.attempts.statsSource(userId, program)]);
+    return { graded, fulls, answered, history };
+  }
+
+  async badgeFacts(userId: string, program: string, db: DbOrTx = this.dbs.db, pre?: Awaited<ReturnType<GamificationService['badgeFactsBase']>>): Promise<BadgeFacts> {
+    const [base, streak] = await Promise.all([pre ?? this.badgeFactsBase(userId, program), db.select().from(learnStreaks).where(eq(learnStreaks.userId, userId)).limit(1).then((r) => r[0] ?? null)]);
+    const { graded, fulls, answered, history } = base;
     const scored = history.filter((a) => a.scaled !== null && (a.mode === 'exam' || a.mode === 'diagnostic')).map((a) => ({ at: a.submittedAt?.getTime() ?? 0, s: Number(a.scaled) }));
     scored.sort((a, b) => a.at - b.at);
     const delta = scored.length >= 2 ? Math.max(...scored.slice(1).map((x) => x.s)) - scored[0]!.s : 0;
@@ -144,12 +156,12 @@ export class GamificationService {
   }
 
   /** Rule engine: trao mọi huy hiệu đạt mà chưa có; ghi outbox badge.awarded trong cùng transaction */
-  async evaluateBadges(tx: Tx, userId: string, program: string): Promise<Array<{ user_id: string; badge_code: string; name: unknown; earned_at: string }>> {
+  async evaluateBadges(tx: Tx, userId: string, program: string, base?: Awaited<ReturnType<GamificationService['badgeFactsBase']>>): Promise<Array<{ user_id: string; badge_code: string; name: unknown; earned_at: string }>> {
     const [all, mine] = await Promise.all([tx.select().from(learnBadges), tx.select({ code: learnUserBadges.badgeCode }).from(learnUserBadges).where(eq(learnUserBadges.userId, userId))]);
     const have = new Set(mine.map((m) => m.code));
     const pending = all.filter((b) => !have.has(b.code));
     if (!pending.length) return [];
-    const facts = await this.badgeFacts(userId, program, tx);
+    const facts = await this.badgeFacts(userId, program, tx, base);
     const out: Array<{ user_id: string; badge_code: string; name: unknown; earned_at: string }> = [];
     for (const b of pending) {
       if (!evaluateBadgeRule(b.rule as BadgeRule, facts).earned) continue;

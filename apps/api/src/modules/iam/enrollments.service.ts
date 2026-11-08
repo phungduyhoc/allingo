@@ -81,8 +81,12 @@ export class EnrollmentsService {
   async ensure(userId: string, program: ProgramCode, db: DbOrTx = this.dbs.db): Promise<Row> {
     const existing = await this.get(userId, program, db);
     if (existing) return existing;
-    const [row] = await db.insert(learnEnrollments).values({ userId, programCode: program, dailyMinutes: 30, isActive: true }).returning();
-    return row!;
+    // S11 (pentest #6): request đồng thời cho người dùng mới → ON CONFLICT DO NOTHING rồi đọc lại (trước: 500 unique violation)
+    const [row] = await db.insert(learnEnrollments).values({ userId, programCode: program, dailyMinutes: 30, isActive: true }).onConflictDoNothing({ target: [learnEnrollments.userId, learnEnrollments.programCode] }).returning();
+    if (row) return row;
+    const again = await this.get(userId, program, db);
+    if (!again) throw new Error('enrollment ensure race: row not visible after conflict');
+    return again;
   }
 
   private async toDto(r: Row): Promise<Enrollment> {

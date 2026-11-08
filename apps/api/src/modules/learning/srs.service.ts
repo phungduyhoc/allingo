@@ -290,6 +290,8 @@ export class SrsService {
     const optsBy = new Map(await Promise.all(programs.map(async (p) => [p, await this.options(userId, p)] as const)));
     let applied = 0;
     const flags = new Map<string, { duplicate: boolean }>();
+    // S11: ngữ cảnh ngày học đọc TRƯỚC transaction (tránh deadlock pool)
+    const studyCtx = await this.gamification.studyDayContext(userId, programs[0] ?? 'toeic');
     try {
       await this.dbs.db.transaction(async (tx) => {
         await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`gamification:${userId}`}))`);
@@ -321,7 +323,7 @@ export class SrsService {
           await this.gamification.awardXp(tx, userId, 'srs_review', XP_TABLE.srs_review, { type: 'srs_review', id: rev.id });
           applied++;
         }
-        if (applied > 0) await this.gamification.recordStudyDay(tx, userId, programs[0] ?? 'toeic');
+        if (applied > 0) await this.gamification.recordStudyDay(tx, userId, programs[0] ?? 'toeic', studyCtx);
       });
     } catch (err) {
       for (const t of tickets) await t.release();

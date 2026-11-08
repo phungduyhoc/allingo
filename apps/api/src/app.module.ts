@@ -13,12 +13,14 @@ import { NotifyModule } from './shared/notify/mailer.service.js';
 import { SharedAuthModule } from './shared/auth/auth.module.js';
 import { AuthGuard } from './shared/auth/auth.guard.js';
 import { AppExceptionFilter } from './shared/http/exception.filter.js';
+import { RateLimitGuard, RateLimitModule } from './shared/http/rate-limit.js';
+import { OpsMetricsModule } from './shared/telemetry/ops-metrics.service.js';
 import { HealthController } from './shared/http/health.controller.js';
 import { RealtimeModule } from './shared/realtime/realtime.gateway.js';
 import { ExamModeModule } from './shared/exam/exam-mode.js';
 import { IamModule } from './modules/iam/index.js';
 import { CatalogModule } from './modules/catalog/index.js';
-import { BillingModule } from './modules/billing/index.js';
+import { BillingModule, KillSwitchGuard } from './modules/billing/index.js';
 import { AiGatewayModule, AiFeaturesModule } from './modules/ai-gateway/index.js';
 import { TestEngineModule } from './modules/test-engine/index.js';
 import { LearningModule } from './modules/learning/index.js';
@@ -44,6 +46,8 @@ import { AdminModule } from './modules/admin/index.js';
     SharedAuthModule,
     ExamModeModule,
     RealtimeModule,
+    RateLimitModule,
+    OpsMetricsModule,
     IamModule,
     CatalogModule,
     BillingModule,
@@ -61,6 +65,9 @@ import { AdminModule } from './modules/admin/index.js';
   controllers: [HealthController, MetricsController],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
+    // S11: thứ tự guard toàn cục – Auth → kill-switch (cờ tắt → 503) → token bucket (429)
+    { provide: APP_GUARD, useClass: KillSwitchGuard },
+    { provide: APP_GUARD, useClass: RateLimitGuard },
     { provide: APP_FILTER, useClass: AppExceptionFilter },
   ],
 })

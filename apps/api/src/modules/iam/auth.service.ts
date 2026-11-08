@@ -16,6 +16,7 @@ import { SessionsService, type IssuedTokens } from './sessions.service.js';
 import { TurnstileService } from './turnstile.service.js';
 import { UsersService } from './users.service.js';
 import { WelcomeCreditsService } from './welcome-credits.service.js';
+import { LoginProtectionService, withMinDuration } from './login-protection.service.js';
 
 export interface RequestMeta {
   ip?: string | null;
@@ -40,9 +41,15 @@ export class AuthService {
     private readonly consents: ConsentsService,
     private readonly otp: OtpService,
     private readonly turnstile: TurnstileService,
+    private readonly loginProtection: LoginProtectionService,
   ) {}
 
   async register(input: RegisterInput, meta: RequestMeta): Promise<{ tokens: IssuedTokens; body: AuthTokens }> {
+    // S11: thời gian phản hồi đều (409 email đã tồn tại vs 201) – argon2.hash chạy trước kiểm tra trùng
+    return withMinDuration(this.env.AUTH_MIN_RESPONSE_MS, () => this.registerInner(input, meta));
+  }
+
+  private async registerInner(input: RegisterInput, meta: RequestMeta): Promise<{ tokens: IssuedTokens; body: AuthTokens }> {
     await this.turnstile.assert(input.turnstile_token, meta.ip, 'register');
     const passwordHash = await argon2.hash(input.password, ARGON2_OPTS);
     const guestId = input.guest_token ? await this.jwt.verifyGuestToken(input.guest_token) : null;
@@ -77,11 +84,21 @@ export class AuthService {
   }
 
   async login(input: LoginInput, meta: RequestMeta): Promise<{ tokens: IssuedTokens; body: AuthTokens }> {
+    return withMinDuration(this.env.AUTH_MIN_RESPONSE_MS, () => this.loginInner(input, meta));
+  }
+
+  private async loginInner(input: LoginInput, meta: RequestMeta): Promise<{ tokens: IssuedTokens; body: AuthTokens }> {
     await this.turnstile.assert(input.turnstile_token, meta.ip, 'login');
+    // S11: khoá theo email sau N lần sai (áp cả email không tồn tại – không lộ tồn tại)
+    await this.loginProtection.assertNotLocked(input.email);
     const user = await this.users.findByEmail(input.email);
     // So sánh thời gian đều để tránh enumerate email
     const ok = user?.passwordHash ? await argon2.verify(user.passwordHash, input.password) : await argon2.verify(DUMMY_HASH, input.password).catch(() => false);
-    if (!user || !ok || user.status !== 'active') throw new Unauthorized('Invalid email or password');
+    if (!user || !ok || user.status !== 'active') {
+      await this.loginProtection.recordFailure(input.email, user?.id ?? null, meta);
+      throw new Unauthorized('Invalid email or password');
+    }
+    await this.loginProtection.recordSuccess(input.email);
     const guestId = input.guest_token ? await this.jwt.verifyGuestToken(input.guest_token) : null;
     const tokens = await this.dbs.db.transaction(async (tx) => {
       if (guestId) await this.merge.mergeGuestInto(tx, guestId, user.id, meta);
@@ -111,13 +128,20 @@ export class AuthService {
 
   /** OTP: gửi mã (429 khi vượt giới hạn/khoá) */
   async otpRequest(input: { phone?: string; email?: string; channel: 'zalo' | 'sms' | 'email'; turnstile_token?: string }, meta: RequestMeta, locale: 'vi' | 'en' = 'vi') {
-    await this.turnstile.assert(input.turnstile_token, meta.ip, 'otp');
-    const r = await this.otp.request({ phone: input.phone, email: input.email, channel: input.channel, locale });
-    return { status: 'sent' as const, channel: r.channel, retry_after: r.retryAfter, expires_in: r.expiresIn };
+    // S11: gửi mã (SMTP/SMS) và nhánh bị giới hạn có thời gian khác nhau → đệm thời gian tối thiểu
+    return withMinDuration(this.env.AUTH_MIN_RESPONSE_MS, async () => {
+      await this.turnstile.assert(input.turnstile_token, meta.ip, 'otp');
+      const r = await this.otp.request({ phone: input.phone, email: input.email, channel: input.channel, locale });
+      return { status: 'sent' as const, channel: r.channel, retry_after: r.retryAfter, expires_in: r.expiresIn };
+    });
   }
 
   /** OTP: xác minh → đăng nhập; chưa có tài khoản → tạo mới (identity provider phone/email), ghép khách */
   async otpVerify(input: OtpVerifyInput, meta: RequestMeta): Promise<{ tokens: IssuedTokens; body: AuthTokens & { created?: boolean } }> {
+    return withMinDuration(this.env.AUTH_MIN_RESPONSE_MS, () => this.otpVerifyInner(input, meta));
+  }
+
+  private async otpVerifyInner(input: OtpVerifyInput, meta: RequestMeta): Promise<{ tokens: IssuedTokens; body: AuthTokens & { created?: boolean } }> {
     const ident = await this.otp.verify(input);
     const guestId = input.guest_token ? await this.jwt.verifyGuestToken(input.guest_token) : null;
     const result = await this.dbs.db.transaction(async (tx) => {

@@ -8,6 +8,8 @@ import { ExamLocked } from '../../../shared/exam/exam-mode.js';
 import { writeSse } from '../../../shared/http/sse.js';
 import { ApiZod, ZodBody, ZodParams, ZodQuery } from '../../../shared/http/zod.js';
 import { ThreadsService } from './threads.service.js';
+import { RateLimit } from '../../../shared/http/rate-limit.js';
+import { KillSwitch } from '../../billing/index.js';
 
 const threadParam = z.object({ threadId: z.uuid() });
 const listQuery = z.object({ cursor: z.string().max(512).optional(), limit: z.coerce.number().int().min(1).max(100).default(20) });
@@ -29,6 +31,7 @@ export class TutorController {
 
   @Post()
   @HttpCode(201)
+  @KillSwitch('ff.ai.tutor')
   @ApiZod({ body: threadCreateSchema, responses: { 201: threadSchema, 400: 'empty', 404: 'empty' } })
   create(@CurrentUser() user: AuthUser, @ZodBody(threadCreateSchema) body: z.infer<typeof threadCreateSchema>) {
     return this.threads.create(user.id, body);
@@ -48,6 +51,8 @@ export class TutorController {
 
   @Post(':threadId/messages')
   @HttpCode(200)
+  @KillSwitch('ff.ai.tutor')
+  @RateLimit('tutor')
   @ApiZod({ body: messageCreateSchema, responses: { 200: 'sse', 400: 'empty', 402: 'empty', 404: 'empty', 429: 'empty' } })
   async send(@CurrentUser() user: AuthUser, @ZodParams(threadParam) p: z.infer<typeof threadParam>, @ZodBody(messageCreateSchema) body: z.infer<typeof messageCreateSchema>, @Req() req: FastifyRequest, @Res() reply: FastifyReply) {
     const events = await this.threads.send(user.id, p.threadId, body, (req as FastifyRequest & { traceId?: string }).traceId);

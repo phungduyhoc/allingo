@@ -1,4 +1,5 @@
 import type { BuyerType } from '@allingo/schemas';
+import { observeOutbound } from '../../../shared/telemetry/outbound.js';
 
 /**
  * Hoá đơn điện tử (Sprint 8, ADR-0030 – Proposed): interface chung cho nhà cung cấp (MISA meInvoice mặc định, Viettel SInvoice
@@ -105,16 +106,17 @@ export class EInvoiceError extends Error {
 /** HTTP tối giản (fetch) – test thay bằng HTTP giả */
 export type InvoiceHttpClient = (url: string, init: { method: 'GET' | 'POST'; headers: Record<string, string>; body?: string; timeoutMs: number }) => Promise<{ status: number; text(): Promise<string> }>;
 
-export const fetchInvoiceHttp: InvoiceHttpClient = async (url, init) => {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), init.timeoutMs);
-  try {
-    const r = await fetch(url, { method: init.method, headers: init.headers, body: init.body, signal: ctrl.signal });
-    return { status: r.status, text: () => r.text() };
-  } finally {
-    clearTimeout(timer);
-  }
-};
+export const fetchInvoiceHttp: InvoiceHttpClient = (url, init) =>
+  observeOutbound('einvoice', url, init.method, async () => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), init.timeoutMs);
+    try {
+      const r = await fetch(url, { method: init.method, headers: init.headers, body: init.body, signal: ctrl.signal });
+      return { status: r.status, text: () => r.text() };
+    } finally {
+      clearTimeout(timer);
+    }
+  });
 
 // ----------------------------------------------------------------------------- tiền & thuế (thuần)
 /**

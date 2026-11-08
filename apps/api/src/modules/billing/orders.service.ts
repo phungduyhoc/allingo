@@ -18,6 +18,7 @@ import { pgCode } from './pg-code.js';
 import { planSummary, PlansService, type PlanRow } from './plans.service.js';
 import { normalizePromoCode, promotionKind, toVnd } from './pricing.js';
 import { PromotionsService } from './promotions.service.js';
+import { BILLING_METRICS } from '../../shared/telemetry/metrics.js';
 
 const { billingOrders, billingPayments, billingPlans, billingPromotions, billingInvoices } = schema;
 export type OrderRow = typeof billingOrders.$inferSelect;
@@ -97,6 +98,7 @@ export class OrdersService {
         return { row: row!, promo };
       });
       this.logger.info({ order_id: row.id, plan: plan.code, total: Number(row.total), promotion: !!promo, superseded: promo?.superseded.length ?? 0 }, 'order created');
+      BILLING_METRICS.orders.inc({ provider: 'none' });
       return { order: await this.toDto(row), created: true };
     } catch (err) {
       // Hai request song song cùng Idempotency-Key → hàng thứ hai vi phạm UNIQUE, trả đơn đã tạo

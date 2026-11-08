@@ -1,7 +1,9 @@
 import { ArgumentsHost, Catch, type ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
+import { getErrorReporter } from '../telemetry/error-reporter.js';
 import { getLogger } from '../telemetry/logger.js';
+import { OPS_METRICS } from '../telemetry/metrics.js';
 import { AppError } from './errors.js';
 
 interface Envelope {
@@ -41,11 +43,18 @@ export class AppExceptionFilter implements ExceptionFilter {
       body = { error: { code, message: status >= 500 ? 'Internal server error' : exception.message, trace_id: traceId } };
     }
 
-    if (status >= 500) {
-      this.logger.error({ err: exception, trace_id: traceId, method: request.method, url: request.url }, 'unhandled error');
+    if (status >= 500 && !(exception instanceof AppError)) {
+      this.logger.error({ err: exception, trace_id: traceId, method: request.method, route: request.routeOptions?.url ?? 'unmatched' }, 'unhandled error');
+      // S11: báo lỗi Sentry (đã che PII) – chỉ lỗi không chủ đích (AppError 503 feature_disabled… không phải sự cố)
+      if (getErrorReporter().enabled) {
+        OPS_METRICS.errorsReported.inc({ source: 'http' });
+        getErrorReporter().capture(exception, { request: { method: request.method, route: request.routeOptions?.url ?? 'unmatched', status } });
+      }
     } else if (status >= 400 && status !== 404) {
-      this.logger.debug({ trace_id: traceId, method: request.method, url: request.url, status, code: body.error.code }, 'request error');
+      this.logger.debug({ trace_id: traceId, method: request.method, route: request.routeOptions?.url ?? 'unmatched', status, code: body.error.code }, 'request error');
     }
+    const retry = body.error.details?.retry_after_sec;
+    if ((status === 429 || status === 503) && typeof retry === 'number') void reply.header('retry-after', String(retry));
     void reply.status(status).header('x-trace-id', traceId ?? '').send(body);
   }
 }

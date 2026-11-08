@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import { diagnoseAttempt, toeicLrEstimate, TOEIC_PART_SKILL, SCALE_INFO, ieltsLrBand, type DiagnosisQuestion } from '@allingo/scoring';
 import {
@@ -189,7 +189,7 @@ export class AttemptsService {
     // S9: bài chẩn đoán thích ứng chỉ lộ các câu ĐÃ phục vụ (câu kế tiếp lấy qua POST /me/diagnostic/{id}/next)
     const servedIds = row.mode === 'diagnostic' ? new Set((draft.adaptive?.served ?? []).map((x) => x.question_id)) : null;
     const publicQs = await this.catalog.toPublic(servedIds ? questions.filter((q) => servedIds.has(q.question_id)) : questions, { revealTranscript: false });
-    const answers = await this.dbs.db.select().from(learnAttemptAnswers).where(eq(learnAttemptAnswers.attemptId, attemptId));
+    const answers = await this.dbs.db.select().from(learnAttemptAnswers).where(and(eq(learnAttemptAnswers.attemptId, attemptId), gte(learnAttemptAnswers.createdAt, row.startedAt)));
     const draftAnswers: AttemptAnswerInput[] = answers.filter((a) => a.answer).map((a) => ({ question_id: a.questionId, answer: a.answer as AnswerInput, time_spent_ms: a.timeSpentMs ?? undefined, flagged: a.flagged }));
     const sectionCodes = [...new Set(draft.question_order.map((q) => q.section_code))];
     const sections = row.testSetId ? await this.catalog.testSetSections(row.testSetId) : [];
@@ -262,30 +262,40 @@ export class AttemptsService {
       }
       // Lô có thể chứa cùng một câu nhiều lần → giữ bản cuối
       const latest = new Map(input.answers.map((a) => [a.question_id, a]));
+      // S11: partition pruning (created_at ≥ started_at) cho mọi truy vấn attempt_answers của attempt
+      const sinceStart = gte(learnAttemptAnswers.createdAt, row.startedAt);
       const existing = latest.size
         ? await tx
             .select({ id: learnAttemptAnswers.id, questionId: learnAttemptAnswers.questionId })
             .from(learnAttemptAnswers)
-            .where(and(eq(learnAttemptAnswers.attemptId, attemptId), inArray(learnAttemptAnswers.questionId, [...latest.keys()])))
+            .where(and(eq(learnAttemptAnswers.attemptId, attemptId), sinceStart, inArray(learnAttemptAnswers.questionId, [...latest.keys()])))
         : [];
-      const existingByQ = new Map(existing.map((e) => [e.questionId, e.id]));
+      const existingByQ = new Map(existing.map((e) => [e.questionId, e]));
       const inserts: Array<typeof learnAttemptAnswers.$inferInsert> = [];
+      const updates: Array<{ id: string; answer: unknown; timeSpentMs: number | null; flagged: boolean | null }> = [];
       for (const a of latest.values()) {
-        const id = existingByQ.get(a.question_id);
-        if (id) {
-          await tx
-            .update(learnAttemptAnswers)
-            .set({ answer: a.answer, timeSpentMs: a.time_spent_ms ?? undefined, flagged: a.flagged ?? undefined })
-            .where(eq(learnAttemptAnswers.id, id));
-        } else {
-          inserts.push({ attemptId, questionId: a.question_id, questionVersionId: order.get(a.question_id)!.question_version_id, answer: a.answer, timeSpentMs: a.time_spent_ms ?? null, flagged: a.flagged ?? false });
-        }
+        const e = existingByQ.get(a.question_id);
+        if (e) updates.push({ id: e.id, answer: a.answer, timeSpentMs: a.time_spent_ms ?? null, flagged: a.flagged ?? null });
+        else inserts.push({ attemptId, questionId: a.question_id, questionVersionId: order.get(a.question_id)!.question_version_id, answer: a.answer, timeSpentMs: a.time_spent_ms ?? null, flagged: a.flagged ?? false });
+      }
+      // S11: một UPDATE … FROM (VALUES …) thay cho N lệnh UPDATE (N+1). Không so khớp created_at (Date JS mất micro giây so với
+      // timestamptz) – pruning bằng created_at ≥ started_at, khoá theo id + attempt_id.
+      if (updates.length) {
+        const values = sql.join(
+          updates.map((u) => sql`(${u.id}::uuid, ${JSON.stringify(u.answer)}::jsonb, ${u.timeSpentMs}::int, ${u.flagged}::boolean)`),
+          sql`, `,
+        );
+        await tx.execute(sql`
+          UPDATE learn.attempt_answers AS t
+          SET answer = v.answer, time_spent_ms = coalesce(v.time_spent_ms, t.time_spent_ms), flagged = coalesce(v.flagged, t.flagged)
+          FROM (VALUES ${values}) AS v(id, answer, time_spent_ms, flagged)
+          WHERE t.id = v.id AND t.attempt_id = ${attemptId}::uuid AND t.created_at >= ${row.startedAt.toISOString()}::timestamptz`);
       }
       if (inserts.length) await tx.insert(learnAttemptAnswers).values(inserts);
       const [cnt] = await tx
         .select({ n: sql<number>`count(*)::int` })
         .from(learnAttemptAnswers)
-        .where(and(eq(learnAttemptAnswers.attemptId, attemptId), sql`${learnAttemptAnswers.answer} is not null`));
+        .where(and(eq(learnAttemptAnswers.attemptId, attemptId), sinceStart, sql`${learnAttemptAnswers.answer} is not null`));
       const next: AttemptDraftState = {
         ...draft,
         section_elapsed_sec: { ...draft.section_elapsed_sec, ...(input.section_elapsed_sec ?? {}) },
@@ -365,7 +375,8 @@ export class AttemptsService {
       const served = row.mode === 'diagnostic' && draft0.adaptive?.served?.length ? new Set(draft0.adaptive.served.map((x) => x.question_id)) : null;
       const draft: AttemptDraftState = served ? { ...draft0, question_order: draft0.question_order.filter((o) => served.has(o.question_id)) } : draft0;
       const versions = await this.catalog.loadByVersionIds(draft.question_order.map((q) => q.question_version_id), tx);
-      const answers = await tx.select().from(learnAttemptAnswers).where(eq(learnAttemptAnswers.attemptId, attemptId));
+      // S11: partition pruning (created_at ≥ started_at)
+      const answers = await tx.select().from(learnAttemptAnswers).where(and(eq(learnAttemptAnswers.attemptId, attemptId), gte(learnAttemptAnswers.createdAt, row.startedAt)));
       const answerByQ = new Map(answers.map((a) => [a.questionId, a]));
 
       const bySection: ScoreBreakdown['by_section'] = {};
@@ -436,7 +447,7 @@ export class AttemptsService {
           gradedRows.map((r) => sql`(${r.id}::uuid, ${r.is_correct}::boolean, ${r.score}::numeric)`),
           sql`, `,
         );
-        await tx.execute(sql`update learn.attempt_answers aa set is_correct = v.is_correct, score = v.score from (values ${values}) as v(id, is_correct, score) where aa.attempt_id = ${attemptId}::uuid and aa.id = v.id`);
+        await tx.execute(sql`update learn.attempt_answers aa set is_correct = v.is_correct, score = v.score from (values ${values}) as v(id, is_correct, score) where aa.attempt_id = ${attemptId}::uuid and aa.id = v.id and aa.created_at >= ${row.startedAt.toISOString()}::timestamptz`);
       }
       if (missingRows.length) await tx.insert(learnAttemptAnswers).values(missingRows);
 
@@ -579,7 +590,8 @@ export class AttemptsService {
     if (row.status !== 'graded') throw new Conflict('Attempt is not graded yet', { status: row.status });
     const draft = this.draftOf(row);
     const versions = await this.catalog.loadByVersionIds(draft.question_order.map((q) => q.question_version_id));
-    const answers = await this.dbs.db.select().from(learnAttemptAnswers).where(eq(learnAttemptAnswers.attemptId, attemptId));
+    // S11: partition pruning – câu trả lời luôn tạo sau started_at của attempt (created_at = now() khi ghi)
+    const answers = await this.dbs.db.select().from(learnAttemptAnswers).where(and(eq(learnAttemptAnswers.attemptId, attemptId), gte(learnAttemptAnswers.createdAt, row.startedAt)));
     const answerByQ = new Map(answers.map((a) => [a.questionId, a]));
     const user = await this.users.findById(userId);
     const locale = user?.explainLocale ?? 'vi';
@@ -592,6 +604,12 @@ export class AttemptsService {
     const explainVersion = await this.gateway.currentPromptVersionId('explain_mcq', row.programCode, userId);
     // Ghi chú của người học theo câu (S6 – ReviewItem.note)
     const notes = await this.notes.latestByQuestion(userId, ordered.map((x) => x.o.question_id));
+    // S11: một lượt MGET + một truy vấn DB cho mọi giải thích đã cache (trước: N+1 – mỗi câu GET Redis + SELECT + UPDATE hit_count)
+    const chosenOf = (qid: string) => {
+      const ans = (answerByQ.get(qid)?.answer as AnswerInput | null) ?? null;
+      return ans && ans.type === 'mcq_single' ? ans.selected : null;
+    };
+    const explanations = explainVersion ? await this.explanationCache.getMany(ordered.map((x) => ({ questionVersionId: x.q.question_version_id, chosenOption: chosenOf(x.o.question_id) })), locale, explainVersion) : new Map();
     const items = [];
     for (let i = 0; i < ordered.length; i++) {
       const { o, q } = ordered[i]!;
@@ -602,7 +620,7 @@ export class AttemptsService {
       if (filter.flagged && !a?.flagged) continue;
       if (filter.section && o.section_code !== filter.section) continue;
       const chosen = answer && answer.type === 'mcq_single' ? answer.selected : null;
-      const explanation = explainVersion ? await this.explanationCache.get(q.question_version_id, chosen, locale, explainVersion) : null;
+      const explanation = explanations.get(`${q.question_version_id}:${chosen ?? '_'}`) ?? null;
       items.push({
         question: publicQs[i]!,
         your_answer: answer,
@@ -752,7 +770,7 @@ export class AttemptsService {
     const [row] = await this.dbs.db.select().from(learnAttempts).where(eq(learnAttempts.id, attemptId)).limit(1);
     if (!row || row.status !== 'graded') return null;
     const draft = this.draftOf(row);
-    const answers = await this.dbs.db.select().from(learnAttemptAnswers).where(eq(learnAttemptAnswers.attemptId, attemptId));
+    const answers = await this.dbs.db.select().from(learnAttemptAnswers).where(and(eq(learnAttemptAnswers.attemptId, attemptId), gte(learnAttemptAnswers.createdAt, row.startedAt)));
     const byQ = new Map(answers.map((a) => [a.questionId, a]));
     const wrong = draft.question_order.filter((o) => byQ.get(o.question_id)?.isCorrect === false);
     const versions = await this.catalog.loadByVersionIds(wrong.map((o) => o.question_version_id));
@@ -882,9 +900,12 @@ export class AttemptsService {
 
   /** Tổng số câu đã trả lời trong các bài đã chấm (huy hiệu 1.000 câu – S9) */
   async answeredTotal(userId: string): Promise<number> {
+    // S11: LATERAL theo từng attempt (index attempt_id + run-time partition pruning created_at ≥ started_at) – bản JOIN cũ bị
+    // planner chọn hash join + parallel seq scan toàn bộ attempt_answers (≈ 280 ms/2 triệu dòng mỗi lần chấm bài – report-S11)
     const rows = await this.dbs.db.execute<{ n: number }>(sql`
-      select count(*)::int as n from learn.attempt_answers aa join learn.attempts a on a.id = aa.attempt_id
-       where a.user_id = ${userId}::uuid and a.status = 'graded' and aa.answer is not null`);
+      select coalesce(sum(c.n), 0)::int as n from learn.attempts a
+       cross join lateral (select count(*) as n from learn.attempt_answers aa where aa.attempt_id = a.id and aa.created_at >= a.started_at and aa.answer is not null) c
+       where a.user_id = ${userId}::uuid and a.status = 'graded'`);
     return Number(rows[0]?.n ?? 0);
   }
 

@@ -9,6 +9,7 @@ import { NotFound } from '../../shared/http/errors.js';
 import { ZodParams } from '../../shared/http/zod.js';
 import type { WebhookInput } from './payments/payment-provider.js';
 import { PaymentsService } from './payments.service.js';
+import { RateLimit } from '../../shared/http/rate-limit.js';
 
 const providerParam = z.object({ provider: paymentProviderCodeSchema });
 
@@ -47,6 +48,7 @@ export class WebhooksController {
 
   @Public()
   @Post('webhooks/payments/:provider')
+  @RateLimit('webhook_ip')
   @ApiResponse({ status: 200, description: 'Theo định dạng cổng (VNPay RspCode, ZaloPay return_code)' })
   @ApiResponse({ status: 204, description: 'MoMo IPN đã nhận' })
   @ApiResponse({ status: 400, description: 'Sai chữ ký / payload' })
@@ -57,6 +59,7 @@ export class WebhooksController {
   /** VNPay IPN (GET + query `vnp_*`) */
   @Public()
   @Get('webhooks/payments/:provider')
+  @RateLimit('webhook_ip')
   @ApiResponse({ status: 200, description: 'VNPay `{ RspCode, Message }`' })
   @ApiResponse({ status: 400, description: 'Sai chữ ký' })
   async getWebhook(@ZodParams(providerParam) p: z.infer<typeof providerParam>, @Req() req: FastifyRequest, @Res() reply: FastifyReply): Promise<void> {

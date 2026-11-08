@@ -4,7 +4,8 @@ export { EntitlementService, type EntitlementContext, type PlanKind } from './en
 export { QuotaService, periodKey, periodResetAt, type QuotaStatus, type QuotaPeriod } from './quota.service.js';
 export { CreditService, type CreditReason } from './credit.service.js';
 export { FeatureGateService, type GateTicket } from './feature-gate.service.js';
-export { FeatureFlagService, evaluateFlag } from './feature-flags.service.js';
+export { FeatureFlagService, evaluateFlag, PUBLIC_FLAG_KEYS, FLAG_FALLBACKS } from './feature-flags.service.js';
+export { KillSwitch, KillSwitchGuard } from './kill-switch.guard.js';
 export { BillingJobsService, BILLING_JOB_INTERVALS } from './billing-jobs.service.js';
 export { OrdersService, CHECKOUT_FLAG } from './orders.service.js';
 export { PaymentsService } from './payments.service.js';

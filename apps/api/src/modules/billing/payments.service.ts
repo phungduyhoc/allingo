@@ -17,6 +17,7 @@ import type { ParsedWebhook, PaymentProvider, WebhookAck, WebhookInput, WebhookO
 import { PaymentProviderRegistry } from './payments/provider-registry.js';
 import { toVnd } from './pricing.js';
 import { PromotionsService } from './promotions.service.js';
+import { BILLING_METRICS } from '../../shared/telemetry/metrics.js';
 
 const { billingOrders, billingPayments, billingPlans } = schema;
 type PaymentRow = typeof billingPayments.$inferSelect;
@@ -91,6 +92,7 @@ export class PaymentsService {
       valid = false;
     }
     if (!valid) {
+      BILLING_METRICS.webhooks.inc({ provider: provider.code, result: 'invalid_signature' });
       await this.rejectAudit(provider, 'invalid_signature', input, meta);
       return provider.ack('invalid_signature');
     }
@@ -98,13 +100,17 @@ export class PaymentsService {
     try {
       parsed = provider.parseWebhook(input);
     } catch (err) {
+      BILLING_METRICS.webhooks.inc({ provider: provider.code, result: 'invalid_payload' });
       await this.rejectAudit(provider, 'invalid_payload', input, meta, (err as Error).message);
       return provider.ack('invalid_payload');
     }
     try {
       const r = await this.confirm(provider, parsed, provider.code === 'mock' && input.headers['x-allingo-source'] === 'mock_checkout' ? 'mock_checkout' : 'webhook');
+      // S11: dashboard Billing + alert "webhook thất bại > 3/10′" (invalid_signature | invalid_payload | error | amount_mismatch)
+      BILLING_METRICS.webhooks.inc({ provider: provider.code, result: r.outcome });
       return provider.ack(r.outcome);
     } catch (err) {
+      BILLING_METRICS.webhooks.inc({ provider: provider.code, result: 'error' });
       this.logger.error({ provider: provider.code, err: (err as Error).message.slice(0, 300) }, 'webhook processing failed');
       return provider.ack('error');
     }

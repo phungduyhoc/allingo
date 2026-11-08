@@ -6,6 +6,8 @@ import { BillingJobsService } from './billing-jobs.service.js';
 import { CreditService } from './credit.service.js';
 import { EntitlementService } from './entitlement.service.js';
 import { FeatureFlagService } from './feature-flags.service.js';
+import { FlagsController } from './flags.controller.js';
+import { KillSwitchGuard } from './kill-switch.guard.js';
 import { FeatureGateService } from './feature-gate.service.js';
 import { FreeCreditsService } from './free-credits.service.js';
 import { FulfillmentService } from './fulfillment.service.js';
@@ -28,13 +30,14 @@ import { WebhooksController } from './webhooks.controller.js';
  * Giao diện công khai: index.ts.
  */
 @Module({
-  controllers: [BillingController, OrdersController, WebhooksController, BillingAdminController],
+  controllers: [BillingController, OrdersController, WebhooksController, BillingAdminController, FlagsController],
   providers: [
     EntitlementService,
     QuotaService,
     CreditService,
     FeatureGateService,
     FeatureFlagService,
+    KillSwitchGuard,
     PlansService,
     PromotionsService,
     PaymentProviderRegistry,
@@ -49,6 +52,6 @@ import { WebhooksController } from './webhooks.controller.js';
     InvoicesService,
     FreeCreditsService,
   ],
-  exports: [EntitlementService, QuotaService, CreditService, FeatureGateService, FeatureFlagService, BillingJobsService, PaymentProviderRegistry, PaymentsService, SubscriptionsService, OrdersService, ReconciliationService, PromotionsService, InvoicesService, InvoiceProviderRegistry, FreeCreditsService],
+  exports: [EntitlementService, QuotaService, CreditService, FeatureGateService, FeatureFlagService, KillSwitchGuard, BillingJobsService, PaymentProviderRegistry, PaymentsService, SubscriptionsService, OrdersService, ReconciliationService, PromotionsService, InvoicesService, InvoiceProviderRegistry, FreeCreditsService],
 })
 export class BillingModule {}

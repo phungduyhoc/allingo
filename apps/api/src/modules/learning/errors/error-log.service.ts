@@ -82,15 +82,20 @@ export class ErrorLogService {
     const seenAt = d.attempt.submittedAt ?? this.now();
     let created = 0;
     let merged = 0;
+    // S11: MỘT lệnh INSERT … ON CONFLICT nhiều dòng (lô ≤ 200) thay cho N lệnh/attempt (N+1 – ~90 lệnh mỗi bài 200 câu ở load test).
+    // Mỗi câu xuất hiện một lần trong attempt → không chạm cùng một dòng hai lần trong một lệnh.
+    const values = d.items.map((it) => {
+      const cls = classifyError({ section_code: it.section_code, skill_code: it.skill_code, subskill_codes: it.subskill_codes, topic_code: it.topic_code, time_spent_ms: it.time_spent_ms, answered: it.answered, auto_submitted: d.attempt.autoSubmitted });
+      const subCode = cls.evidence.subskill ?? it.subskill_codes[0] ?? null;
+      const reasonAuto = { kind: cls.kind, rule: cls.rule, source: 'rule-v1', evidence: cls.evidence, question_type: it.question_type, mode: d.attempt.mode, answered: it.answered };
+      return sql`(${d.attempt.userId}::uuid, ${d.attempt.program}, ${it.attempt_answer_id}::uuid, ${it.question_id}::uuid, ${it.question_version_id}::uuid, ${subCode ? (subIds.get(subCode) ?? null) : null}::uuid,
+                  ${cls.kind}::learn.error_kind, ${JSON.stringify(reasonAuto)}::jsonb, ${d.attempt.id}::uuid, 1, ${seenAt.toISOString()}::timestamptz, ${seenAt.toISOString()}::timestamptz)`;
+    });
     await this.dbs.db.transaction(async (tx) => {
-      for (const it of d.items) {
-        const cls = classifyError({ section_code: it.section_code, skill_code: it.skill_code, subskill_codes: it.subskill_codes, topic_code: it.topic_code, time_spent_ms: it.time_spent_ms, answered: it.answered, auto_submitted: d.attempt.autoSubmitted });
-        const subCode = cls.evidence.subskill ?? it.subskill_codes[0] ?? null;
-        const reasonAuto = { kind: cls.kind, rule: cls.rule, source: 'rule-v1', evidence: cls.evidence, question_type: it.question_type, mode: d.attempt.mode, answered: it.answered };
+      for (let i = 0; i < values.length; i += 200) {
         const rows = await tx.execute<{ inserted: boolean }>(sql`
           insert into learn.error_log_entries (user_id, program_code, attempt_answer_id, question_id, question_version_id, subskill_id, error_kind, reason_auto, attempt_id, occurrences, last_seen_at, created_at)
-          values (${d.attempt.userId}::uuid, ${d.attempt.program}, ${it.attempt_answer_id}::uuid, ${it.question_id}::uuid, ${it.question_version_id}::uuid, ${subCode ? (subIds.get(subCode) ?? null) : null}::uuid,
-                  ${cls.kind}::learn.error_kind, ${JSON.stringify(reasonAuto)}::jsonb, ${d.attempt.id}::uuid, 1, ${seenAt.toISOString()}::timestamptz, ${seenAt.toISOString()}::timestamptz)
+          values ${sql.join(values.slice(i, i + 200), sql`, `)}
           on conflict (user_id, question_id) where question_id is not null do update set
             occurrences = learn.error_log_entries.occurrences + 1,
             last_seen_at = greatest(learn.error_log_entries.last_seen_at, excluded.last_seen_at),
@@ -103,10 +108,10 @@ export class ErrorLogService {
             resolved_at = null
           where learn.error_log_entries.attempt_id is distinct from excluded.attempt_id
           returning (xmax = 0) as inserted`);
-        const r = [...rows][0];
-        if (!r) continue;
-        if (r.inserted) created++;
-        else merged++;
+        for (const r of rows) {
+          if (r.inserted) created++;
+          else merged++;
+        }
       }
     });
     if (created || merged) {
