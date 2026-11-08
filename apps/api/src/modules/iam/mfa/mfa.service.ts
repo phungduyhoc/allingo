@@ -1,4 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+
+/** Độ dài tag AES-256-GCM cố định 16 byte (128 bit) */
+const GCM_TAG_BYTES = 16;
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
@@ -49,7 +52,7 @@ export class MfaService {
 
   encrypt(secret: Buffer): string {
     const iv = randomBytes(12);
-    const c = createCipheriv('aes-256-gcm', this.key, iv);
+    const c = createCipheriv('aes-256-gcm', this.key, iv, { authTagLength: GCM_TAG_BYTES });
     const ct = Buffer.concat([c.update(secret), c.final()]);
     return `v1.${iv.toString('base64url')}.${c.getAuthTag().toString('base64url')}.${ct.toString('base64url')}`;
   }
@@ -57,8 +60,11 @@ export class MfaService {
   decrypt(enc: string): Buffer {
     const [v, iv, tag, ct] = enc.split('.');
     if (v !== 'v1' || !iv || !tag || !ct) throw new Error('invalid secret envelope');
-    const d = createDecipheriv('aes-256-gcm', this.key, Buffer.from(iv, 'base64url'));
-    d.setAuthTag(Buffer.from(tag, 'base64url'));
+    const tagBuf = Buffer.from(tag, 'base64url');
+    // Chỉ nhận tag đủ 16 byte – tag ngắn hơn làm yếu xác thực GCM (Semgrep gcm-no-tag-length)
+    if (tagBuf.length !== GCM_TAG_BYTES) throw new Error('invalid secret envelope');
+    const d = createDecipheriv('aes-256-gcm', this.key, Buffer.from(iv, 'base64url'), { authTagLength: GCM_TAG_BYTES });
+    d.setAuthTag(tagBuf);
     return Buffer.concat([d.update(Buffer.from(ct, 'base64url')), d.final()]);
   }
 

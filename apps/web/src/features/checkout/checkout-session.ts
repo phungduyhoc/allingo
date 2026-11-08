@@ -1,3 +1,4 @@
+import { randomKey } from '@/lib/random';
 /**
  * Idempotency-Key ổn định cho MỘT phiên checkout (sessionStorage `allingo.checkout.<price_id>`): bấm "Thanh toán" lại / quay về từ
  * cổng / tải lại trang gửi cùng khoá + cùng body → API trả lại đơn cũ (200) thay vì tạo đơn mới. Đổi body (mã khác, thông tin hoá
@@ -7,7 +8,7 @@
 const PREFIX = 'allingo.checkout.';
 
 function newKey(): string {
-  return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return randomKey();
 }
 
 function store(): Storage | null {

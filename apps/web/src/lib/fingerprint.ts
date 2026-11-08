@@ -1,3 +1,4 @@
+import { randomKey } from './random';
 /**
  * Dấu vân tay thiết bị cho chống lạm dụng referral (S8, header `X-Device-Fingerprint` ≥ 8 ký tự ở /auth/register,
  * /auth/otp/verify, /auth/oauth/{provider}). KHÔNG chứa PII: băm (SHA-256) các đặc điểm trình duyệt chung (ngôn ngữ, múi giờ,
@@ -88,8 +89,7 @@ interface KeyValueStore {
 let memoryId: string | null = null;
 
 function randomId(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+  return randomKey();
 }
 
 /** Id ngẫu nhiên của thiết bị (localStorage, bọc try/catch; bị chặn → id trong bộ nhớ của phiên) */

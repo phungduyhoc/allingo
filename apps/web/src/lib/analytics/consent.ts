@@ -1,3 +1,4 @@
+import { randomHex } from '../random';
 /**
  * Đồng ý cookie phân tích (S10, PDPL – Nghị định 13/2023): mặc định KHÔNG đo; chỉ khi người học bấm "Đồng ý" mới gửi sự kiện
  * phễu (`POST /analytics/events`, `consent: true`) và tạo id ẩn danh. Lựa chọn lưu localStorage `allingo.consent.v1`
@@ -87,10 +88,7 @@ export function anonymousId(store: KeyValueStore | null = browserStore(), random
 }
 
 export function randomId(): string {
-  const bytes = new Uint8Array(16);
-  if (typeof crypto !== 'undefined' && 'getRandomValues' in crypto) crypto.getRandomValues(bytes);
-  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return randomHex(16);
 }
 
 /** Chạy inline trong <body> trước banner: đã có lựa chọn → html[data-consent] (CSS ẩn banner trước khi vẽ) */
