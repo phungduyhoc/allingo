@@ -72,9 +72,11 @@ ENV DATABASE_URL=${DATABASE_URL} \
     NODE_ENV=production
 COPY packages/config packages/config
 COPY packages/schemas packages/schemas
+# @allingo/db phụ thuộc @allingo/scoring (Sprint 9) → cần nguồn để build dist
+COPY packages/scoring packages/scoring
 COPY db db
 COPY apps/cms apps/cms
-# Thứ tự topo: schemas → db (tsc) → cms (next build với withPayload)
+# Thứ tự topo: schemas → scoring → db (tsc) → cms (next build với withPayload)
 RUN pnpm --filter "@allingo/cms..." run build \
     && test -f apps/cms/.next/BUILD_ID
 # Gói cms + dependency production; giữ .next, next.config.ts, package.json; bỏ nguồn/test/mẫu.
