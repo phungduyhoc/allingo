@@ -216,3 +216,4 @@ export function ieltsLrBand(correct: number, total = 40): number {
 }
 export * from './diagnosis.js';
 export * from './adaptive-diagnostic.js';
+export * from './program-scale.js';

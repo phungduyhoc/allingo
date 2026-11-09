@@ -417,7 +417,29 @@
     "partTabAria": "{short} {answered}/{total} – {title}, đã trả lời {answered} trên {total} câu",
     "passageTextN": "Văn bản {n}",
     "passageTextsLabel": "Các văn bản của bộ đề ({count})",
-    "passageTextsHint": "Bộ {count} văn bản – chọn tab để đọc từng văn bản"
+    "passageTextsHint": "Bộ {count} văn bản – chọn tab để đọc từng văn bản",
+    "mcqSelectCount": "Chọn {count} đáp án ({selected}/{count})",
+    "rl": {
+      "limitWords": "{count, plural, =1 {Chỉ MỘT từ} other {Không quá # từ}}",
+      "limitWordsNumber": "{count, plural, =1 {MỘT từ và/hoặc một số} other {Không quá # từ và/hoặc một số}}",
+      "limitNumber": "Chỉ viết MỘT số",
+      "gapLabel": "Câu {number}",
+      "gapLabelWith": "Câu {number}: {label}",
+      "optionsTitle": "Danh sách lựa chọn",
+      "reuseHint": "Có thể dùng một lựa chọn nhiều lần. Chọn trong ô hoặc kéo thẻ vào mục.",
+      "noReuseHint": "Mỗi lựa chọn chỉ dùng một lần. Chọn trong ô hoặc kéo thẻ vào mục.",
+      "itemsLabel": "Các câu hỏi",
+      "example": "Ví dụ",
+      "choose": "Chọn…",
+      "usedSuffix": "(đã dùng)",
+      "correctIs": "Đáp án: {answer}",
+      "wordBank": "Ngân hàng từ",
+      "mapHint": "Chọn chữ cái trong ô của từng địa điểm, hoặc bấm vào địa điểm rồi bấm vị trí trên ảnh.",
+      "pinLabel": "Vị trí {key}",
+      "describeImage": "Mô tả hình bằng chữ",
+      "imageUnavailable": "Ảnh chưa sẵn sàng – dùng phần mô tả bằng chữ bên dưới.",
+      "flowChart": "Sơ đồ quy trình"
+    }
   },
   "result": {
     "title": "Kết quả",
@@ -709,7 +731,30 @@
     "part6": "Part 6 · Hoàn thành đoạn",
     "part7": "Part 7 · Đọc hiểu",
     "listening": "Listening",
-    "reading": "Reading"
+    "reading": "Reading",
+    "listening_p1": "Listening Part 1",
+    "listening_p2": "Listening Part 2",
+    "listening_p3": "Listening Part 3",
+    "listening_p4": "Listening Part 4",
+    "reading_p1": "Reading Passage 1",
+    "reading_p2": "Reading Passage 2",
+    "reading_p3": "Reading Passage 3",
+    "writing_task1": "Writing Task 1",
+    "writing_task2": "Writing Task 2",
+    "speaking_part1": "Speaking Part 1",
+    "speaking_part2": "Speaking Part 2",
+    "speaking_part3": "Speaking Part 3",
+    "speaking_q1_2": "Speaking Q1–2 · Đọc to",
+    "speaking_q3_4": "Speaking Q3–4 · Mô tả tranh",
+    "speaking_q5_7": "Speaking Q5–7 · Trả lời câu hỏi",
+    "speaking_q8_10": "Speaking Q8–10 · Trả lời theo thông tin",
+    "speaking_q11": "Speaking Q11 · Trình bày ý kiến",
+    "writing_q1_5": "Writing Q1–5 · Viết câu theo tranh",
+    "writing_q6_7": "Writing Q6–7 · Trả lời email",
+    "writing_q8": "Writing Q8 · Viết luận",
+    "vocab": "Từ vựng",
+    "grammar": "Ngữ pháp",
+    "writing": "Viết"
   },
   "questionTypes": {
     "mcq_single": "Trắc nghiệm một đáp án",
@@ -723,7 +768,21 @@
     "dictation": "Nghe chép",
     "essay": "Viết luận",
     "speaking": "Nói",
-    "handwriting": "Viết chữ"
+    "handwriting": "Viết chữ",
+    "matching_headings": "Nối tiêu đề với đoạn văn",
+    "matching_information": "Nối thông tin với đoạn văn",
+    "matching_features": "Nối đặc điểm",
+    "matching_sentence_endings": "Nối đuôi câu",
+    "sentence_completion": "Hoàn thành câu",
+    "summary_completion": "Hoàn thành tóm tắt",
+    "note_completion": "Hoàn thành ghi chú",
+    "table_completion": "Hoàn thành bảng",
+    "flow_chart_completion": "Hoàn thành sơ đồ quy trình",
+    "form_completion": "Hoàn thành biểu mẫu",
+    "short_answer": "Trả lời ngắn",
+    "diagram_labelling": "Gán nhãn sơ đồ",
+    "summary_word_bank": "Tóm tắt – chọn từ",
+    "plan_map_labelling": "Gán nhãn bản đồ/mặt bằng"
   },
   "legal": {
     "draftNotice": "Bản dự thảo – sẽ được pháp chế rà soát trước khi ra mắt chính thức.",
@@ -3786,7 +3845,8 @@
       "level": {
         "error": "Lỗi",
         "warning": "Cảnh báo"
-      }
+      },
+      "rendered": "Xem trước như người học (điền sẵn đáp án)"
     },
     "checks": {
       "content_invalid": "Nội dung không đúng schema dạng câu ({path})",
@@ -3800,7 +3860,11 @@
       "passage_missing": "Part này cần đoạn văn/script nhưng câu chưa gắn passage",
       "audio_missing": "Câu Listening chưa có audio (cần TTS/ghi âm trước khi phát hành)",
       "image_missing": "Part 1 chưa có ảnh",
-      "explanation_missing": "Chưa có giải thích"
+      "explanation_missing": "Chưa có giải thích",
+      "word_limit_missing": "Câu điền từ chưa ghi giới hạn từ (NO MORE THAN … WORDS)",
+      "accepted_exceeds_word_limit": "Đáp án chấp nhận vượt giới hạn từ ở chỗ trống {gaps}",
+      "too_few_options": "Không dùng lại lựa chọn nhưng chỉ có {options} lựa chọn cho {items} mục (nên có lựa chọn nhiễu)",
+      "select_count_mismatch": "Số lựa chọn phải chọn ({expected}) khác số đáp án đúng ({actual})"
     },
     "errors": {
       "invalid_transition": "Không hợp lệ ở trạng thái hiện tại",
@@ -3913,5 +3977,13 @@
       "publishBlocked": "Chưa phát hành được: {count} câu chưa được duyệt xong",
       "code": "Mã đề: {code}"
     }
+  },
+  "programArea": {
+    "switcherLabel": "Chương trình",
+    "optionSoon": "{program} (sắp ra mắt)",
+    "title": "Khu luyện {program} sắp ra mắt",
+    "desc": "Allingo đang hoàn thiện đề, chấm điểm và lộ trình cho {program}. Đăng ký để nhận thông báo ngay khi mở – trong lúc chờ bạn vẫn luyện các chương trình đang mở.",
+    "backTo": "Tiếp tục luyện {program}",
+    "unknownTitle": "Không tìm thấy chương trình này"
   }
 }

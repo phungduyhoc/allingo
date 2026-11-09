@@ -417,7 +417,29 @@
     "partTabAria": "{short} {answered}/{total} – {title}, {answered} of {total} answered",
     "passageTextN": "Text {n}",
     "passageTextsLabel": "Texts in this set ({count})",
-    "passageTextsHint": "Set of {count} texts – use the tabs to read each text"
+    "passageTextsHint": "Set of {count} texts – use the tabs to read each text",
+    "mcqSelectCount": "Choose {count} answers ({selected}/{count})",
+    "rl": {
+      "limitWords": "{count, plural, =1 {ONE WORD ONLY} other {NO MORE THAN # WORDS}}",
+      "limitWordsNumber": "{count, plural, =1 {ONE WORD AND/OR A NUMBER} other {NO MORE THAN # WORDS AND/OR A NUMBER}}",
+      "limitNumber": "A NUMBER only",
+      "gapLabel": "Question {number}",
+      "gapLabelWith": "Question {number}: {label}",
+      "optionsTitle": "List of options",
+      "reuseHint": "You may use any option more than once. Pick from the list or drag a card onto an item.",
+      "noReuseHint": "Each option can be used only once. Pick from the list or drag a card onto an item.",
+      "itemsLabel": "Questions",
+      "example": "Example",
+      "choose": "Choose…",
+      "usedSuffix": "(used)",
+      "correctIs": "Answer: {answer}",
+      "wordBank": "Word bank",
+      "mapHint": "Choose a letter for each place, or select a place and then click its position on the image.",
+      "pinLabel": "Position {key}",
+      "describeImage": "Text description of the image",
+      "imageUnavailable": "Image not ready yet – use the text description below.",
+      "flowChart": "Flow chart"
+    }
   },
   "result": {
     "title": "Result",
@@ -709,7 +731,30 @@
     "part6": "Part 6 · Text Completion",
     "part7": "Part 7 · Reading Comprehension",
     "listening": "Listening",
-    "reading": "Reading"
+    "reading": "Reading",
+    "listening_p1": "Listening Part 1",
+    "listening_p2": "Listening Part 2",
+    "listening_p3": "Listening Part 3",
+    "listening_p4": "Listening Part 4",
+    "reading_p1": "Reading Passage 1",
+    "reading_p2": "Reading Passage 2",
+    "reading_p3": "Reading Passage 3",
+    "writing_task1": "Writing Task 1",
+    "writing_task2": "Writing Task 2",
+    "speaking_part1": "Speaking Part 1",
+    "speaking_part2": "Speaking Part 2",
+    "speaking_part3": "Speaking Part 3",
+    "speaking_q1_2": "Speaking Q1–2 · Read a text aloud",
+    "speaking_q3_4": "Speaking Q3–4 · Describe a picture",
+    "speaking_q5_7": "Speaking Q5–7 · Respond to questions",
+    "speaking_q8_10": "Speaking Q8–10 · Respond using information",
+    "speaking_q11": "Speaking Q11 · Express an opinion",
+    "writing_q1_5": "Writing Q1–5 · Sentence based on a picture",
+    "writing_q6_7": "Writing Q6–7 · Respond to a request",
+    "writing_q8": "Writing Q8 · Opinion essay",
+    "vocab": "Vocabulary",
+    "grammar": "Grammar",
+    "writing": "Writing"
   },
   "questionTypes": {
     "mcq_single": "Single choice",
@@ -723,7 +768,21 @@
     "dictation": "Dictation",
     "essay": "Essay",
     "speaking": "Speaking",
-    "handwriting": "Handwriting"
+    "handwriting": "Handwriting",
+    "matching_headings": "Matching headings",
+    "matching_information": "Matching information",
+    "matching_features": "Matching features",
+    "matching_sentence_endings": "Matching sentence endings",
+    "sentence_completion": "Sentence completion",
+    "summary_completion": "Summary completion",
+    "note_completion": "Note completion",
+    "table_completion": "Table completion",
+    "flow_chart_completion": "Flow-chart completion",
+    "form_completion": "Form completion",
+    "short_answer": "Short-answer questions",
+    "diagram_labelling": "Diagram labelling",
+    "summary_word_bank": "Summary completion (word bank)",
+    "plan_map_labelling": "Plan/map labelling"
   },
   "legal": {
     "draftNotice": "Draft – to be reviewed by legal counsel before public launch.",
@@ -3786,7 +3845,8 @@
       "level": {
         "error": "Error",
         "warning": "Warning"
-      }
+      },
+      "rendered": "Preview as a learner (answers filled in)"
     },
     "checks": {
       "content_invalid": "Content does not match the question schema ({path})",
@@ -3800,7 +3860,11 @@
       "passage_missing": "This Part needs a passage/script but none is attached",
       "audio_missing": "Listening question has no audio yet (TTS/recording needed before publishing)",
       "image_missing": "Part 1 question has no photo",
-      "explanation_missing": "No explanation"
+      "explanation_missing": "No explanation",
+      "word_limit_missing": "Completion item has no word limit (NO MORE THAN … WORDS)",
+      "accepted_exceeds_word_limit": "Accepted answer exceeds the word limit in gap(s) {gaps}",
+      "too_few_options": "Options cannot be reused but only {options} options for {items} items (add distractors)",
+      "select_count_mismatch": "Choose-count ({expected}) differs from the number of correct answers ({actual})"
     },
     "errors": {
       "invalid_transition": "Not allowed in the current status",
@@ -3913,5 +3977,13 @@
       "publishBlocked": "Cannot publish yet: {count} question(s) are not fully reviewed",
       "code": "Code: {code}"
     }
+  },
+  "programArea": {
+    "switcherLabel": "Program",
+    "optionSoon": "{program} (coming soon)",
+    "title": "{program} practice is coming soon",
+    "desc": "Allingo is finishing tests, scoring and study plans for {program}. Join the waitlist to hear as soon as it opens – meanwhile keep practising the programs that are open.",
+    "backTo": "Keep practising {program}",
+    "unknownTitle": "This program was not found"
   }
 }
