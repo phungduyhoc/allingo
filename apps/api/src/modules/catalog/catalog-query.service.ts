@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, inArray, param, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import { isSpokenTextSection, programDef, questionContentSchema, redactSpokenText, toPublicContent, type LocalizedText, type ProgramCode, type ProgramStatus, type QuestionContent, type QuestionPublic, type QuestionTypeCode, type TranscriptHighlight } from '@allingo/schemas';
+import { isSpokenTextSection, markCount, programDef, questionContentSchema, redactSpokenText, toPublicContent, type LocalizedText, type ProgramCode, type ProgramStatus, type QuestionContent, type QuestionPublic, type QuestionTypeCode, type TranscriptHighlight } from '@allingo/schemas';
 import { DbService, type DbOrTx } from '../../shared/db/db.module.js';
 import { StorageService } from '../../shared/storage/storage.module.js';
 import { NotFound } from '../../shared/http/errors.js';
@@ -228,6 +228,16 @@ export class CatalogQueryService {
       .orderBy(asc(catalogTestSets.id))
       .limit(opts.limit + 1);
     return rows;
+  }
+
+  /**
+   * C3: số câu hỏi hiển thị của đề (TestSetSummary.question_count). Chương trình đếm theo mục (registry `marking = per_item` – IELTS)
+   * cộng markCount từng câu catalog ("40 câu hỏi" thay vì 12–14 câu catalog); chương trình khác giữ số câu catalog `itemCount`.
+   */
+  async questionCountOf(testSetId: string, program: string, itemCount: number): Promise<number> {
+    if (programDef(program)?.marking !== 'per_item') return itemCount;
+    const loaded = await this.loadTestSetQuestions(testSetId);
+    return loaded.reduce((sum, q) => sum + markCount(q.content), 0);
   }
 
   async testSetById(id: string) {

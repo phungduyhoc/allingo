@@ -17,18 +17,20 @@ type Kind = (typeof KINDS)[number];
 
 export function TestSetsPage({ initialKind }: { initialKind?: string }) {
   const t = useTranslations('testSets');
+  const tp = useTranslations('programs');
   const [kind, setKind] = React.useState<Kind>(KINDS.includes(initialKind as Kind) ? (initialKind as Kind) : 'all');
   const program = useProgram();
   const query = useTestSets(program, kind === 'all' ? undefined : kind);
   const ctl = useStartTestSet();
+  const title = t('title', { program: tp(program) });
 
   return (
     <div className="space-y-6">
-      <PageHeader title={t('title')} description={t('subtitle')} />
+      <PageHeader title={title} description={t('subtitle')} />
       {/* "Đề đầy đủ còn y lượt tháng này" (Free) – Pro không có dòng hạn mức → ẩn */}
       <QuotaLeft feature="full_test" className="sm:max-w-md" />
       <Tabs value={kind} onValueChange={(v) => setKind(v as Kind)}>
-        <TabsList aria-label={t('title')}>
+        <TabsList aria-label={title}>
           {KINDS.map((k) => (
             <TabsTrigger key={k} value={k}>
               {k === 'all' ? t('filterAll') : t(`kind.${k}`)}

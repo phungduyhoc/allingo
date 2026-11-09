@@ -140,7 +140,7 @@ export async function seedIeltsTypesDemo(db: Db, adminId: string): Promise<{ tes
   const seedItems: SeedItem[] = items.map((i) => ({ key: i.key, section: i.section, group_key: i.group }));
   const testSetId = await upsertSeedTestSet(db, ctx, {
     code: IELTS_DEMO_CODE,
-    title: { vi: 'IELTS – Làm quen các dạng câu Reading & Listening (18 câu)', en: 'IELTS – Reading & Listening question types (18 items)' },
+    title: { vi: 'IELTS – Làm quen các dạng câu Reading & Listening (14 dạng câu)', en: 'IELTS – Reading & Listening question types (14 types)' },
     kind: 'mini',
     durationSec: 40 * 60,
     items: seedItems,

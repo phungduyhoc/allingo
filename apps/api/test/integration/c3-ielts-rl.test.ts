@@ -174,6 +174,19 @@ describe('C3 – IELTS Reading & Listening (integration)', () => {
     await app?.close();
   });
 
+  it('TestSetSummary.question_count của đề IELTS đếm theo mục (40), không theo số câu catalog', async () => {
+    const me = await learner();
+    for (const id of [ids.reading, ids.listening]) {
+      const r = await me.call('GET', `/test-sets/${id}`);
+      expect(r.status).toBe(200);
+      expect(r.body.question_count).toBe(40);
+    }
+    const list = await me.call('GET', '/programs/ielts/test-sets?kind=full&limit=50');
+    expect(list.status).toBe(200);
+    const mine = (list.body.data as Array<{ id: string; question_count: number }>).filter((t) => t.id === ids.reading || t.id === ids.listening);
+    expect(mine.map((t) => t.question_count)).toEqual([40, 40]);
+  });
+
   it('Reading GT – đánh số 1–40 theo mục, đồng hồ 60′, Exam Mode khoá giải thích, chấm theo mục → band GT', async () => {
     const me = await learner();
     const a = await me.call('POST', '/attempts', { program: 'ielts', mode: 'exam', test_set_id: ids.reading }, { 'idempotency-key': randomUUID() });

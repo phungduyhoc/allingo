@@ -196,7 +196,7 @@
     "passwordPolicyHint": "Ít nhất {min} ký tự, tránh mật khẩu phổ biến hoặc chứa email/tên của bạn."
   },
   "dashboard": {
-    "title": "Bảng điều khiển TOEIC",
+    "title": "Bảng điều khiển {program}",
     "greeting": "Chào {name}",
     "streakTitle": "Chuỗi ngày học",
     "streakDays": "{count, plural, =0 {0 ngày} =1 {1 ngày} other {# ngày}}",
@@ -248,7 +248,7 @@
     "estimateNeedsBoth": "Đề mini một kỹ năng chỉ cho điểm kỹ năng đó; điểm tổng (10–990) cần đề có cả Listening và Reading."
   },
   "testSets": {
-    "title": "Đề thi TOEIC",
+    "title": "Đề thi {program}",
     "subtitle": "Chọn đề mini để khởi động, đề đầy đủ khi bạn sẵn sàng 2 giờ.",
     "filterAll": "Tất cả",
     "kind": {
