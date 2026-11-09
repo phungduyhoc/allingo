@@ -100,6 +100,28 @@ export const attemptDraftStateSchema = z.object({
   last_saved_at: z.string().nullable().default(null),
   /** v1.1 – S9: trạng thái bài chẩn đoán thích ứng (mode = diagnostic) – câu đã phục vụ, mức, chuỗi đúng/sai */
   adaptive: diagnosticStateSchema.nullable().optional(),
+  /**
+   * v1.1 – C3: thời điểm bắt đầu từng kỹ năng (đồng hồ theo section của đề IELTS đầy đủ, Exam Mode) – kỹ năng đầu = started_at của
+   * attempt; kỹ năng sau = sự kiện `part_switch` (meta.section_code) hoặc lần lưu đáp án đầu tiên của kỹ năng đó.
+   */
+  skill_started_at: z.record(z.string(), z.string()).optional(),
+  /** v1.1 – C3: lần đầu phát audio từng part Listening theo asset id (sự kiện `audio_started`) – server giữ "nghe một lần" */
+  listen_started_at: z.record(z.string(), z.string()).optional(),
+  /**
+   * v1.1 – C3: định dạng IELTS chốt lúc tạo attempt (không tra catalog mỗi lần lưu nháp): module Reading, thời gian đọc trước/xem lại,
+   * kế hoạch đồng hồ theo kỹ năng (`clocks` – chỉ Exam Mode đề full) và audio từng part Listening.
+   */
+  ielts_format: z
+    .object({
+      module: z.enum(['academic', 'general_training']).nullable(),
+      preread_sec: z.number().int(),
+      review_sec: z.number().int(),
+      clocks: z.boolean(),
+      plan: z.array(z.object({ skill: z.string(), sections: z.array(z.string()), duration_sec: z.number().int() })),
+      listening_parts: z.array(z.object({ section_code: z.string(), media_asset_id: z.string().nullable(), asset_ids: z.array(z.string()), duration_ms: z.number().int().nullable() })),
+    })
+    .nullable()
+    .optional(),
 });
 export type AttemptDraftState = z.infer<typeof attemptDraftStateSchema>;
 

@@ -8,7 +8,7 @@ import type { ErrorKind } from '@allingo/schemas';
  *  2. Đã trả lời nhưng thời gian làm câu > ngưỡng theo Part → `timeout` (rule `slow`).
  *  3. Theo subskill của câu (bảng `SUBSKILL_KIND`, ưu tiên paraphrase > trap > vocabulary > grammar > inference > listening_detail).
  *  4. Theo chủ đề (topic) nếu mã gợi ý ngữ pháp/từ vựng.
- *  5. Theo Part: Listening → listening_detail; Part 5/6 → grammar; Part 7 → inference; còn lại → other.
+ *  5. Theo Part: Listening → listening_detail; Part 5/6 → grammar; Part 7 → inference; IELTS reading_p* → paraphrase (C3); còn lại → other.
  * Chỉ trả các loại sprint yêu cầu: timeout | paraphrase | trap | vocabulary | grammar | listening_detail | inference | other.
  */
 
@@ -21,6 +21,15 @@ export const TIMEOUT_THRESHOLD_MS: Readonly<Record<string, number>> = {
   part5: 40_000,
   part6: 75_000,
   part7: 90_000,
+  // C3 – IELTS: một câu catalog gồm nhiều mục (cả nhóm nối/điền 5–13 câu hỏi) → ngưỡng theo cả câu: Listening theo nhịp audio part,
+  // Reading ~ thời gian một passage (20′)
+  listening_p1: 600_000,
+  listening_p2: 600_000,
+  listening_p3: 600_000,
+  listening_p4: 600_000,
+  reading_p1: 1_200_000,
+  reading_p2: 1_200_000,
+  reading_p3: 1_200_000,
 };
 export const TIMEOUT_FALLBACK_MS = 90_000;
 
@@ -101,7 +110,9 @@ export function classifyError(input: ClassifyInput): Classification {
   const fromTopic = input.topic_code ? kindFromCode(input.topic_code, input.skill_code) : null;
   if (fromTopic) return { kind: fromTopic, rule: 'topic', evidence: { ...base, subskill: null } };
   const part = /^part(\d+)$/.exec(input.section_code)?.[1];
-  const bySection: ErrorKind | null = input.skill_code === 'listening' || (part && Number(part) <= 4) ? 'listening_detail' : part === '5' || part === '6' ? 'grammar' : part === '7' ? 'inference' : null;
+  // C3: IELTS Reading (reading_p1–p3) chủ yếu là nhận diện diễn đạt lại (paraphrase) giữa câu hỏi và passage
+  const bySection: ErrorKind | null =
+    input.skill_code === 'listening' || (part && Number(part) <= 4) ? 'listening_detail' : part === '5' || part === '6' ? 'grammar' : part === '7' ? 'inference' : /^reading_p\d+$/.test(input.section_code) ? 'paraphrase' : null;
   if (bySection) return { kind: bySection, rule: 'section', evidence: { ...base, subskill: null } };
   return { kind: 'other', rule: 'default', evidence: { ...base, subskill: null } };
 }

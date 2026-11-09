@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { sql } from 'drizzle-orm';
 import { addDays, localDate, zonedDayStart } from '@allingo/planner';
-import { DEFAULT_PROGRAM, DOMAIN_EVENTS, scorePartOf, scoreScaleOf, type ProgramCode, type Stats } from '@allingo/schemas';
+import { DEFAULT_PROGRAM, DOMAIN_EVENTS, scaledPartsOf, scorePartOf, scoreScaleOf, type ProgramCode, type Stats } from '@allingo/schemas';
 import { ENV, type Env } from '../../config/env.js';
 import { RedisService } from '../../shared/cache/redis.module.js';
 import { CLOCK, type Clock } from '../../shared/clock/clock.module.js';
@@ -32,6 +32,7 @@ type AttemptRow = {
   by_question_type: Breakdown | null;
   by_skill: Record<string, { correct: number; total: number }> | null;
   scaled: { listening?: number | null; reading?: number | null; total?: number | null } | null;
+  scale: Record<string, unknown> | null;
 };
 
 export const statsCacheKey = (userId: string, program: string) => `stats:v1:${userId}:${program}`;
@@ -142,7 +143,7 @@ export class StatsService {
                  a.score_breakdown -> 'by_section' as by_section, a.score_breakdown -> 'by_subskill' as by_subskill,
                  a.score_breakdown -> 'by_question_type' as by_question_type,
                  (select jsonb_object_agg(k, jsonb_build_object('correct', v -> 'correct', 'total', v -> 'total')) from jsonb_each(coalesce(a.score_breakdown -> 'by_skill', '{}'::jsonb)) as s(k, v)) as by_skill,
-                 a.score_breakdown -> 'scaled' as scaled
+                 a.score_breakdown -> 'scaled' as scaled, a.score_breakdown -> 'scale' as scale
             from learn.attempts a left join catalog.test_sets ts on ts.id = a.test_set_id
            where a.user_id = ${userId}::uuid and a.program_code = ${program} and a.status = 'graded'
              and a.submitted_at >= ${new Date(now - HISTORY_DAYS * DAY_MS).toISOString()}::timestamptz
@@ -176,10 +177,13 @@ export class StatsService {
     // Điểm theo thời gian: bài có thang điểm (không tính drill/timed_drill)
     const scored = rows.filter((a) => a.scaled_num !== null && a.mode !== 'drill' && a.mode !== 'timed_drill').sort((x, y) => x.at - y.at);
     // S12 (fix web S10): mỗi điểm ghi `part` + `scale` (mini chỉ Listening → 5–495); ước tính hiện tại/xu hướng chỉ dùng thang tổng
-    const partOf = (a: (typeof scored)[number]) => scorePartOf(a.scaled ? { total: numOrNull(a.scaled.total), listening: numOrNull(a.scaled.listening), reading: numOrNull(a.scaled.reading) } : null);
+    // C3: IELTS không có `scaled` (TOEIC) – band từng kỹ năng ở `scale.bands`, overall ở `scale.band` (scaledPartsOf)
+    const partsOf = (a: (typeof scored)[number]) => scaledPartsOf({ scaled: a.scaled, scale: a.scale });
+    const partOf = (a: (typeof scored)[number]) => scorePartOf(partsOf(a));
     const scoreHistory = scored.map((a) => {
       const part = partOf(a);
-      return { date: localDate(a.at, tz), at: new Date(a.at).toISOString(), score: a.scaled_num!, listening: numOrNull(a.scaled?.listening), reading: numOrNull(a.scaled?.reading), kind: a.test_set_kind, mode: a.mode, attempt_id: a.id, part, scale: scoreScaleOf(program, part) };
+      const parts = partsOf(a);
+      return { date: localDate(a.at, tz), at: new Date(a.at).toISOString(), score: a.scaled_num!, listening: parts?.listening ?? null, reading: parts?.reading ?? null, kind: a.test_set_kind, mode: a.mode, attempt_id: a.id, part, scale: scoreScaleOf(program, part) };
     });
     const totals = scored.filter((a) => partOf(a) === 'total');
     const latest = totals.at(-1) ?? null;
@@ -269,8 +273,4 @@ export class StatsService {
        order by a.user_id, a.submitted_at desc`);
     return [...rows].map((r) => Number(r.s)).sort((x, y) => x - y);
   }
-}
-
-function numOrNull(v: unknown): number | null {
-  return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }

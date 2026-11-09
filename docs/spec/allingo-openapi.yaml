@@ -514,7 +514,13 @@ paths:
         content:
           application/json:
             schema: { type: object, required: [answers], properties: { answers: { type: array, items: { $ref: '#/components/schemas/AttemptAnswerInput' } }, section_elapsed_sec: { type: object, additionalProperties: { type: integer } }, ui_state: { $ref: '#/components/schemas/AttemptUiState' } } }
-      responses: { '204': { description: Đã lưu } }
+      description: |
+        v1.1 – C3: Exam Mode đề IELTS đầy đủ có đồng hồ theo kỹ năng (`Attempt.sections[].ends_at/locked`): đáp án của kỹ năng đã khoá
+        (hết giờ hoặc đã chuyển sang kỹ năng sau) bị bỏ qua; nếu MỌI đáp án trong lô thuộc kỹ năng đã khoá → 409 `conflict` với
+        `details.reason = section_locked` (+ `section_code`). Lần lưu đầu tiên của kỹ năng sau = thời điểm bắt đầu kỹ năng đó.
+      responses:
+        '204': { description: Đã lưu }
+        '409': { $ref: '#/components/responses/Error' }
   /attempts/{attemptId}/events:
     post:
       tags: [Attempts]
@@ -523,7 +529,7 @@ paths:
       requestBody:
         content:
           application/json:
-            schema: { type: object, required: [type], properties: { type: { type: string, enum: [tab_leave, tab_hidden, section_timeout, audio_played, focus_lost, resume, part_switch, audio_started, audio_ended, audio_stalled], description: 'v1.1: thêm tab_hidden, focus_lost, resume, part_switch, audio_started/ended/stalled' }, at: { type: string, format: date-time }, meta: { type: object, description: 'JSON ≤ 2000 ký tự. Sự kiện audio_* (v1.1 – Sprint 4): `question_id`, `asset_id` (UUID), `position_ms`; audio_started với question_id thuộc attempt tăng Attempt.audio_plays[question_id] (thống kê, không chặn phát)', properties: { question_id: { type: string, format: uuid }, asset_id: { type: string, format: uuid }, position_ms: { type: integer, minimum: 0 } } } } }
+            schema: { type: object, required: [type], properties: { type: { type: string, enum: [tab_leave, tab_hidden, section_timeout, audio_played, focus_lost, resume, part_switch, audio_started, audio_ended, audio_stalled], description: 'v1.1: thêm tab_hidden, focus_lost, resume, part_switch, audio_started/ended/stalled' }, at: { type: string, format: date-time }, meta: { type: object, description: 'JSON ≤ 2000 ký tự. Sự kiện audio_* (v1.1 – Sprint 4): `question_id`, `asset_id` (UUID), `position_ms`; audio_started với question_id thuộc attempt tăng Attempt.audio_plays[question_id]. v1.1 – C3 (IELTS): audio_started đầu tiên của audio part Listening (theo `asset_id`, hoặc audio part của `question_id`) mở cửa sổ nghe một lần (giờ server); part_switch với `section_code` của kỹ năng sau = bắt đầu kỹ năng đó (kỹ năng trước khoá – Exam Mode đề full)', properties: { question_id: { type: string, format: uuid }, asset_id: { type: string, format: uuid }, position_ms: { type: integer, minimum: 0 }, section_code: { type: string, description: 'v1.1 – C3: part_switch' } } } } }
       responses: { '202': { description: Đã ghi } }
   /attempts/{attemptId}/submit:
     post:
@@ -548,6 +554,8 @@ paths:
         URL media trong `Attempt.questions[].media[].url` / `passage.media_url` là URL ký hết hạn sau 10 phút (`expires_at`);
         đề L&R 120 phút cần gia hạn: client gọi endpoint này trước khi hết hạn (khuyến nghị khi còn ≤ 2 phút) và thay URL theo `id`
         (`media[].id`, `passage.media_asset_id`). Chỉ chủ attempt; attempt của người khác → 404. Mọi trạng thái (Review cần nghe lại).
+        v1.1 – C3: Exam Mode đề IELTS đang làm – audio part Listening đã hết cửa sổ phát (lần `audio_started` đầu + thời lượng + 60 giây)
+        KHÔNG còn trong danh sách (nghe một lần, ràng buộc phía server); `Attempt` cũng không trả URL của audio đó.
       parameters: [ { $ref: '#/components/parameters/AttemptId' } ]
       responses:
         '200': { description: OK, headers: { Cache-Control: { schema: { type: string, example: no-store } } }, content: { application/json: { schema: { $ref: '#/components/schemas/AttemptMediaList' } } } }
@@ -2692,6 +2700,8 @@ components:
         section_code: { type: string }
         group_key: { type: string, nullable: true }
         order_no: { type: integer }
+        number_start: { type: integer, description: 'v1.1 – C3/S167: số câu hỏi đầu tiên của câu trong đề, đánh số liên tục Questions 1–40 theo mục (IELTS: markCount; TOEIC = order_no)' }
+        mark_count: { type: integer, description: 'v1.1 – C3: số câu hỏi (mục đánh số) câu chiếm – TOEIC luôn 1' }
         content: { type: object }
         media: { type: array, description: 'Audio/ảnh của câu và của lựa chọn (v1.1: kể cả options[].image_asset_id/audio_asset_id)', items: { type: object, properties: { id: { type: string, format: uuid }, kind: { type: string }, url: { type: string }, duration_ms: { type: integer }, expires_at: { type: [string, 'null'], format: date-time, description: 'Hạn URL ký (v1.1 – Sprint 4); null = URL không hết hạn. Gia hạn qua GET /attempts/{attemptId}/media' } } } }
         passage: { type: object, nullable: true, description: 'Passage audio_script (Part 3/4): body = null khi làm bài (transcript chỉ có trong Review – v1.1 Sprint 4). TOEIC Part 1/2: stem và options[].text bị xoá trong Attempt (được đọc trong audio)', properties: { id: { type: string, format: uuid }, kind: { type: string }, title: { type: string }, body: { type: [string, 'null'] }, media_url: { type: [string, 'null'] }, media_asset_id: { type: [string, 'null'], format: uuid, description: v1.1 }, media_expires_at: { type: [string, 'null'], format: date-time, description: v1.1 }, parts: { type: array, items: { $ref: '#/components/schemas/PassagePart' }, description: 'v1.1 – B5/S24: văn bản của bộ đôi/bộ ba Part 7 theo sort_order (tab từng văn bản); thiếu/rỗng = passage một văn bản (`body`). `body` vẫn là bản gộp `[Tiêu đề]` (dự phòng). Script audio khi làm bài: không có parts' } } }
@@ -2713,7 +2723,7 @@ components:
         mode: { type: string }
         status: { type: string, enum: [in_progress, submitted, graded, abandoned] }
         test_set: { $ref: '#/components/schemas/TestSetSummary' }
-        sections: { type: array, items: { type: object, properties: { section_code: { type: string }, duration_sec: { type: integer }, elapsed_sec: { type: integer }, locked: { type: boolean } } } }
+        sections: { type: array, items: { type: object, properties: { section_code: { type: string }, duration_sec: { type: integer }, elapsed_sec: { type: integer }, locked: { type: boolean, description: 'v1.1 – C3: Exam Mode đề IELTS full – kỹ năng của section đã hết giờ/đã chuyển qua (server bỏ qua đáp án)' }, skill: { type: string, description: 'v1.1 – C3' }, ends_at: { type: [string, 'null'], format: date-time, description: 'v1.1 – C3: hạn của kỹ năng chứa section (đồng hồ theo section); null = chỉ có hạn chung expires_at' } } } }
         questions: { type: array, items: { $ref: '#/components/schemas/QuestionPublic' } }
         draft_answers: { type: array, items: { $ref: '#/components/schemas/AttemptAnswerInput' } }
         started_at: { type: string, format: date-time }
@@ -2722,6 +2732,27 @@ components:
         ui_state: { $ref: '#/components/schemas/AttemptUiState' }
         feedback: { type: object, additionalProperties: { type: object, properties: { is_correct: { type: [boolean, 'null'] }, correct_answer: {}, explanation: { type: [object, 'null'] }, transcript: { oneOf: [ { $ref: '#/components/schemas/TranscriptHighlight' }, { type: 'null' } ], description: 'v1.1 – Sprint 4: transcript audio của câu; nhóm Part 3/4 chỉ khi mọi câu trong nhóm đã trả lời' }, details: { type: [object, 'null'], additionalProperties: { type: boolean }, description: 'v1.1 – C2: đúng/sai từng mục của câu nhiều mục (chỗ trống, mệnh đề TFNG, cặp nối)' } } }, description: 'Chỉ mode practice/drill – đáp án của câu đã trả lời (v1.1). Không có ở exam/timed_drill/diagnostic' }
         audio_plays: { type: object, additionalProperties: { type: integer }, description: 'Số lần bắt đầu phát audio theo question_id (sự kiện audio_started) – giữ quy tắc "nghe một lần" khi tải lại (v1.1 – Sprint 4)' }
+        exam_format: { oneOf: [ { $ref: '#/components/schemas/ExamFormat' }, { type: 'null' } ], description: 'v1.1 – C3: định dạng thi IELTS trên máy tính; thiếu/null = luồng TOEIC' }
+    ExamFormat:
+      type: object
+      description: 'v1.1 – C3: IELTS trên máy tính. module = hình thức Reading (catalog.test_sets.level; đề không có Reading → null). Listening phát liên tục theo part: đọc trước `preread_sec` giây mỗi part, trả lời trong lúc nghe, hết part 4 còn `review_sec` giây xem lại. Exam Mode: audio mỗi part phát một lần – `played` = đã hết cửa sổ phát (server không cấp lại URL)'
+      required: [kind, module, preread_sec, review_sec, listening_parts]
+      properties:
+        kind: { type: string, enum: [ielts_cbt] }
+        module: { type: [string, 'null'], enum: [academic, general_training, null] }
+        preread_sec: { type: integer }
+        review_sec: { type: integer }
+        listening_parts:
+          type: array
+          items:
+            type: object
+            required: [section_code, media_asset_id, duration_ms, started_at, played]
+            properties:
+              section_code: { type: string }
+              media_asset_id: { type: [string, 'null'], format: uuid }
+              duration_ms: { type: [integer, 'null'] }
+              started_at: { type: [string, 'null'], format: date-time }
+              played: { type: boolean }
     AttemptAnswerInput:
       type: object
       required: [question_id, answer]
@@ -2738,7 +2769,7 @@ components:
         scaled_score: { type: number }
         scale: { type: object }
         by_section: { type: object, additionalProperties: { type: object, properties: { correct: { type: integer }, total: { type: integer }, avg_time_ms: { type: integer }, score: { type: [number, 'null'] }, marks: { type: integer, description: 'v1.1 – C1: số câu hỏi đúng theo mục đánh số (IELTS: câu TFNG 5 mệnh đề = 5)' }, max_marks: { type: integer, description: 'v1.1 – C1' } } } }
-        by_question_type: { type: object }
+        by_question_type: { type: object, additionalProperties: { type: object, properties: { correct: { type: integer }, total: { type: integer }, marks: { type: integer, description: 'v1.1 – C3: số câu hỏi đúng theo mục (IELTS)' }, max_marks: { type: integer, description: 'v1.1 – C3' } } } }
         by_subskill: { type: object }
         compared_to_previous: { type: object, nullable: true }
         diagnosis: { type: object, nullable: true, description: Thẻ chẩn đoán & việc cần làm tiếp }
@@ -2787,6 +2818,7 @@ components:
         source: { type: string, enum: [passage, media, evidence] }
         asset_id: { type: [string, 'null'], format: uuid }
         answer_span: { type: array, items: { type: integer }, description: 'S5 (AI)' }
+        evidence_segments: { type: array, items: { type: integer }, description: 'v1.1 – C3: chỉ số segments chứa trích đoạn đáp án (tô và tua tới mốc thời gian)' }
         paraphrase_pairs: { type: array, items: { type: object }, description: 'S5 (AI)' }
     AttemptMediaList:
       type: object

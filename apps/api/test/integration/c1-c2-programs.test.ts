@@ -4,7 +4,7 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { eq, inArray } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import { IELTS_DEMO_CODE } from '@allingo/db/seed';
-import { ieltsLrBand } from '@allingo/scoring';
+import { ieltsListeningBand, ieltsReadingBand } from '@allingo/scoring';
 import { grade, keyAnswerOf, markCount, questionContentSchema, type AnswerInput, type QuestionContent } from '@allingo/schemas';
 import { DbService } from '../../src/shared/db/db.module.js';
 import { bootTestApp, client } from './setup.js';
@@ -168,11 +168,13 @@ describe('C1/C2 – đa chương trình & dạng câu IELTS (integration)', () =
     expect(res.body.by_section.reading_p1).toMatchObject({ marks: expected.reading_p1!.marks, max_marks: expected.reading_p1!.max });
     // TFNG 4 mệnh đề + "Choose TWO" + 4 chỗ trống… → nhiều câu hỏi hơn 18 câu catalog
     expect(expected.listening_p1!.max + expected.reading_p1!.max).toBeGreaterThan(18);
-    const lBand = ieltsLrBand(expected.listening_p1!.marks, expected.listening_p1!.max);
-    const rBand = ieltsLrBand(expected.reading_p1!.marks, expected.reading_p1!.max);
+    const lBand = ieltsListeningBand(expected.listening_p1!.marks, expected.listening_p1!.max);
+    // C3: Reading tra bảng riêng (Academic mặc định)
+    const rBand = ieltsReadingBand(expected.reading_p1!.marks, expected.reading_p1!.max);
     expect(res.body.scale).toMatchObject({ program: 'ielts', unit: 'band', bands: { listening: lBand, reading: rBand } });
     expect(res.body.scaled).toBeNull();
-    expect(typeof res.body.scaled_score).toBe('number');
+    // C3: overall chỉ khi đủ 4 kỹ năng – đề mẫu L+R không có điểm tổng
+    expect(res.body.scaled_score).toBeNull();
     expect(res.body.by_skill.reading).toMatchObject({ marks: expected.reading_p1!.marks, max_marks: expected.reading_p1!.max, scaled: rBand });
 
     const review = await learner.call('GET', `/attempts/${a.body.id}/review`);

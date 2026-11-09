@@ -237,7 +237,8 @@ const ieltsSections: SectionSeed[] = [
     sortOrder: 1,
     durationSec: 450,
     questionCount: 10,
-    rules: { audio_once: true },
+    // C3: thi máy tính – phát liên tục theo part, đọc trước câu hỏi 30 giây
+    rules: { audio_once: true, flow: 'continuous', preread_sec: 30 },
   },
   {
     program: 'ielts',
@@ -247,7 +248,8 @@ const ieltsSections: SectionSeed[] = [
     sortOrder: 2,
     durationSec: 450,
     questionCount: 10,
-    rules: { audio_once: true },
+    // C3: thi máy tính – phát liên tục theo part, đọc trước câu hỏi 30 giây
+    rules: { audio_once: true, flow: 'continuous', preread_sec: 30 },
   },
   {
     program: 'ielts',
@@ -257,7 +259,8 @@ const ieltsSections: SectionSeed[] = [
     sortOrder: 3,
     durationSec: 450,
     questionCount: 10,
-    rules: { audio_once: true },
+    // C3: thi máy tính – phát liên tục theo part, đọc trước câu hỏi 30 giây
+    rules: { audio_once: true, flow: 'continuous', preread_sec: 30 },
   },
   {
     program: 'ielts',
@@ -267,7 +270,8 @@ const ieltsSections: SectionSeed[] = [
     sortOrder: 4,
     durationSec: 450,
     questionCount: 10,
-    rules: { audio_once: true },
+    // C3: thi máy tính – phát liên tục theo part, đọc trước câu hỏi 30 giây; hết part 4 còn 2 phút xem lại
+    rules: { audio_once: true, flow: 'continuous', preread_sec: 30, review_sec: 120 },
   },
   {
     program: 'ielts',

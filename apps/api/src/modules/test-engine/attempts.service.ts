@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import { diagnoseAttempt, scoreByProgram, type DiagnosisQuestion } from '@allingo/scoring';
+import { diagnoseAttempt, isIeltsModule, scoreByProgram, type DiagnosisQuestion, type IeltsModule } from '@allingo/scoring';
 import {
   ATTEMPT_GRACE_SECONDS,
+  numberMarks,
+  type ExamFormat,
+  type QuestionPublic,
   AUDIO_PLAY_EVENT_TYPES,
   DOMAIN_EVENTS,
   XP_RULES,
@@ -49,6 +52,9 @@ import { AiGatewayService, ExplanationCacheService, explainChoiceKey } from '../
 import { EnrollmentsService, UsersService } from '../iam/index.js';
 import { EXAM_LOCK_KEY } from '../../shared/exam/exam-mode.js';
 import { NotesService } from './notes.service.js';
+import { evidenceSegments, listenWindowClosed, listeningTimings, lockedSkills, planTotalSec, skillPlan, skillWindows, type FormatSection } from './ielts-format.js';
+
+type IeltsDraftFormat = NonNullable<AttemptDraftState['ielts_format']>;
 
 const { learnAttempts, learnAttemptAnswers, catalogTestSets } = schema;
 type AttemptRow = typeof learnAttempts.$inferSelect;
@@ -65,6 +71,9 @@ const WRONG_RECENT_DAYS = 30;
 const SECTION_DRILL_COUNT = 10;
 
 type TestSetInfo = { title: LocalizedText | null; kind: string } | null;
+
+/** C3: audio một part Listening chưa có thời lượng (chưa xử lý xong) – cửa sổ phát mặc định */
+const PART_AUDIO_FALLBACK_MS = 10 * 60_000;
 
 @Injectable()
 export class AttemptsService {
@@ -95,6 +104,7 @@ export class AttemptsService {
     let contentIsFree = false;
     let timeLimitSec: number | null = null;
     let testSet: TestSetInfo = null;
+    let ieltsFormat: IeltsDraftFormat | null = null;
     if (input.test_set_id) {
       const ts = await this.catalog.requireTestSetPublished(input.test_set_id);
       if (ts.ts.programCode !== input.program) throw new ValidationFailed({ issues: [{ path: 'program', message: 'test set belongs to another program' }] });
@@ -105,6 +115,9 @@ export class AttemptsService {
       // exam: đồng hồ của đề; timed_drill: giới hạn theo Part (Sprint 4); practice/drill/diagnostic: không giới hạn
       timeLimitSec = input.mode === 'exam' ? (ts.ts.durationSec ?? null) : input.mode === 'timed_drill' ? await this.timedDrillBudget(questions) : null;
       testSet = { title: ts.ts.title, kind: ts.ts.kind };
+      // C3: đề IELTS – chốt định dạng thi máy tính; Exam Mode đề full có đồng hồ theo kỹ năng → hạn chung = tổng các kỹ năng
+      ieltsFormat = await this.ieltsFormatFor(input.program, input.test_set_id, ts.ts.kind, ts.ts.level ?? null, input.mode, questions);
+      if (ieltsFormat?.clocks) timeLimitSec = planTotalSec(ieltsFormat.plan);
       // Kiểm tra quyền trước khi tải/đếm (403 sớm, không tiêu quota)
       await this.gate.check(userId, input.program, gateKey, { contentIsFree });
     } else if (input.section_id) {
@@ -133,6 +146,9 @@ export class AttemptsService {
         audio_plays: {},
         answered_count: 0,
         last_saved_at: null,
+        skill_started_at: {},
+        listen_started_at: {},
+        ielts_format: ieltsFormat,
       };
       const attemptId = await this.dbs.db.transaction(async (tx) => {
         await this.enrollments.ensure(userId, input.program, tx);
@@ -191,13 +207,22 @@ export class AttemptsService {
     const draft = this.draftOf(row);
     // S9: bài chẩn đoán thích ứng chỉ lộ các câu ĐÃ phục vụ (câu kế tiếp lấy qua POST /me/diagnostic/{id}/next)
     const servedIds = row.mode === 'diagnostic' ? new Set((draft.adaptive?.served ?? []).map((x) => x.question_id)) : null;
-    const publicQs = await this.catalog.toPublic(servedIds ? questions.filter((q) => servedIds.has(q.question_id)) : questions, { revealTranscript: false });
+    const visible = servedIds ? questions.filter((q) => servedIds.has(q.question_id)) : questions;
+    const fmt = draft.ielts_format ?? null;
+    const nowMs = Date.now();
+    // C3: Exam Mode – audio part đã hết cửa sổ phát không còn URL (nghe một lần, ràng buộc phía server)
+    const closed = fmt && row.mode === 'exam' ? this.closedListenAssets(fmt, draft, nowMs) : new Set<string>();
+    const withheld = row.status === 'in_progress' ? closed : new Set<string>();
+    const publicQs = this.numbered(row.programCode, visible, await this.catalog.toPublic(visible, { revealTranscript: false }), withheld);
     const answers = await this.dbs.db.select().from(learnAttemptAnswers).where(and(eq(learnAttemptAnswers.attemptId, attemptId), gte(learnAttemptAnswers.createdAt, row.startedAt)));
     const draftAnswers: AttemptAnswerInput[] = answers.filter((a) => a.answer).map((a) => ({ question_id: a.questionId, answer: a.answer as AnswerInput, time_spent_ms: a.timeSpentMs ?? undefined, flagged: a.flagged }));
     const sectionCodes = [...new Set(draft.question_order.map((q) => q.section_code))];
     const sections = row.testSetId ? await this.catalog.testSetSections(row.testSetId) : [];
-    const now = new Date();
+    const now = new Date(nowMs);
     const testSet = row.testSetId ? { id: row.testSetId, title: opts.testSet?.title ?? {}, kind: opts.testSet?.kind ?? 'mini' } : null;
+    // C3: đồng hồ theo kỹ năng (Exam Mode đề IELTS full) – hạn từng kỹ năng + khoá kỹ năng đã hết giờ/đã chuyển qua
+    const windows = fmt?.clocks ? skillWindows(fmt.plan, row.startedAt, draft.skill_started_at ?? {}) : [];
+    const locked = row.status === 'in_progress' ? lockedSkills(windows, nowMs, ATTEMPT_GRACE_SECONDS) : new Set<string>();
     return {
       id: row.id,
       program: row.programCode as ProgramCode,
@@ -206,7 +231,16 @@ export class AttemptsService {
       test_set: testSet,
       sections: sectionCodes.map((code) => {
         const s = sections.find((x) => x.code === code);
-        return { section_code: code, duration_sec: s?.test_duration_sec ?? s?.duration_sec ?? null, elapsed_sec: draft.section_elapsed_sec[code] ?? 0, locked: false };
+        const skill = skillOfSection(row.programCode, code) ?? s?.skill ?? undefined;
+        const w = skill ? windows.find((x) => x.skill === skill) : undefined;
+        return {
+          section_code: code,
+          duration_sec: s?.test_duration_sec ?? s?.duration_sec ?? null,
+          elapsed_sec: draft.section_elapsed_sec[code] ?? 0,
+          locked: !!skill && locked.has(skill),
+          ...(skill ? { skill } : {}),
+          ...(fmt ? { ends_at: w ? w.end.toISOString() : null } : {}),
+        };
       }),
       questions: publicQs,
       draft_answers: draftAnswers,
@@ -215,8 +249,95 @@ export class AttemptsService {
       server_time: now.toISOString(),
       ui_state: draft.ui_state,
       audio_plays: draft.audio_plays,
+      ...(fmt ? { exam_format: this.examFormatOf(fmt, draft, row.mode === 'exam', closed) } : {}),
       ...(FEEDBACK_MODES.has(row.mode) ? { feedback: await this.practiceFeedback(questions, answers) } : {}),
     };
+  }
+
+  // ------------------------------------------------------------------ C3: định dạng IELTS trên máy tính
+  /**
+   * Định dạng thi IELTS cho attempt từ đề (null với chương trình khác/attempt không theo đề): module Reading = catalog.test_sets.level
+   * (academic | general_training, mặc định academic; đề không có Reading → null), thời gian đọc trước/xem lại từ rules section,
+   * audio từng part Listening (passage audio_script của part, dự phòng audio của câu) và kế hoạch đồng hồ theo kỹ năng – đồng hồ chỉ
+   * bật ở Exam Mode với đề `full` (mini/drill giữ một đồng hồ chung như trước).
+   */
+  private async ieltsFormatFor(program: string, testSetId: string, kind: string, level: string | null, mode: string, questions: LoadedQuestion[]): Promise<IeltsDraftFormat | null> {
+    if (program !== 'ielts') return null;
+    const rows = await this.catalog.testSetSections(testSetId);
+    const present = new Set(questions.map((q) => q.section_code));
+    const sections: FormatSection[] = rows.filter((s) => present.has(s.code)).map((s) => ({ code: s.code, skill: skillOfSection(program, s.code) ?? s.skill, duration_sec: s.test_duration_sec ?? s.duration_sec, rules: s.rules }));
+    const partAssets = new Map<string, string[]>();
+    for (const q of questions) {
+      const sec = sections.find((s) => s.code === q.section_code);
+      if (sec?.skill !== 'listening') continue;
+      const asset = (q.passage?.kind === 'audio_script' ? q.passage.media_asset_id : null) ?? ('media' in q.content ? (q.content.media?.audio_asset_id ?? null) : null);
+      if (!asset) continue;
+      const list = partAssets.get(q.section_code) ?? [];
+      if (!list.includes(asset)) list.push(asset);
+      partAssets.set(q.section_code, list);
+    }
+    const durations = await this.catalog.audioDurations([...partAssets.values()].flat());
+    const listening_parts = sections
+      .filter((s) => s.skill === 'listening')
+      .map((s) => {
+        const ids = partAssets.get(s.code) ?? [];
+        const ms = ids.map((id) => durations.get(id) ?? null);
+        return { section_code: s.code, media_asset_id: ids[0] ?? null, asset_ids: ids, duration_ms: ids.length && ms.every((x) => x !== null) ? ms.reduce<number>((t, x) => t + (x ?? 0), 0) : null };
+      });
+    const partMs = new Map(listening_parts.map((p) => [p.section_code, p.duration_ms]));
+    const { preread_sec, review_sec } = listeningTimings(sections);
+    const hasReading = sections.some((s) => s.skill === 'reading');
+    const module: IeltsModule | null = hasReading ? (isIeltsModule(level) ? level : 'academic') : null;
+    return { module, preread_sec, review_sec, clocks: mode === 'exam' && kind === 'full', plan: skillPlan(sections, partMs), listening_parts };
+  }
+
+  /** Asset Listening đã hết cửa sổ phát: part bắt đầu ở lần `audio_started` đầu tiên của bất kỳ asset nào trong part */
+  private closedListenAssets(fmt: IeltsDraftFormat, draft: AttemptDraftState, nowMs: number): Set<string> {
+    const out = new Set<string>();
+    for (const p of fmt.listening_parts) {
+      const started = this.partStartedAt(p.asset_ids, draft);
+      if (listenWindowClosed(started ?? undefined, p.duration_ms, nowMs, PART_AUDIO_FALLBACK_MS)) for (const id of p.asset_ids) out.add(id);
+    }
+    return out;
+  }
+
+  private partStartedAt(assetIds: readonly string[], draft: AttemptDraftState): string | null {
+    const times = assetIds.map((id) => draft.listen_started_at?.[id]).filter((x): x is string => !!x).sort();
+    return times[0] ?? null;
+  }
+
+  private examFormatOf(fmt: IeltsDraftFormat, draft: AttemptDraftState, exam: boolean, closed: ReadonlySet<string>): ExamFormat {
+    return {
+      kind: 'ielts_cbt',
+      module: fmt.module,
+      preread_sec: fmt.preread_sec,
+      review_sec: fmt.review_sec,
+      listening_parts: fmt.listening_parts.map((p) => ({
+        section_code: p.section_code,
+        media_asset_id: p.media_asset_id,
+        duration_ms: p.duration_ms,
+        started_at: this.partStartedAt(p.asset_ids, draft),
+        played: exam && p.asset_ids.length > 0 && p.asset_ids.every((id) => closed.has(id)),
+      })),
+    };
+  }
+
+  /**
+   * C3/S167: số câu hỏi liên tục trong đề (`number_start`/`mark_count` theo registry marking – TOEIC mỗi câu một số) và ẩn URL audio
+   * đã hết cửa sổ "nghe một lần" (`withheld`). `publicQs` cùng thứ tự với `loaded` (toPublic giữ thứ tự).
+   */
+  private numbered(program: string, loaded: readonly LoadedQuestion[], publicQs: QuestionPublic[], withheld: ReadonlySet<string>): QuestionPublic[] {
+    const marks = numberMarks(loaded.map((q) => q.content), programDef(program)?.marking ?? 'per_question');
+    return publicQs.map((q, i) => {
+      const n = marks[i];
+      const hide = withheld.size > 0;
+      return {
+        ...q,
+        ...(n ? { number_start: n.number_start, mark_count: n.mark_count } : {}),
+        ...(hide ? { media: q.media.filter((m) => !withheld.has(m.id)) } : {}),
+        ...(hide && q.passage?.media_asset_id && withheld.has(q.passage.media_asset_id) ? { passage: { ...q.passage, media_url: null, media_expires_at: null } } : {}),
+      };
+    });
   }
 
   /**
@@ -263,8 +384,32 @@ export class AttemptsService {
         const t = types.get(order.get(a.question_id)!.question_version_id);
         if (t && t !== a.answer.type) throw new ValidationFailed({ issues: [{ path: 'answers', message: `answer type ${a.answer.type} does not match question type ${t}` }] });
       }
+      // C3: Exam Mode đề IELTS full – bỏ đáp án của kỹ năng đã khoá (hết giờ/đã chuyển kỹ năng); cả lô đều thuộc kỹ năng khoá → 409
+      // `section_locked` (lô trộn từ hàng đợi offline vẫn lưu phần hợp lệ). Lần lưu đầu của kỹ năng sau = thời điểm bắt đầu kỹ năng đó.
+      const fmt = draft.ielts_format;
+      let skillStarted = draft.skill_started_at ?? {};
+      let accepted = input.answers;
+      if (fmt?.clocks && row.mode === 'exam') {
+        const nowMs = Date.now();
+        const skillOf = (code: string) => fmt.plan.find((p) => p.sections.includes(code))?.skill ?? null;
+        const locked = lockedSkills(skillWindows(fmt.plan, row.startedAt, skillStarted), nowMs, ATTEMPT_GRACE_SECONDS);
+        accepted = input.answers.filter((a) => {
+          const sk = skillOf(order.get(a.question_id)!.section_code);
+          return !sk || !locked.has(sk);
+        });
+        if (accepted.length === 0 && input.answers.length > 0) {
+          const section = order.get(input.answers[0]!.question_id)!.section_code;
+          throw new Conflict('Section time is over', { reason: 'section_locked', section_code: section });
+        }
+        if (accepted.length < input.answers.length) this.logger.warn({ attempt_id: attemptId, dropped: input.answers.length - accepted.length }, 'answers for locked section dropped');
+        const first = fmt.plan[0]?.skill;
+        for (const a of accepted) {
+          const sk = skillOf(order.get(a.question_id)!.section_code);
+          if (sk && sk !== first && !skillStarted[sk]) skillStarted = { ...skillStarted, [sk]: new Date(nowMs).toISOString() };
+        }
+      }
       // Lô có thể chứa cùng một câu nhiều lần → giữ bản cuối
-      const latest = new Map(input.answers.map((a) => [a.question_id, a]));
+      const latest = new Map(accepted.map((a) => [a.question_id, a]));
       // S11: partition pruning (created_at ≥ started_at) cho mọi truy vấn attempt_answers của attempt
       const sinceStart = gte(learnAttemptAnswers.createdAt, row.startedAt);
       const existing = latest.size
@@ -305,6 +450,7 @@ export class AttemptsService {
         ui_state: { ...draft.ui_state, ...(input.ui_state ?? {}) },
         answered_count: cnt?.n ?? 0,
         last_saved_at: new Date().toISOString(),
+        skill_started_at: skillStarted,
       };
       await tx.update(learnAttempts).set({ draftState: next }).where(eq(learnAttempts.id, attemptId));
     });
@@ -322,9 +468,28 @@ export class AttemptsService {
       const audioPlays = { ...draft.audio_plays };
       const qid = typeof ev.meta?.question_id === 'string' ? ev.meta.question_id : null;
       if (AUDIO_PLAY_EVENT_TYPES.has(ev.type) && row.status === 'in_progress' && qid && draft.question_order.some((o) => o.question_id === qid)) audioPlays[qid] = (audioPlays[qid] ?? 0) + 1;
+      const at = new Date().toISOString();
+      const fmt = draft.ielts_format;
+      // C3: lần phát đầu tiên của audio part Listening (theo asset_id, hoặc question_id → audio part của câu) – mở cửa sổ "nghe một lần".
+      // Giờ server (không tin `at` của client); đã ghi thì giữ nguyên.
+      let listenStarted = draft.listen_started_at ?? {};
+      if (fmt && row.status === 'in_progress' && AUDIO_PLAY_EVENT_TYPES.has(ev.type)) {
+        const assetId = typeof ev.meta?.asset_id === 'string' ? ev.meta.asset_id : null;
+        const section = qid ? draft.question_order.find((o) => o.question_id === qid)?.section_code : undefined;
+        const part = fmt.listening_parts.find((p) => (assetId && p.asset_ids.includes(assetId)) || (!assetId && section && p.section_code === section));
+        const target = part ? (assetId && part.asset_ids.includes(assetId) ? assetId : part.asset_ids[0]) : undefined;
+        if (target && !listenStarted[target]) listenStarted = { ...listenStarted, [target]: at };
+      }
+      // C3: chuyển sang kỹ năng sau (sự kiện part_switch, meta.section_code) = bắt đầu kỹ năng đó → kỹ năng trước khoá
+      let skillStarted = draft.skill_started_at ?? {};
+      const switchTo = ev.type === 'part_switch' && typeof ev.meta?.section_code === 'string' ? ev.meta.section_code : null;
+      if (fmt?.clocks && row.status === 'in_progress' && switchTo) {
+        const sk = fmt.plan.find((p) => p.sections.includes(switchTo))?.skill;
+        if (sk && sk !== fmt.plan[0]?.skill && !skillStarted[sk]) skillStarted = { ...skillStarted, [sk]: at };
+      }
       await tx
         .update(learnAttempts)
-        .set({ draftState: { ...draft, events, audio_plays: audioPlays }, tabLeaveCount: ev.type === 'tab_leave' || ev.type === 'focus_lost' ? sql`${learnAttempts.tabLeaveCount} + 1` : undefined })
+        .set({ draftState: { ...draft, events, audio_plays: audioPlays, listen_started_at: listenStarted, skill_started_at: skillStarted }, tabLeaveCount: ev.type === 'tab_leave' || ev.type === 'focus_lost' ? sql`${learnAttempts.tabLeaveCount} + 1` : undefined })
         .where(eq(learnAttempts.id, attemptId));
     });
   }
@@ -334,10 +499,12 @@ export class AttemptsService {
    * TTL 10′ của URL ký. Chỉ chủ attempt; người khác → 404 (không lộ sự tồn tại). Mọi trạng thái (Review cần nghe lại).
    */
   async media(userId: string, attemptId: string): Promise<AttemptMediaList> {
-    const [row] = await this.dbs.db.select({ userId: learnAttempts.userId, draftState: learnAttempts.draftState }).from(learnAttempts).where(eq(learnAttempts.id, attemptId)).limit(1);
+    const [row] = await this.dbs.db.select({ userId: learnAttempts.userId, draftState: learnAttempts.draftState, mode: learnAttempts.mode, status: learnAttempts.status }).from(learnAttempts).where(eq(learnAttempts.id, attemptId)).limit(1);
     if (!row || row.userId !== userId) throw new NotFound('attempt', attemptId);
     const draft = attemptDraftStateSchema.parse(row.draftState ?? {});
-    const assetIds = await this.catalog.assetIdsForVersions([...new Set(draft.question_order.map((q) => q.question_version_id))]);
+    // C3: Exam Mode đang làm – không cấp lại URL audio part Listening đã hết cửa sổ phát (nghe một lần)
+    const closed = draft.ielts_format && row.mode === 'exam' && row.status === 'in_progress' ? this.closedListenAssets(draft.ielts_format, draft, Date.now()) : new Set<string>();
+    const assetIds = (await this.catalog.assetIdsForVersions([...new Set(draft.question_order.map((q) => q.question_version_id))])).filter((id) => !closed.has(id));
     const urls = await this.catalog.mediaUrls(assetIds);
     return { data: [...urls.values()].filter((u) => u.url).map((u) => ({ id: u.id, kind: u.kind, url: u.url, expires_at: u.expires_at })) };
   }
@@ -416,12 +583,13 @@ export class AttemptsService {
         const g = grade(q.content, answer);
         const points = q.points || 1;
         const earned = (g.score ?? 0) * points;
-        rawScore += earned;
-        maxScore += points;
+        const mk = marksOf(q.content, g, marking);
+        // C3: chương trình đếm theo mục (IELTS) – điểm thô = số câu hỏi đúng /40 (markCount), không theo points của câu catalog
+        rawScore += marking === 'per_item' ? mk.earned : earned;
+        maxScore += marking === 'per_item' ? mk.max : points;
         if (g.is_correct) correctCount++;
         if (a) gradedRows.push({ id: a.id, is_correct: g.is_correct, score: String(Math.round(earned * 100) / 100) });
         else missingRows.push({ attemptId, questionId: o.question_id, questionVersionId: o.question_version_id, answer: null, isCorrect: g.is_correct, score: '0', flagged: false });
-        const mk = marksOf(q.content, g, marking);
         const sec = (bySection[o.section_code] ??= { correct: 0, total: 0, avg_time_ms: null, score: null, community_avg_time_ms: null, marks: 0, max_marks: 0 });
         sec.total++;
         if (g.is_correct) sec.correct++;
@@ -431,6 +599,9 @@ export class AttemptsService {
         if (time !== null) (sectionTimes[o.section_code] ??= []).push(time);
         if (q.avg_time_ms !== null) (sectionCommunity[o.section_code] ??= []).push(q.avg_time_ms);
         bump(byType, q.question_type, g.is_correct);
+        const bt = byType[q.question_type]!;
+        bt.marks = (bt.marks ?? 0) + mk.earned;
+        bt.max_marks = (bt.max_marks ?? 0) + mk.max;
         for (const sub of q.subskill_codes) bump(bySub, sub, g.is_correct);
         if (q.topic_code) bump(byTopic, q.topic_code, g.is_correct);
         // Theo kỹ năng: registry chương trình (TOEIC Part → listening/reading), mã lạ → skill của catalog.sections
@@ -464,7 +635,7 @@ export class AttemptsService {
       }
       if (missingRows.length) await tx.insert(learnAttemptAnswers).values(missingRows);
 
-      const scaled = this.scale(row.programCode, bySection, (code) => sectionSkill.get(code) ?? null);
+      const scaled = this.scale(row.programCode, bySection, (code) => sectionSkill.get(code) ?? null, draft.ielts_format?.module ?? null);
       const bySkill: Record<string, SkillBreakdown> = {};
       for (const [code, sk] of Object.entries(skills)) {
         bySkill[code] = {
@@ -552,10 +723,11 @@ export class AttemptsService {
    * 5–7 → Reading, bảng ước tính Allingo (không phải bảng ETS), tổng 10–990 khi đủ hai kỹ năng, khoảng ±25; IELTS band theo số câu
    * đúng tính theo mục (sẵn cho C3); JLPT/HSK chỉ khai báo thang. Gán `score` cho từng phần thi.
    */
-  private scale(program: string, bySection: ScoreBreakdown['by_section'], skillOf: (sectionCode: string) => string | null): { value: number | null; scale: Record<string, unknown>; scaled: ToeicScaled | null; skills: Record<string, { scaled: number | null; range: ToeicScaled['range'] }> } {
+  private scale(program: string, bySection: ScoreBreakdown['by_section'], skillOf: (sectionCode: string) => string | null, module: IeltsModule | null = null): { value: number | null; scale: Record<string, unknown>; scaled: ToeicScaled | null; skills: Record<string, { scaled: number | null; range: ToeicScaled['range'] }> } {
     const def = programDef(program);
     const marks = Object.fromEntries(Object.entries(bySection).map(([code, s]) => [code, { marks: s.marks ?? s.correct, max_marks: s.max_marks ?? s.total }]));
-    const r = scoreByProgram({ program, kind: def?.scale.kind ?? 'points', bySection: marks, skillOf: (code) => skillOfSection(program, code) ?? skillOf(code) });
+    // C3: IELTS Reading tra bảng Academic hoặc General Training theo module của đề
+    const r = scoreByProgram({ program, kind: def?.scale.kind ?? 'points', bySection: marks, skillOf: (code) => skillOfSection(program, code) ?? skillOf(code), module });
     for (const [code, s] of Object.entries(bySection)) s.score = r.sections[code] ?? null;
     const t = r.toeic;
     const scaled: ToeicScaled | null = t ? { listening: t.listening, reading: t.reading, total: t.total, range: t.range, ranges: t.ranges, estimated: true } : null;
@@ -591,8 +763,13 @@ export class AttemptsService {
     const ordered = draft.question_order.map((o) => ({ o, q: versions.get(o.question_version_id)! })).filter((x) => x.q);
     const loaded = ordered.map((x) => ({ ...x.q, group_key: x.o.group_key, order_no: x.o.order_no, section_code: x.o.section_code }));
     // Sau khi nộp: trả đủ chữ (Part 1/2) + passage audio_script + transcript tô sáng (Sprint 4)
-    const publicQs = await this.catalog.toPublic(loaded, { revealTranscript: true });
+    const publicQs = this.numbered(row.programCode, loaded, await this.catalog.toPublic(loaded, { revealTranscript: true }), new Set());
     const transcripts: Map<string, TranscriptHighlight> = await this.catalog.transcripts(loaded);
+    // C3: segment chứa trích đoạn đáp án – giao diện tô và tua tới mốc thời gian
+    for (const [qid, t] of transcripts) {
+      const hits = evidenceSegments(t.evidence, t.segments);
+      if (hits.length) transcripts.set(qid, { ...t, evidence_segments: hits });
+    }
     // Cache giải thích chỉ hợp lệ với phiên bản prompt explain_mcq đang phục vụ người dùng (S5 – A57)
     const explainVersion = await this.gateway.currentPromptVersionId('explain_mcq', row.programCode, userId);
     // Ghi chú của người học theo câu (S6 – ReviewItem.note)

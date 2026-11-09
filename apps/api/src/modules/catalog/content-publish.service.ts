@@ -2,13 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { schema } from '@allingo/db';
-import { DOMAIN_EVENTS, contentRoleOf, localizedTextSchema, programCodeSchema, validateTestSetStructure, type StructureReport } from '@allingo/schemas';
+import { DOMAIN_EVENTS, contentRoleOf, localizedTextSchema, markCount, programCodeSchema, programDef, questionContentSchema, runTestSetChecks, validateTestSetStructure, type SectionSpec, type StructureReport, type TestSetCheckResult, type TestSetKind } from '@allingo/schemas';
 import { DbService } from '../../shared/db/db.module.js';
 import { AuditService } from '../../shared/events/audit.service.js';
 import { OutboxService } from '../../shared/events/outbox.service.js';
 import { AppError, Forbidden, NotFound, ValidationFailed } from '../../shared/http/errors.js';
 
-const { catalogQuestions, catalogQuestionVersions, catalogSections, catalogTopics, catalogSubskills, catalogTestSets, catalogTestSetItems, catalogTestSetSections, catalogSkills } = schema;
+const { catalogQuestions, catalogQuestionVersions, catalogPassages, catalogSections, catalogTopics, catalogSubskills, catalogTestSets, catalogTestSetItems, catalogTestSetSections, catalogSkills } = schema;
 
 export const publishTestSetSchema = z.object({
   external_ref: z.string().min(1).max(128),
@@ -23,6 +23,63 @@ export const publishTestSetSchema = z.object({
   items: z.array(z.object({ question_external_ref: z.string(), section_code: z.string(), sort_order: z.number().int(), group_key: z.string().nullable().optional(), points: z.number().positive().default(1) })).min(1),
 });
 export type PublishTestSetInput = z.infer<typeof publishTestSetSchema>;
+
+/** C3: số mục đánh số của nội dung câu (IELTS đếm cấu trúc đề theo mục) – nội dung lỗi/không đọc được tính 1 */
+const marksOfRaw = (raw: unknown): number => {
+  const p = questionContentSchema.safeParse(raw);
+  return p.success ? markCount(p.data) : 1;
+};
+const markingOf = (program: string) => programDef(program)?.marking ?? 'per_question';
+
+/** Báo cáo cấu trúc + kiểm tra cấp bộ đề (C3 – `runTestSetChecks`) */
+export type TestSetReport = StructureReport & { checks: TestSetCheckResult[] };
+
+interface CheckedItem {
+  ref: string;
+  section_code: string;
+  sort_order: number;
+  group_key: string | null;
+  /** nội dung câu (bản hiện hành) – null khi không tìm thấy */
+  content: unknown;
+  passage_media: string | null;
+}
+
+/** Audio của câu: audio riêng trong nội dung hoặc audio của passage (part Listening) */
+const audioKeyOf = (content: unknown, passageMedia: string | null): string | null => {
+  const p = questionContentSchema.safeParse(content);
+  return (p.success ? (p.data.media?.audio_asset_id ?? null) : null) ?? passageMedia;
+};
+
+/**
+ * Cấu trúc (`validateTestSetStructure` – đếm theo mục với chương trình per_item) + kiểm tra cấp bộ đề (`runTestSetChecks`: đánh số
+ * liên tục, IELTS đúng 40 câu hỏi mỗi kỹ năng/từng part, part Listening có audio). Lỗi của kiểm tra cấp bộ đề chỉ CHẶN phát hành với
+ * chương trình đếm theo mục (IELTS – C3); chương trình khác chỉ trả để tham khảo (giữ hành vi TOEIC trước C3).
+ */
+function checkTestSet(program: string, kind: TestSetKind, sections: readonly SectionSpec[], items: readonly CheckedItem[]): TestSetReport {
+  const marking = markingOf(program);
+  const structure = validateTestSetStructure(
+    kind,
+    sections,
+    items.map((i) => ({ question_ref: i.ref, section_code: i.section_code, sort_order: i.sort_order, group_key: i.group_key, marks: i.content === null ? undefined : marksOfRaw(i.content) })),
+    { marking },
+  );
+  const checks = runTestSetChecks({
+    program,
+    kind,
+    sections,
+    items: items.map((i) => {
+      const audio = audioKeyOf(i.content, i.passage_media);
+      return { section_code: i.section_code, sort_order: i.sort_order, group_key: i.group_key, marks: i.content === null ? null : marksOfRaw(i.content), has_audio: !!audio, audio_key: audio };
+    }),
+  });
+  const blocking = marking === 'per_item' && checks.some((c) => c.level === 'error');
+  return { ...structure, ok: structure.ok && !blocking, checks };
+}
+
+const reportIssues = (r: TestSetReport) => [
+  ...r.issues.map((i) => ({ path: `items${i.section ? `.${i.section}` : ''}`, message: i.message, code: i.code })),
+  ...r.checks.filter((c) => c.level === 'error').map((c) => ({ path: `items${c.params?.section ? `.${c.params.section}` : ''}`, message: c.code, code: c.code, params: c.params ?? {} })),
+];
 
 /**
  * Phát hành bộ đề từ CMS vào catalog (ADR-0019/0024). Idempotent theo test_sets(program, code).
@@ -47,9 +104,11 @@ export class ContentPublishService {
     if (!ts) throw new NotFound('test_set', testSetId);
     if (ts.status === 'published') throw new AppError('conflict', 'Test set already published', 409, { reason: 'already_published' });
     const items = await this.dbs.db
-      .select({ questionId: catalogTestSetItems.questionId, sortOrder: catalogTestSetItems.sortOrder, groupKey: catalogTestSetItems.groupKey, status: catalogQuestions.status, sectionCode: catalogSections.code })
+      .select({ questionId: catalogTestSetItems.questionId, sortOrder: catalogTestSetItems.sortOrder, groupKey: catalogTestSetItems.groupKey, status: catalogQuestions.status, sectionCode: catalogSections.code, content: catalogQuestionVersions.content, passageMedia: catalogPassages.mediaAssetId })
       .from(catalogTestSetItems)
       .innerJoin(catalogQuestions, eq(catalogQuestions.id, catalogTestSetItems.questionId))
+      .leftJoin(catalogQuestionVersions, eq(catalogQuestionVersions.id, catalogQuestions.currentVersionId))
+      .leftJoin(catalogPassages, eq(catalogPassages.id, catalogQuestions.passageId))
       .innerJoin(catalogSections, eq(catalogSections.id, catalogTestSetItems.sectionId))
       .where(eq(catalogTestSetItems.testSetId, testSetId));
     const unpublished = items.filter((i) => i.status !== 'published');
@@ -59,12 +118,13 @@ export class ContentPublishService {
       .from(catalogSections)
       .innerJoin(catalogSkills, eq(catalogSkills.id, catalogSections.skillId))
       .where(eq(catalogSections.programCode, ts.programCode));
-    const structure = validateTestSetStructure(
+    const structure = checkTestSet(
+      ts.programCode,
       ts.kind,
       sections.map((x) => ({ code: x.code, skill: x.skill, question_count: x.questionCount ?? null, sort_order: x.sortOrder })),
-      items.map((i) => ({ question_ref: i.questionId, section_code: i.sectionCode, sort_order: i.sortOrder, group_key: i.groupKey ?? null })),
+      items.map((i) => ({ ref: i.questionId, section_code: i.sectionCode, sort_order: i.sortOrder, group_key: i.groupKey ?? null, content: i.content ?? null, passage_media: i.passageMedia ?? null })),
     );
-    if (!structure.ok) throw new ValidationFailed({ issues: structure.issues.map((i) => ({ path: `items${i.section ? `.${i.section}` : ''}`, message: i.message, code: i.code })), structure });
+    if (!structure.ok) throw new ValidationFailed({ issues: reportIssues(structure), structure });
     await this.dbs.db.transaction(async (tx) => {
       await tx.update(catalogTestSets).set({ status: 'published', publishedAt: new Date() }).where(eq(catalogTestSets.id, testSetId));
       await this.outbox.write(tx, { aggregateType: 'test_set', aggregateId: testSetId, eventType: DOMAIN_EVENTS.CONTENT_PUBLISHED, payload: { entity: 'test_set', test_set_id: testSetId, program: ts.programCode, code: ts.code } });
@@ -74,22 +134,35 @@ export class ContentPublishService {
   }
 
   /** Kiểm tra cấu trúc (TOEIC L&R: Part 1–7 đúng số câu với đề full) – dùng cho test set builder và trước khi phát hành */
-  async validateTestSet(input: Pick<PublishTestSetInput, 'program' | 'kind' | 'items'>): Promise<StructureReport> {
+  async validateTestSet(input: Pick<PublishTestSetInput, 'program' | 'kind' | 'items'>): Promise<TestSetReport> {
     const sections = await this.dbs.db
       .select({ code: catalogSections.code, skill: catalogSkills.code, questionCount: catalogSections.questionCount, sortOrder: catalogSections.sortOrder })
       .from(catalogSections)
       .innerJoin(catalogSkills, eq(catalogSkills.id, catalogSections.skillId))
       .where(eq(catalogSections.programCode, input.program));
-    return validateTestSetStructure(
+    // C3: nội dung câu (số mục) + audio của câu/passage theo external_ref – bản mới nhất thắng
+    const byRef = new Map<string, { content: unknown; passage_media: string | null }>();
+    if (input.items.length) {
+      const rows = await this.dbs.db
+        .select({ ref: sql<string>`${catalogQuestionVersions.metadata} ->> 'external_ref'`, content: catalogQuestionVersions.content, passageMedia: catalogPassages.mediaAssetId })
+        .from(catalogQuestionVersions)
+        .innerJoin(catalogQuestions, eq(catalogQuestions.id, catalogQuestionVersions.questionId))
+        .leftJoin(catalogPassages, eq(catalogPassages.id, catalogQuestions.passageId))
+        .where(inArray(sql`${catalogQuestionVersions.metadata} ->> 'external_ref'`, input.items.map((i) => i.question_external_ref)))
+        .orderBy(catalogQuestionVersions.createdAt);
+      for (const r of rows) byRef.set(r.ref, { content: r.content, passage_media: r.passageMedia ?? null });
+    }
+    return checkTestSet(
+      input.program,
       input.kind,
       sections.map((s) => ({ code: s.code, skill: s.skill, question_count: s.questionCount ?? null, sort_order: s.sortOrder })),
-      input.items.map((i) => ({ question_ref: i.question_external_ref, section_code: i.section_code, sort_order: i.sort_order, group_key: i.group_key ?? null })),
+      input.items.map((i) => ({ ref: i.question_external_ref, section_code: i.section_code, sort_order: i.sort_order, group_key: i.group_key ?? null, content: byRef.get(i.question_external_ref)?.content ?? null, passage_media: byRef.get(i.question_external_ref)?.passage_media ?? null })),
     );
   }
 
-  async publishTestSet(input: PublishTestSetInput): Promise<{ test_set_id: string; structure: StructureReport }> {
+  async publishTestSet(input: PublishTestSetInput): Promise<{ test_set_id: string; structure: TestSetReport }> {
     const structure = await this.validateTestSet(input);
-    if (!structure.ok) throw new ValidationFailed({ issues: structure.issues.map((i) => ({ path: `items${i.section ? `.${i.section}` : ''}`, message: i.message, code: i.code })), structure });
+    if (!structure.ok) throw new ValidationFailed({ issues: reportIssues(structure), structure });
     return this.dbs.db.transaction(async (tx) => {
       const sections = await tx.select({ id: catalogSections.id, code: catalogSections.code }).from(catalogSections).where(eq(catalogSections.programCode, input.program));
       const sectionId = new Map(sections.map((s) => [s.code, s.id]));
