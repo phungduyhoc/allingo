@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import { cn } from '@allingo/ui';
 import type { AnswerInputOf, PublicQuestionContent } from '@/lib/types';
 import type { RendererProps } from './types';
+import { useNumberBase } from './number-base';
 
 type Content = Extract<PublicQuestionContent, { type: 'tfng' }>;
 type Answer = AnswerInputOf<'tfng'>;
@@ -11,6 +12,7 @@ type Value = 'true' | 'false' | 'not_given';
 
 export function Tfng({ content, answer, onChange, disabled, review, questionId }: RendererProps<Content, Answer>) {
   const t = useTranslations('attempt.tfng');
+  const base = useNumberBase();
   const values = answer?.values ?? {};
   const correct = (review?.correctAnswer ?? null) as Record<string, Value> | null;
   const labels: Record<Value, string> = content.variant === 'ynng' ? { true: t('yes'), false: t('no'), not_given: t('not_given') } : { true: t('true'), false: t('false'), not_given: t('not_given') };
@@ -22,9 +24,9 @@ export function Tfng({ content, answer, onChange, disabled, review, questionId }
         const chosen = values[s.key];
         const ok = review?.details?.[s.key];
         return (
-          <li key={s.key} className={cn('rounded-lg border border-border bg-card p-3', review && ok === true && 'border-success', review && ok === false && 'border-destructive')}>
+          <li key={s.key} data-sub={s.key} className={cn('rounded-lg border border-border bg-card p-3', review && ok === true && 'border-success', review && ok === false && 'border-destructive')}>
             <p className="text-base">
-              <span className="mr-2 font-semibold tabular">{idx + 1}.</span>
+              <span className="mr-2 font-semibold tabular">{base + idx}.</span>
               {s.text}
             </p>
             <div role="radiogroup" aria-label={s.text} className="mt-2 flex flex-wrap gap-2">

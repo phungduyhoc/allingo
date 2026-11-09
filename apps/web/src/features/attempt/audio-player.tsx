@@ -21,6 +21,8 @@ export interface AudioPlayerProps {
   onError?: () => void;
   className?: string;
   'data-testid'?: string;
+  /** C3 – Xem lại: yêu cầu tua tới mốc (ms) – `nonce` đổi mỗi lần bấm (bấm lại cùng dòng transcript vẫn tua) */
+  seek?: { ms: number; nonce: number } | null;
 }
 
 const fmt = (sec: number) => {
@@ -34,7 +36,7 @@ const fmt = (sec: number) => {
  * 0,75/1/1,25, lặp. Exam Mode "nghe một lần" KHÔNG dùng component này (chuỗi phát ở `listening/`).
  * Đổi `src` (URL gia hạn): đang phát → đổi khi tạm dừng/hết/lỗi; không phát → đổi ngay, giữ vị trí.
  */
-export function AudioPlayer({ src, label, compact = false, onTime, onStarted, onError, className, 'data-testid': testId = 'audio-player' }: AudioPlayerProps) {
+export function AudioPlayer({ src, label, compact = false, onTime, onStarted, onError, className, 'data-testid': testId = 'audio-player', seek = null }: AudioPlayerProps) {
   const t = useTranslations('attempt');
   const ref = React.useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = React.useState(false);
@@ -75,6 +77,14 @@ export function AudioPlayer({ src, label, compact = false, onTime, onStarted, on
     el.currentTime = Math.max(0, Math.min(max, sec));
     setCurrent(el.currentTime);
   };
+
+  // C3: tua theo yêu cầu bên ngoài (bấm dòng transcript) rồi phát
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!seek || !el) return;
+    el.currentTime = Math.max(0, seek.ms / 1000);
+    void el.play().catch(() => undefined);
+  }, [seek]);
 
   const toggle = () => {
     const el = ref.current;

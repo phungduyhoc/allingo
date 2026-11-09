@@ -5,6 +5,7 @@ import { Crosshair, Headphones, Hourglass, Loader2, Lock, Volume2, WifiOff } fro
 import { useTranslations } from 'next-intl';
 import { Badge, Button, cn } from '@allingo/ui';
 import type { ExamListening } from './use-exam-listening';
+import { formatClock } from '../clock';
 
 /**
  * Màn "Bắt đầu nghe" (bắt buộc bấm: trình duyệt chặn tự phát âm thanh khi chưa có cử chỉ người dùng – kể cả sau khi tải lại).
@@ -69,8 +70,14 @@ export function ListeningBar({ listening, nowLabel, following, onJump, online, c
   if (phase === 'done') return null;
   const pct = progress.totalMs ? Math.min(100, (progress.elapsedMs / progress.totalMs) * 100) : 0;
   const pauseLeft = phase === 'pause' && progress.totalMs ? Math.max(0, Math.ceil((progress.totalMs - progress.elapsedMs) / 1000)) : null;
+  // C3 – IELTS: bước chờ là đọc trước part / xem lại cuối bài (không phải "thời gian trả lời" sau câu như TOEIC)
+  const pausePhase = listening.current?.kind === 'pause' ? (listening.current.phase ?? 'answer') : 'answer';
   const status =
-    phase === 'stalled'
+    phase === 'pause' && pausePhase === 'preread'
+      ? t('ieltsPrereadTime', { seconds: pauseLeft ?? 0 })
+      : phase === 'pause' && pausePhase === 'review'
+        ? t('ieltsReviewTime', { time: formatClock((pauseLeft ?? 0) * 1000) })
+        : phase === 'stalled'
       ? online
         ? t('listeningBuffering')
         : t('listeningOffline')
@@ -91,6 +98,7 @@ export function ListeningBar({ listening, nowLabel, following, onJump, online, c
       data-testid="listening-bar"
       data-phase={phase}
       data-step={listening.step}
+      data-pause-phase={phase === 'pause' ? pausePhase : undefined}
       data-following={following}
     >
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-3 py-2 sm:px-5">

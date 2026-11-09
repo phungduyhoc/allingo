@@ -13,6 +13,8 @@ import { DiagnosisCard } from './diagnosis-card';
 import { AiDiagnosisCard } from './ai-diagnosis-card';
 import { parseDiagnosis, scaleView } from './diagnosis';
 import { parseScaled, ScaledScores } from './scaled-scores';
+import { marksTotal, parseBandScale } from './ielts-band';
+import { IeltsBandCard } from './ielts-band-card';
 import { recordViewed } from '@/features/offline/viewed-store';
 import { planLaunchOf } from '@/features/plan/launch-memory';
 import { useClientValue } from '@/lib/use-mounted';
@@ -48,8 +50,9 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
       .map(([code, s]) => ({
         code,
         label: sectionLabel(code, { short: true }),
-        correct: s.correct,
-        wrong: s.total - s.correct,
+        // C3: IELTS đếm theo mục đánh số (marks/max_marks); TOEIC = câu
+        correct: s.marks ?? s.correct,
+        wrong: (s.max_marks ?? s.total) - (s.marks ?? s.correct),
       }));
   }, [result.data, sectionLabel]);
 
@@ -70,7 +73,10 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
     return <ErrorState error={result.error} title={t('loadError')} onRetry={() => void result.refetch()} />;
 
   const r = result.data;
-  const total = Object.values(r.by_section).reduce((s, x) => s + x.total, 0);
+  // C3: số câu đúng/tổng theo mục đánh số (IELTS /40); TOEIC: marks thiếu → theo câu như trước
+  const markSum = marksTotal(r.by_section);
+  const total = markSum.total;
+  const bandView = parseBandScale(r.scale);
   const diagnosis = parseDiagnosis(r.diagnosis);
   const unanswered = diagnosis
     ? diagnosis.unanswered
@@ -119,7 +125,10 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      {bandView ? <IeltsBandCard view={bandView} /> : null}
+
+      <div className={cn('grid gap-4', bandView ? 'sm:grid-cols-2' : 'sm:grid-cols-3')}>
+        {bandView ? null : (
         <Card className="bg-navy text-navy-foreground sm:col-span-1">
           <CardHeader>
             <CardTitle className="text-sm font-medium text-white/70">{t('scaledScore')}</CardTitle>
@@ -150,13 +159,14 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
             <p className="mt-3 text-xs leading-relaxed text-white/70">{t('estimatedNote')}</p>
           </CardContent>
         </Card>
+        )}
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium text-muted-foreground">{t('rawScore')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="tabular text-4xl font-extrabold tracking-tight" data-testid="raw-score">
-              {t('rawOf', { correct: r.raw_score, total })}
+              {t('rawOf', { correct: bandView ? markSum.correct : r.raw_score, total })}
             </div>
             {unanswered !== null && unanswered > 0 ? (
               <p className="mt-2 text-xs text-muted-foreground">{t('unanswered', { count: unanswered })}</p>
@@ -228,7 +238,7 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
                       <span>{ts(g.skill)}</span>
                       {g.stats ? (
                         <span className="tabular">
-                          {t('rawOf', { correct: g.stats.correct, total: g.stats.total })}
+                          {t('rawOf', { correct: g.stats.marks ?? g.stats.correct, total: g.stats.max_marks ?? g.stats.total })}
                         </span>
                       ) : null}
                     </p>
@@ -263,7 +273,9 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
               {Object.entries(r.by_question_type).map(([type, s]) => (
                 <li key={type} className="flex items-center justify-between py-2">
                   <span>{tq.has(type as never) ? tq(type as never) : type}</span>
-                  <span className="tabular font-semibold">{t('rawOf', { correct: s.correct, total: s.total })}</span>
+                  <span className="tabular font-semibold" data-testid={`type-${type}`}>
+                    {t('rawOf', { correct: s.marks ?? s.correct, total: s.max_marks ?? s.total })}
+                  </span>
                 </li>
               ))}
             </ul>

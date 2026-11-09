@@ -94,9 +94,9 @@ export function GapInput({ id, number, value, onChange, disabled, review, label,
   );
 }
 
-/** Thứ tự đánh số chỗ trống (1-based) theo thứ tự xuất hiện */
-export function gapNumbers(ids: readonly string[]): Map<string, number> {
-  return new Map(ids.map((id, i) => [id, i + 1]));
+/** Thứ tự đánh số chỗ trống theo thứ tự xuất hiện, bắt đầu từ `start` (C3: số đầu của câu trong đề – mặc định 1) */
+export function gapNumbers(ids: readonly string[], start = 1): Map<string, number> {
+  return new Map(ids.map((id, i) => [id, start + i]));
 }
 
 /** Văn bản chứa `{{id}}` → các đoạn chữ + chỗ trống (render qua `renderGap`) */

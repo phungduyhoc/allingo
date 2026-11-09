@@ -439,7 +439,17 @@
       "describeImage": "Mô tả hình bằng chữ",
       "imageUnavailable": "Ảnh chưa sẵn sàng – dùng phần mô tả bằng chữ bên dưới.",
       "flowChart": "Sơ đồ quy trình"
-    }
+    },
+    "questionsOf": "Câu {from}–{to}/{total}",
+    "sectionLocked": "Phần thi đã hết giờ",
+    "sectionTimeUp": "Phần thi đã hết giờ. Đáp án đã được lưu, chuyển sang phần tiếp theo.",
+    "ieltsListeningDone": "Phần nghe đã kết thúc. Bài đang được nộp.",
+    "ieltsNowReview": "Kiểm tra lại đáp án",
+    "ieltsNowPreread": "{part} – đọc trước câu {from}–{to}",
+    "ieltsNowPart": "Đang phát {part} · câu {from}–{to}",
+    "ieltsPrereadTime": "{seconds, plural, other {Audio bắt đầu sau # giây}}",
+    "ieltsReviewTime": "Thời gian xem lại còn: {time}",
+    "ieltsPrereadBadge": "Đọc trước câu hỏi"
   },
   "result": {
     "title": "Kết quả",
@@ -553,7 +563,18 @@
     "aiDiagnosisRetry": "Thử lại",
     "aiDiagnosisLoadError": "Không tải được phân tích AI đã lưu.",
     "backToToday": "Về Hôm nay",
-    "backToPlan": "Về lộ trình"
+    "backToPlan": "Về lộ trình",
+    "ielts": {
+      "title": "Band IELTS",
+      "module": {
+        "academic": "Reading Academic",
+        "general_training": "Reading General Training"
+      },
+      "correctOf": "Đúng {correct}/{total}",
+      "overall": "Band tổng (overall): {band}",
+      "overallPartial": "Band tổng chỉ được tính khi làm đủ 4 kỹ năng (Listening, Reading, Writing, Speaking).",
+      "note": "Band là ước tính của Allingo theo số câu đúng, không phải kết quả IELTS chính thức."
+    }
   },
   "review": {
     "title": "Xem lại",
@@ -626,7 +647,8 @@
     "feedbackNotePlaceholder": "Điểm nào chưa đúng hoặc chưa rõ?",
     "feedbackNoteSubmit": "Gửi ghi chú",
     "feedbackNoteSaved": "Đã gửi ghi chú. Cảm ơn bạn!",
-    "feedbackGroup": "Đánh giá giải thích"
+    "feedbackGroup": "Đánh giá giải thích",
+    "seekTo": "{time} – phát từ đây"
   },
   "settings": {
     "title": "Cài đặt",

@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { gapIdsOf } from '@allingo/schemas/question/content';
 import { cn } from '@allingo/ui';
 import type { PublicQuestionContent } from '@/lib/types';
+import { useNumberBase } from './number-base';
 import { gapNumbers, GapInput, GapText, WordLimitBadge, type GapReview } from './gaps';
 import type { RendererProps, ReviewInfo } from './types';
 import { DiagramFigure } from './figure';
@@ -33,7 +34,7 @@ function toGapReview(review: ReviewInfo | undefined, values: Record<string, stri
 export function Completion({ content, answer, onChange, disabled, review, questionId, resolveImage }: RendererProps<Content, Answer> & { resolveImage?: (assetId: string) => string | null }) {
   const t = useTranslations('attempt.rl');
   const ids = gapIdsOf(content as unknown as Parameters<typeof gapIdsOf>[0]);
-  const numbers = gapNumbers(ids);
+  const numbers = gapNumbers(ids, useNumberBase());
   const values = answer?.gaps ?? {};
   const gapReview = toGapReview(review, values, ids);
   const limitId = `q-${questionId}-limit`;

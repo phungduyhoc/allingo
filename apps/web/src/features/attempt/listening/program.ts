@@ -1,5 +1,6 @@
 import { asPublicContent, type QuestionPublic } from '@/lib/types';
-import type { QuestionGroup } from '../attempt-state';
+import type { ExamFormat } from '@allingo/schemas/api/attempt';
+import type { QuestionGroup, SectionRange } from '../attempt-state';
 
 /**
  * "Chương trình phát" Listening ở Exam Mode (`listen_policy = 'once'`): danh sách bước phát liên tục theo thứ tự đề.
@@ -18,6 +19,8 @@ interface StepBase {
   /** Khoảng câu của nhóm (câu đơn: start = end = questionIndex) – dùng để biết người học còn "theo" audio không */
   groupStart: number;
   groupEnd: number;
+  /** C3 – IELTS: part (section_code) của bước */
+  sectionCode?: string;
 }
 
 export interface AudioStep extends StepBase {
@@ -34,6 +37,8 @@ export interface AudioStep extends StepBase {
 export interface PauseStep extends StepBase {
   kind: 'pause';
   ms: number;
+  /** answer (mặc định – TOEIC: chờ trả lời sau câu); C3 – IELTS: preread (đọc trước câu hỏi của part) / review (xem lại cuối bài) */
+  phase?: 'answer' | 'preread' | 'review';
 }
 
 export type ListeningStep = AudioStep | PauseStep;
@@ -110,6 +115,56 @@ export function buildListeningProgram(questions: readonly QuestionPublic[], grou
     }
   }
   return { steps, unlockStep, firstIndex, lastIndex, nextIndex };
+}
+
+/**
+ * C3/S170 – Listening IELTS trên máy tính (`exam_format.kind = ielts_cbt`): mỗi part (section listening_p1–p4, liền nhau) =
+ * `preread_sec` đọc trước câu hỏi (câu của part mở từ bước này – trả lời trong lúc nghe) → audio cả part phát LIÊN TỤC một lần
+ * (passage `audio_script` của part) → part kế; hết part cuối → `review_sec` xem lại rồi xong (Exam Mode tự nộp). Part thiếu audio
+ * không vào chuỗi phát (trả lời tự do). Section không phải Listening (Reading cùng đề) nằm ngoài chương trình.
+ */
+export function buildIeltsListeningProgram(
+  questions: readonly QuestionPublic[],
+  ranges: readonly SectionRange[],
+  format: Pick<ExamFormat, 'preread_sec' | 'review_sec' | 'listening_parts'>,
+  isListeningSection: (code: string) => boolean,
+): ListeningProgram {
+  const steps: ListeningStep[] = [];
+  const unlockStep = new Map<number, number>();
+  const parts = ranges.filter((r) => isListeningSection(r.code));
+  const durationOf = new Map(format.listening_parts.map((p) => [p.section_code, p.duration_ms]));
+  // Part đã nghe xong (server: `played`, `passage.media_url = null`) → không vào chuỗi phát nữa
+  const played = new Set(format.listening_parts.filter((p) => p.played).map((p) => p.section_code));
+  let firstIndex = -1;
+  let lastIndex = -1;
+  for (const r of parts) {
+    const withAudio = questions.slice(r.start, r.end + 1).find((q) => q.passage?.kind === 'audio_script' && !!q.passage.media_url);
+    // Part chưa có audio (đề mẫu C2 – nghe tự do) → không vào chuỗi phát, câu trả lời tự do như Reading
+    if (!withAudio || played.has(r.code)) continue;
+    if (firstIndex < 0) firstIndex = r.start;
+    lastIndex = r.end;
+    const range = { groupStart: r.start, groupEnd: r.end, sectionCode: r.code };
+    steps.push({ kind: 'pause', phase: 'preread', ms: Math.max(0, format.preread_sec) * 1000, questionIndex: r.start, ...range });
+    for (let k = r.start; k <= r.end; k++) unlockStep.set(k, steps.length - 1);
+    const p = withAudio.passage!;
+    steps.push({ kind: 'audio', role: 'group', url: p.media_url!, assetId: p.media_asset_id ?? null, durationMs: durationOf.get(r.code) ?? null, questionIndex: r.start, eventQuestionId: questions[r.start]!.question_id, ...range });
+  }
+  if (steps.length && format.review_sec > 0) steps.push({ kind: 'pause', phase: 'review', ms: format.review_sec * 1000, questionIndex: firstIndex, groupStart: firstIndex, groupEnd: lastIndex });
+  const nextIndex = lastIndex >= 0 && lastIndex + 1 < questions.length ? lastIndex + 1 : null;
+  return { steps, unlockStep, firstIndex, lastIndex, nextIndex };
+}
+
+/**
+ * C3: lượt phát đã ghi nhận ở server theo part (`exam_format.listening_parts[].started_at`) → bổ sung `audio_plays` (khoá theo câu
+ * đầu part – như sự kiện audio_started của chuỗi phát) để khôi phục không phát lại part đã nghe (thiết bị khác/xoá localStorage).
+ */
+export function ieltsAudioPlays(program: ListeningProgram, parts: ExamFormat['listening_parts'], audioPlays: Readonly<Record<string, number>> | undefined): Record<string, number> {
+  const out: Record<string, number> = { ...audioPlays };
+  const started = new Set(parts.filter((p) => p.started_at || p.played).map((p) => p.section_code));
+  for (const s of program.steps) {
+    if (s.kind === 'audio' && s.sectionCode && started.has(s.sectionCode)) out[s.eventQuestionId] = Math.max(1, out[s.eventQuestionId] ?? 0);
+  }
+  return out;
 }
 
 /** Các bước audio sắp phát (tính cả bước hiện tại nếu là audio) – để preload 2–3 tệp trước */

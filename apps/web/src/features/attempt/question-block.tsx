@@ -10,17 +10,23 @@ import { PracticeFeedback, type FeedbackEntry } from './practice-feedback';
 import { QuestionRenderer, SELF_IMAGE_TYPES } from './question-renderer';
 import { QuestionStem } from './question-stem';
 import { isAnswered } from './attempt-state';
+import { NumberBase } from './renderers/number-base';
 import { ReportQuestionButton } from '@/features/content-report/report-question-button';
 import { PROGRAM_LIST } from '@allingo/schemas/program/registry';
 
 /** Trạng thái nghe của câu trong Exam Mode (chuỗi phát một lần) */
-export type ListenStatus = 'upcoming' | 'playing' | 'played';
+/** C3 – IELTS: `preread` = đang đọc trước câu hỏi của part (chọn đáp án được, audio sắp phát) */
+export type ListenStatus = 'upcoming' | 'preread' | 'playing' | 'played';
 
 export interface QuestionBlockProps {
   question: QuestionPublic;
-  /** Số thứ tự hiển thị (1-based) */
+  /** Số thứ tự hiển thị (1-based) – C3: số đầu tiên của câu trong đề ("Questions 1–40") */
   number: number;
   total: number;
+  /** C3: số câu hỏi (mục đánh số) câu này chiếm – > 1 → nhãn "Câu 7–11" và renderer đánh số từ `number` */
+  markCount?: number;
+  /** C3: section đã hết giờ (đồng hồ theo section) – không sửa được đáp án */
+  sectionLocked?: boolean;
   answer: AnswerInput | null;
   flagged: boolean;
   /** Câu đang xem (nhận phím tắt); trong nhóm đoạn văn được tô viền */
@@ -49,7 +55,7 @@ export interface QuestionBlockProps {
 const DIRECTION_SECTIONS: ReadonlySet<string> = new Set(PROGRAM_LIST.flatMap((p) => p.spoken_sections));
 
 /** Một câu hỏi trong màn làm bài (đề bài, audio/ảnh, lựa chọn, đánh dấu, phản hồi Practice) */
-export function QuestionBlock({ question, number, total, answer, flagged, current, inGroup = false, onActivate, onAnswer, onToggleFlag, disabled, zoom, audio, imageUrl, listen, practice, badge, children }: QuestionBlockProps) {
+export function QuestionBlock({ question, number, total, markCount = 1, sectionLocked = false, answer, flagged, current, inGroup = false, onActivate, onAnswer, onToggleFlag, disabled, zoom, audio, imageUrl, listen, practice, badge, children }: QuestionBlockProps) {
   const t = useTranslations('attempt');
   const content = asPublicContent(question.content);
   const stemId = `q-${question.question_id}-stem`;
@@ -81,7 +87,9 @@ export function QuestionBlock({ question, number, total, answer, flagged, curren
     >
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="tabular text-sm font-semibold text-muted-foreground">{t('questionOf', { current: number, total })}</span>
+          <span className="tabular text-sm font-semibold text-muted-foreground" data-testid="question-number">
+            {markCount > 1 ? t('questionsOf', { from: number, to: number + markCount - 1, total }) : t('questionOf', { current: number, total })}
+          </span>
           {badge}
           {listen === 'playing' ? (
             <Badge variant="gold" data-testid="listen-now">
@@ -95,6 +103,12 @@ export function QuestionBlock({ question, number, total, answer, flagged, curren
             </Badge>
           ) : null}
           {practice?.locked && !feedback ? <Badge variant="muted">{t('feedbackLocked')}</Badge> : null}
+          {sectionLocked ? (
+            <Badge variant="muted" data-testid="section-locked-badge">
+              <Lock aria-hidden />
+              {t('sectionLocked')}
+            </Badge>
+          ) : null}
         </div>
         <Button variant={flagged ? 'gold' : 'outline'} size="sm" onClick={onToggleFlag} aria-pressed={flagged} data-testid={current ? 'flag-button' : undefined}>
           <Flag className={cn(flagged && 'fill-current')} aria-hidden />
@@ -133,7 +147,11 @@ export function QuestionBlock({ question, number, total, answer, flagged, curren
           </span>
         )}
 
-        {content ? <QuestionRenderer questionId={question.question_id} content={content} answer={answer} onChange={onAnswer} disabled={disabled || practice?.locked || listenLocked} review={review} resolveImage={resolveImage} /> : null}
+        {content ? (
+          <NumberBase start={number}>
+            <QuestionRenderer questionId={question.question_id} content={content} answer={answer} onChange={onAnswer} disabled={disabled || practice?.locked || listenLocked || sectionLocked} review={review} resolveImage={resolveImage} />
+          </NumberBase>
+        ) : null}
       </div>
 
       {practice ? (

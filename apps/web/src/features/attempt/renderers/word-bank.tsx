@@ -7,6 +7,7 @@ import { gapTokens } from '@allingo/schemas/question/rl-types';
 import { cn, NativeSelect } from '@allingo/ui';
 import type { PublicQuestionContent } from '@/lib/types';
 import { gapNumbers, GapText } from './gaps';
+import { useNumberBase } from './number-base';
 import type { RendererProps } from './types';
 
 /**
@@ -22,7 +23,7 @@ const DRAG_MIME = 'application/x-allingo-word';
 export function WordBank({ content, answer, onChange, disabled, review, questionId }: RendererProps<Content, Answer>) {
   const t = useTranslations('attempt.rl');
   const ids = gapTokens(content.text);
-  const numbers = gapNumbers(ids);
+  const numbers = gapNumbers(ids, useNumberBase());
   const values = answer?.gaps ?? {};
   const correct = (review?.correctAnswer ?? null) as Record<string, string> | null;
   const locked = disabled || !!review;

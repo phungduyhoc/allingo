@@ -6,6 +6,12 @@ import { cn } from '@allingo/ui';
 import type { TranscriptHighlight } from '@/lib/types';
 import { activeLineIndex, hasTimings, markEvidence, speakerTone, transcriptLines } from './transcript-format';
 
+/** m:ss của mốc transcript */
+const formatMs = (ms: number) => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
 const TONE_CLASS = {
   man: 'bg-navy text-navy-foreground dark:bg-primary dark:text-primary-foreground',
   woman: 'bg-accent text-accent-foreground',
@@ -22,17 +28,25 @@ export function Transcript({
   evidence,
   activeMs = null,
   className,
+  evidenceLines,
+  onSeek,
 }: {
   transcript: TranscriptHighlight;
   evidence?: readonly (string | null | undefined)[];
   activeMs?: number | null;
   className?: string;
+  /** C3: chỉ số dòng (segments) chứa đáp án – server so khớp `evidence_segments`; gộp thêm từ các câu cùng nhóm */
+  evidenceLines?: readonly number[];
+  /** C3: bấm dòng có mốc thời gian → tua trình phát tới đó */
+  onSeek?: (ms: number) => void;
 }) {
   const t = useTranslations('review');
   const lines = React.useMemo(() => transcriptLines(transcript), [transcript]);
   const timed = hasTimings(lines);
   const active = timed ? activeLineIndex(lines, activeMs) : -1;
-  const marks = React.useMemo(() => [transcript.evidence, ...(evidence ?? [])], [evidence, transcript.evidence]);
+  // C3: evidence của câu nhiều mục là nhiều dòng (nối bằng xuống dòng) → tô từng dòng
+  const marks = React.useMemo(() => [transcript.evidence, ...(evidence ?? [])].flatMap((e) => (e ? e.split('\n') : [])), [evidence, transcript.evidence]);
+  const evidenceSet = React.useMemo(() => new Set([...(transcript.evidence_segments ?? []), ...(evidenceLines ?? [])]), [evidenceLines, transcript.evidence_segments]);
   const activeRef = React.useRef<HTMLLIElement | null>(null);
 
   React.useEffect(() => {
@@ -63,10 +77,12 @@ export function Transcript({
             ref={i === active ? activeRef : undefined}
             className={cn(
               'flex gap-2 rounded-md px-2 py-1 transition-colors',
+              evidenceSet.has(i) && 'border-l-4 border-accent bg-accent/10',
               i === active && 'bg-primary/10 ring-1 ring-primary/30',
             )}
             data-testid="transcript-line"
             data-active={i === active}
+            data-evidence={evidenceSet.has(i) || undefined}
             aria-current={i === active ? 'true' : undefined}
           >
             {l.speaker ? (
@@ -80,6 +96,17 @@ export function Transcript({
               >
                 {l.speaker}
               </span>
+            ) : null}
+            {onSeek && l.startMs !== null ? (
+              <button
+                type="button"
+                className="tabular shrink-0 rounded px-1 text-[11px] font-semibold text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                onClick={() => onSeek(l.startMs!)}
+                aria-label={t('seekTo', { time: formatMs(l.startMs) })}
+                data-testid="transcript-seek"
+              >
+                {formatMs(l.startMs)}
+              </button>
             ) : null}
             <span className="min-w-0">
               {markEvidence(l.text, marks).map((p, j) =>

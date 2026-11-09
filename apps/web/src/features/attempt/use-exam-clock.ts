@@ -31,6 +31,8 @@ export function useExamClock(expiresAt: string | null, serverTime: string, handl
 
   React.useEffect(() => {
     if (!expiresAt) return;
+    // C3: đổi mốc (đồng hồ theo section – sang section kế) → mốc mới có lượt hết giờ riêng
+    expiredRef.current = false;
     let prev: number | null = remainingMs(expiresAt, offset);
     const tick = () => {
       const next = remainingMs(expiresAt, offset);
@@ -47,12 +49,15 @@ export function useExamClock(expiresAt: string | null, serverTime: string, handl
       }
     };
     const id = window.setInterval(tick, 1000);
+    // Mốc mới hiển thị ngay (không chờ nhịp 1 s)
+    const first = window.setTimeout(tick, 0);
     const onVisible = () => {
       if (document.visibilityState === 'visible') tick();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       window.clearInterval(id);
+      window.clearTimeout(first);
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [expiresAt, offset]);

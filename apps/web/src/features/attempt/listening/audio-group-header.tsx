@@ -43,6 +43,10 @@ export function AudioGroupHeader({
                 <Volume2 className="animate-pulse" aria-hidden />
                 {t('listenNow')}
               </Badge>
+            ) : exam.status === 'preread' ? (
+              <Badge variant="secondary" data-testid="preread-badge">
+                {t('ieltsPrereadBadge')}
+              </Badge>
             ) : exam.status === 'played' ? (
               <Badge variant="muted">{t('audioPlayed')}</Badge>
             ) : (

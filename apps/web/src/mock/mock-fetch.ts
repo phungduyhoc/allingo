@@ -9,6 +9,7 @@ import { env } from '@/env';
 import { FLAG_DEFAULTS, PUBLIC_FLAG_KEYS } from '@/lib/flags';
 import { MOCK_PROGRAMS, MOCK_SUBSKILL_OF_TAG, MOCK_TEST_SETS, type MockQuestion, type MockTestSet } from './fixtures';
 import { MOCK_IELTS_TEST_SETS } from './ielts-fixtures';
+import { evidenceSegmentsOf, mockExamFormat, mockNumbering, mockSectionClock, playedAssets } from './ielts-format';
 import { marksOf } from '@allingo/schemas/question/marks';
 import { isProgramCode, programDef, skillOfSection } from '@allingo/schemas/program/registry';
 import { loadState, saveState, type MockAttemptRecord, type MockState, type MockUserRecord } from './state';
@@ -242,7 +243,7 @@ export function createMockFetch(): typeof fetch {
    * Câu công khai như API: URL media "ký" 10′; đang làm bài (`attempt`) → Part 1/2 xoá chữ đề/lựa chọn, passage audio_script
    * không có body (transcript). Review (`review`) trả đủ chữ + body.
    */
-  const publicQuestion = (q: MockQuestion, view: 'attempt' | 'review'): Attempt['questions'][number] => {
+  const publicQuestion = (q: MockQuestion, view: 'attempt' | 'review', num?: { number_start: number; mark_count: number }): Attempt['questions'][number] => {
     const pub = toPublicContent(q.content);
     const content = view === 'attempt' && isSpokenTextSection('toeic', q.section_code) && 'media' in pub && pub.media?.audio_asset_id ? redactSpokenText(pub) : pub;
     const passage = q.passage
@@ -259,6 +260,8 @@ export function createMockFetch(): typeof fetch {
       section_code: q.section_code,
       group_key: q.group_key,
       order_no: q.order_no,
+      // C3/S167: đánh số liên tục theo mục (như API)
+      ...(num ? { number_start: num.number_start, mark_count: num.mark_count } : {}),
       content,
       media: q.media.map(({ transcript: _t, ...m }) => ({ ...m, ...signUrl(m.url, 'init') })),
       passage,
@@ -267,7 +270,7 @@ export function createMockFetch(): typeof fetch {
   /** TranscriptHighlight như API: passage audio_script (Part 3/4) hoặc transcript audio câu (Part 1/2), kèm evidence của tác giả */
   const transcriptOf = (q: MockQuestion): TranscriptHighlight | null => {
     const evidence = q.content.evidence ?? null;
-    if (q.passage?.kind === 'audio_script' && q.passage.body) return { text: q.passage.body, ...(q.passage.segments ? { segments: q.passage.segments } : {}), evidence, source: 'passage', asset_id: q.passage.media_asset_id ?? null };
+    if (q.passage?.kind === 'audio_script' && q.passage.body) return { text: q.passage.body, ...(q.passage.segments ? { segments: q.passage.segments, evidence_segments: evidenceSegmentsOf(q.passage.segments, evidence) } : {}), evidence, source: 'passage', asset_id: q.passage.media_asset_id ?? null };
     const audio = q.media.find((m) => m.kind === 'audio');
     if (audio?.transcript) return { text: audio.transcript.text, ...(audio.transcript.segments ? { segments: audio.transcript.segments } : {}), evidence, source: 'media', asset_id: audio.id };
     return evidence ? { text: evidence, evidence, source: 'evidence', asset_id: audio?.id ?? null } : null;
@@ -276,6 +279,11 @@ export function createMockFetch(): typeof fetch {
   const toAttemptDto = (a: MockAttemptRecord): Attempt => {
     const ts = findTestSet(a.test_set_id);
     const qs = questionsOf(a);
+    const nums = mockNumbering(a.program, qs);
+    const clock = mockSectionClock(a, ts, qs);
+    const examFormat = mockExamFormat(a, ts, qs);
+    // Như API: part đã nghe xong ở Exam Mode → passage.media_url = null
+    const played = a.status === 'in_progress' ? playedAssets(examFormat) : new Set<string>();
     return {
       id: a.id,
       program: a.program as Attempt['program'],
@@ -286,9 +294,15 @@ export function createMockFetch(): typeof fetch {
         section_code: code,
         duration_sec: FEEDBACK_MODES.has(a.mode) || a.question_ids ? null : (ts?.sections.find((s) => s.code === code)?.duration_sec ?? null),
         elapsed_sec: a.section_elapsed_sec[code] ?? 0,
-        locked: false,
+        locked: clock.get(code)?.locked ?? false,
+        ...(clock.get(code)?.skill ? { skill: clock.get(code)!.skill! } : {}),
+        ends_at: clock.get(code)?.ends_at ?? null,
       })),
-      questions: qs.map((q) => publicQuestion(q, 'attempt')),
+      questions: qs.map((q) => {
+        const pub = publicQuestion(q, 'attempt', nums.get(q.question_id));
+        return pub.passage?.media_asset_id && played.has(pub.passage.media_asset_id) ? { ...pub, passage: { ...pub.passage, media_url: null, media_expires_at: null } } : pub;
+      }),
+      exam_format: examFormat,
       draft_answers: Object.entries(a.answers).map(([question_id, r]) => ({ question_id, answer: r.answer, time_spent_ms: r.time_spent_ms, flagged: r.flagged })),
       started_at: a.started_at,
       expires_at: a.expires_at,
@@ -317,7 +331,9 @@ export function createMockFetch(): typeof fetch {
   const gradeOtherProgram = (a: MockAttemptRecord, qs: MockQuestion[], bySection: AttemptResult['by_section'], byType: AttemptResult['by_question_type'], bySubskill: AttemptResult['by_subskill'], correct: number, unanswered: number): AttemptResult => {
     const def = programDef(a.program);
     const skillOf = (code: string) => skillOfSection(a.program, code);
-    const r = scoreByProgram({ program: a.program, kind: def?.scale.kind ?? 'points', bySection: Object.fromEntries(Object.entries(bySection).map(([k, v]) => [k, { marks: v.marks ?? v.correct, max_marks: v.max_marks ?? v.total }])), skillOf });
+    // C3: hình thức Reading IELTS theo catalog.test_sets.level (Academic/GT – bảng band riêng)
+    const level = findTestSet(a.test_set_id)?.level;
+    const r = scoreByProgram({ program: a.program, kind: def?.scale.kind ?? 'points', bySection: Object.fromEntries(Object.entries(bySection).map(([k, v]) => [k, { marks: v.marks ?? v.correct, max_marks: v.max_marks ?? v.total }])), skillOf, module: level === 'general_training' ? 'general_training' : 'academic' });
     for (const [code, s] of Object.entries(bySection)) s.score = r.sections[code] ?? null;
     const bySkill: NonNullable<AttemptResult['by_skill']> = {};
     for (const [code, s] of Object.entries(bySection)) {
@@ -368,9 +384,11 @@ export function createMockFetch(): typeof fetch {
       if (ok) sec.correct++;
       sec.marks = (sec.marks ?? 0) + mk.earned;
       sec.max_marks = (sec.max_marks ?? 0) + mk.max;
-      const t = (byType[q.content.type] ??= { correct: 0, total: 0 });
+      const t = (byType[q.content.type] ??= { correct: 0, total: 0, marks: 0, max_marks: 0 });
       t.total++;
       if (ok) t.correct++;
+      t.marks = (t.marks ?? 0) + mk.earned;
+      t.max_marks = (t.max_marks ?? 0) + mk.max;
       for (const tag of q.content.tags ?? []) {
         const s = (bySubskill[tag] ??= { correct: 0, total: 0 });
         s.total++;
@@ -965,7 +983,13 @@ export function createMockFetch(): typeof fetch {
       // Quá hạn + ân hạn 30 s → 409 (như API)
       if (a.expires_at && Date.now() > Date.parse(a.expires_at) + ATTEMPT_GRACE_SECONDS * 1000) return error(409, 'conflict', 'Attempt has expired', { expires_at: a.expires_at });
       const b = body as { answers?: { question_id: string; answer: unknown; time_spent_ms?: number; flagged?: boolean }[]; section_elapsed_sec?: Record<string, number>; ui_state?: Record<string, unknown> };
+      // C3: đồng hồ theo section – đáp án vào section đã hết giờ → 409 section_locked (cả lô bị từ chối, client bỏ các câu đó)
+      const clock = mockSectionClock(a, findTestSet(a.test_set_id), questionsOf(a));
+      const sectionOfQ = new Map(questionsOf(a).map((q) => [q.question_id, q.section_code]));
+      // Như API: lưu phần hợp lệ của lô, câu thuộc section đã khoá → 409 conflict + details.reason = section_locked
+      const lockedCodes = [...new Set((b.answers ?? []).map((x) => sectionOfQ.get(x.question_id)).filter((c): c is string => !!c && !!clock.get(c)?.locked))];
       for (const ans of b.answers ?? []) {
+        if (lockedCodes.includes(sectionOfQ.get(ans.question_id) ?? '')) continue;
         const parsed = answerInputSchema.safeParse(ans.answer);
         if (!parsed.success) return error(400, 'validation_failed', 'Invalid answer', { question_id: ans.question_id });
         const prev = a.answers[ans.question_id];
@@ -979,6 +1003,7 @@ export function createMockFetch(): typeof fetch {
         a.ui_state = { ...a.ui_state, ...ui.data };
       }
       persist();
+      if (lockedCodes.length) return error(409, 'conflict', 'Section time is over', { reason: 'section_locked', section_code: lockedCodes[0], section_codes: lockedCodes });
       return empty(204);
     }),
     route('POST', '/attempts/{attemptId}/events', ({ params, body }) => {
@@ -1031,9 +1056,11 @@ export function createMockFetch(): typeof fetch {
       if (!a || a.user_id !== u.id) return error(404, 'not_found', 'Attempt not found');
       const sig = `r${++refreshCounter}`;
       const seen = new Map<string, { id: string; kind: string; url: string; expires_at: string }>();
+      // C3: Exam Mode IELTS đang làm – part đã nghe xong không được cấp lại URL (nghe một lần, ràng buộc phía server)
+      const blocked = a.status === 'in_progress' ? playedAssets(mockExamFormat(a, findTestSet(a.test_set_id), questionsOf(a))) : new Set<string>();
       for (const q of questionsOf(a)) {
         for (const m of q.media) seen.set(m.id, { id: m.id, kind: m.kind, ...signUrl(m.url, sig) });
-        if (q.passage?.media_asset_id && q.passage.media_url) seen.set(q.passage.media_asset_id, { id: q.passage.media_asset_id, kind: 'audio', ...signUrl(q.passage.media_url, sig) });
+        if (q.passage?.media_asset_id && q.passage.media_url && !blocked.has(q.passage.media_asset_id)) seen.set(q.passage.media_asset_id, { id: q.passage.media_asset_id, kind: 'audio', ...signUrl(q.passage.media_url, sig) });
       }
       return json(200, { data: [...seen.values()] }, { 'Cache-Control': 'no-store' });
     }),
@@ -1048,6 +1075,7 @@ export function createMockFetch(): typeof fetch {
       const flaggedOnly = url.searchParams.get('flagged') === 'true';
       const section = url.searchParams.get('section');
       const items: AttemptReview['items'] = [];
+      const reviewNums = mockNumbering(a.program, questionsOf(a));
       for (const q of questionsOf(a)) {
         const rec = a.answers[q.question_id];
         const g = grade(q.content, rec?.answer ?? null);
@@ -1057,7 +1085,7 @@ export function createMockFetch(): typeof fetch {
         const chosen = rec?.answer.type === 'mcq_single' ? (rec.answer.selected ?? '') : '';
         const cacheKey = `${q.question_version_id}:${chosen}:${u.explain_locale ?? locale}`;
         items.push({
-          question: publicQuestion(q, 'review'),
+          question: publicQuestion(q, 'review', reviewNums.get(q.question_id)),
           your_answer: rec?.answer ?? null,
           correct_answer: g.correct_answer,
           is_correct: g.is_correct,

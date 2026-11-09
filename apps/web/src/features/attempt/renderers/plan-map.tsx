@@ -6,6 +6,7 @@ import { cn, NativeSelect } from '@allingo/ui';
 import type { PublicQuestionContent } from '@/lib/types';
 import { DiagramFigure } from './figure';
 import type { RendererProps } from './types';
+import { useNumberBase } from './number-base';
 
 /**
  * C2 – gán nhãn bản đồ/mặt bằng bằng chữ cái (IELTS Listening "Label the map. Choose the correct letter A–F"): mỗi địa điểm một
@@ -19,6 +20,7 @@ type Answer = { type: 'plan_map_labelling'; values: Record<string, string> };
 export function PlanMap({ content, answer, onChange, disabled, review, questionId, resolveImage }: RendererProps<Content, Answer> & { resolveImage?: (assetId: string) => string | null }) {
   const t = useTranslations('attempt.rl');
   const values = answer?.values ?? {};
+  const base = useNumberBase();
   const correct = (review?.correctAnswer ?? null) as Record<string, string> | null;
   const locked = disabled || !!review;
   const firstOpen = content.items.find((i) => !values[i.key])?.key ?? content.items[0]?.key ?? null;
@@ -49,7 +51,7 @@ export function PlanMap({ content, answer, onChange, disabled, review, questionI
       />
       {!locked ? <p className="text-xs text-muted-foreground">{t('mapHint')}</p> : null}
       <ol className="space-y-2" aria-label={t('itemsLabel')}>
-        {content.items.map((it) => {
+        {content.items.map((it, k) => {
           const ok = review?.details?.[it.key];
           const selectId = `q-${questionId}-place-${it.key}`;
           return (
@@ -57,10 +59,12 @@ export function PlanMap({ content, answer, onChange, disabled, review, questionI
               key={it.key}
               className={cn('flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card p-3', active === it.key && !locked ? 'border-accent ring-2 ring-accent/30' : 'border-border', review && ok === true && 'border-success', review && ok === false && 'border-destructive')}
               data-testid={`place-row-${it.key}`}
+              data-sub={it.key}
               data-state={review ? (ok ? 'correct' : 'wrong') : undefined}
             >
               <label htmlFor={selectId} className="text-base">
-                <span className="mr-2 font-semibold tabular">{it.key}.</span>
+                <span className="tabular mr-2 rounded bg-muted px-1.5 text-xs font-bold text-muted-foreground">{base + k}</span>
+                {/^\d+$/.test(it.key) ? null : <span className="mr-2 font-semibold tabular">{it.key}.</span>}
                 {it.text}
               </label>
               <div className="flex flex-col items-end gap-1">

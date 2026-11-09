@@ -24,6 +24,7 @@ import { Transcript } from './transcript';
 import { parseTranscript } from './transcript-format';
 import { PassageTabs, partsOf } from '@/features/attempt/passage-pane';
 import { useSectionLabel } from '@/features/attempt/section-label';
+import { NumberBase } from '@/features/attempt/renderers/number-base';
 
 export interface ReviewMedia {
   resolve: (assetId: string | null | undefined, fallback: string) => string;
@@ -39,6 +40,7 @@ function ListenWithTranscript({
   label,
   onError,
   testId,
+  evidenceLines,
 }: {
   src: string;
   assetId: string | null;
@@ -47,14 +49,25 @@ function ListenWithTranscript({
   label: string;
   onError: () => void;
   testId?: string;
+  evidenceLines?: readonly number[];
 }) {
   const [ms, setMs] = React.useState<number | null>(null);
+  // C3: bấm mốc thời gian ở transcript → tua trình phát
+  const [seek, setSeek] = React.useState<{ ms: number; nonce: number } | null>(null);
   // Mốc thời gian của transcript thuộc về asset nào (passage nhóm hoặc audio câu) – chỉ tô khi đúng trình phát
   const synced = !!transcript && (!transcript.asset_id || !assetId || transcript.asset_id === assetId);
   return (
     <div className="space-y-2">
-      <AudioPlayer src={src} label={label} onTime={synced ? setMs : undefined} onError={onError} data-testid={testId} />
-      {transcript ? <Transcript transcript={transcript} evidence={evidence} activeMs={synced ? ms : null} /> : null}
+      <AudioPlayer src={src} label={label} onTime={synced ? setMs : undefined} onError={onError} data-testid={testId} seek={seek} />
+      {transcript ? (
+        <Transcript
+          transcript={transcript}
+          evidence={evidence}
+          activeMs={synced ? ms : null}
+          evidenceLines={evidenceLines}
+          onSeek={synced ? (at) => setSeek((prev) => ({ ms: at, nonce: (prev?.nonce ?? 0) + 1 })) : undefined}
+        />
+      ) : null}
     </div>
   );
 }
@@ -68,7 +81,13 @@ export function ReviewAudioGroup({ items, media }: { items: ReviewItemT[]; media
     items.map((i) => parseTranscript(i.transcript_highlight)).find((x) => x?.source === 'passage') ??
     (passage.body ? { text: passage.body, evidence: null, source: 'passage' as const } : null);
   const evidence = items.map((i) => parseTranscript(i.transcript_highlight)?.evidence ?? null);
-  const numbers = items.map((i) => i.question.order_no);
+  // C3: dòng chứa đáp án của mọi câu trong nhóm (server – evidence_segments)
+  const evidenceLines = items.flatMap((i) => parseTranscript(i.transcript_highlight)?.evidence_segments ?? []);
+  // C3/S167: số câu hỏi liên tục theo mục (number_start/mark_count); thiếu → order_no
+  const numbers = items.flatMap((i) => {
+    const start = i.question.number_start ?? i.question.order_no;
+    return [start, start + Math.max(1, i.question.mark_count ?? 1) - 1];
+  });
   return (
     <section className="rounded-xl border border-border bg-card p-4" data-testid="review-audio-group">
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -87,9 +106,10 @@ export function ReviewAudioGroup({ items, media }: { items: ReviewItemT[]; media
           label={passage.title ?? t('audioGroup')}
           onError={() => void media.refresh()}
           testId="review-group-player"
+          evidenceLines={evidenceLines}
         />
       ) : transcript ? (
-        <Transcript transcript={transcript} evidence={evidence} />
+        <Transcript transcript={transcript} evidence={evidence} evidenceLines={evidenceLines} />
       ) : null}
     </section>
   );
@@ -98,13 +118,17 @@ export function ReviewAudioGroup({ items, media }: { items: ReviewItemT[]; media
 export function ReviewItemCard({
   item,
   number,
+  markCount = 1,
   attemptId,
   media,
   examLocked,
   onExamLocked,
 }: {
   item: ReviewItemT;
+  /** Số câu (C3: số đầu tiên của câu trong đề – IELTS "Questions 1–40") */
   number: number;
+  /** C3: số mục đánh số của câu (> 1 → nhãn "7–11", renderer đánh số từ `number`) */
+  markCount?: number;
   attemptId: string;
   media?: ReviewMedia;
   examLocked?: boolean;
@@ -142,7 +166,9 @@ export function ReviewItemCard({
       data-correct={correct}
     >
       <header className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="tabular text-sm font-semibold">{number}.</span>
+        <span className="tabular text-sm font-semibold" data-testid="review-number">
+          {markCount > 1 ? `${number}–${number + markCount - 1}` : number}.
+        </span>
         <Badge variant="secondary">
           {sectionLabel(item.question.section_code, { short: true })}
         </Badge>
@@ -239,6 +265,7 @@ export function ReviewItemCard({
       ) : null}
 
       {content ? (
+        <NumberBase start={number}>
         <QuestionRenderer
           questionId={item.question.question_id}
           content={content}
@@ -250,6 +277,7 @@ export function ReviewItemCard({
             return m ? resolve(m.id, m.url) : null;
           }}
         />
+        </NumberBase>
       ) : null}
 
       {transcript?.evidence ? (

@@ -39,7 +39,9 @@ import { useDraftSaver, useOnlineStatus, type DraftSaver } from './use-draft-sav
 import { useExamClock } from './use-exam-clock';
 import { FONT_SCALES, SPLIT_MAX, SPLIT_MIN, stepFont, useExamPrefs } from './exam-prefs';
 import { useMediaUrls } from './use-media-urls';
-import { buildListeningProgram, toServerCursor } from './listening/program';
+import { buildIeltsListeningProgram, buildListeningProgram, ieltsAudioPlays, toServerCursor } from './listening/program';
+import { markGridItems, markInfoOf, totalMarks, subItemSelector } from './numbering';
+import { skillOfSection } from '@allingo/schemas/program/registry';
 import { useExamListening } from './listening/use-exam-listening';
 import { ListeningBar, ListeningGate } from './listening/listening-bar';
 import { AudioGroupHeader } from './listening/audio-group-header';
@@ -71,7 +73,12 @@ export function AttemptPage({ attemptId }: { attemptId: string }) {
   // Server từ chối lưu (409: quá hạn + 30 s ân hạn, hoặc đã nộp nơi khác) → runner nộp & chuyển sang kết quả
   const [closed, setClosed] = React.useState(false);
   const onClosed = React.useCallback(() => setClosed(true), []);
-  const saver = useDraftSaver(attemptId, { enabled: inProgress, onClosed });
+  // C3: section server báo đã hết giờ (409 section_locked) – runner khoá câu của các section này
+  const [serverLocked, setServerLocked] = React.useState<readonly string[]>([]);
+  const questionSections = React.useMemo(() => new Map((query.data?.questions ?? []).map((q) => [q.question_id, q.section_code])), [query.data?.questions]);
+  const sectionOf = React.useCallback((qid: string) => questionSections.get(qid), [questionSections]);
+  const onSectionLocked = React.useCallback((codes: string[]) => setServerLocked((prev) => [...new Set([...prev, ...codes])]), []);
+  const saver = useDraftSaver(attemptId, { enabled: inProgress, onClosed, sectionOf, onSectionLocked });
 
   if (query.isPending || (inProgress && !saver.ready)) {
     return (
@@ -103,10 +110,16 @@ export function AttemptPage({ attemptId }: { attemptId: string }) {
       </div>
     );
   }
-  return <AttemptRunner attempt={query.data} saver={saver} closed={closed} />;
+  return <AttemptRunner attempt={query.data} saver={saver} closed={closed} serverLocked={serverLocked} />;
 }
 
-function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: DraftSaver; closed: boolean }) {
+/** C3: mốc hết giờ theo section (kỹ năng) – các `ends_at` khác nhau theo thứ tự thời gian; rỗng → một đồng hồ chung */
+function sectionDeadlines(attempt: Attempt): string[] {
+  const ends = attempt.sections.map((s) => s.ends_at).filter((x): x is string => !!x && !Number.isNaN(Date.parse(x)));
+  return [...new Set(ends)].sort((a, b) => Date.parse(a) - Date.parse(b));
+}
+
+function AttemptRunner({ attempt, saver, closed, serverLocked }: { attempt: Attempt; saver: DraftSaver; closed: boolean; serverLocked: readonly string[] }) {
   const t = useTranslations('attempt');
   const L = useLocalized();
   const sectionLabel = useSectionLabel();
@@ -120,6 +133,27 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   const groups = React.useMemo(() => questionGroups(questions), [questions]);
   const feedback = React.useMemo(() => attempt.feedback ?? {}, [attempt.feedback]);
   const indexOfId = React.useMemo(() => new Map(questions.map((q, i) => [q.question_id, i])), [questions]);
+  // C3/S167: đánh số câu hỏi liên tục theo mục ("Questions 1–40") – server trả number_start/mark_count, thiếu → mỗi câu một số
+  const marks = React.useMemo(() => markInfoOf(questions), [questions]);
+  const markTotal = React.useMemo(() => totalMarks(marks), [marks]);
+  const numberOf = React.useCallback((i: number) => marks[i]?.start ?? i + 1, [marks]);
+  const lastNumberOf = React.useCallback((i: number) => (marks[i] ? marks[i].start + marks[i].count - 1 : i + 1), [marks]);
+  // C3: định dạng thi IELTS trên máy tính (Listening liên tục theo part, đọc trước/xem lại)
+  const format = attempt.exam_format?.kind === 'ielts_cbt' ? attempt.exam_format : null;
+  const isListeningSection = React.useCallback((code: string) => skillOfSection(attempt.program, code) === 'listening', [attempt.program]);
+  // C3: đồng hồ theo section – các mốc `ends_at` theo thời gian; section hết giờ bị khoá (server từ chối lưu – 409 section_locked)
+  // (server mở đồng hồ kỹ năng kế khi nhận part_switch – ends_at mới có sau khi tải lại attempt)
+  const [timeLocked, setTimeLocked] = React.useState<readonly string[]>([]);
+  const lockedSections = React.useMemo(
+    () => new Set([...attempt.sections.filter((s) => s.locked).map((s) => s.section_code), ...timeLocked, ...serverLocked]),
+    [attempt.sections, serverLocked, timeLocked],
+  );
+  const deadlines = React.useMemo(() => sectionDeadlines(attempt), [attempt]);
+  const openDeadlines = deadlines.filter((d) => attempt.sections.some((s) => s.ends_at === d && !lockedSections.has(s.section_code)));
+  const multiClock = deadlines.length > 0 && deadlines.some((d) => d !== attempt.expires_at);
+  const clockTarget = multiClock ? (openDeadlines[0] ?? attempt.expires_at) : attempt.expires_at;
+  // Mốc cuối: không còn mốc section mở nào sau mốc hiện tại (và trùng hạn bài) → hết giờ = tự nộp
+  const finalDeadline = !multiClock || openDeadlines.length <= 1;
   // S6: tra từ chỉ ở Practice/drill (không bao giờ ở Exam Mode) và khi không có bài thi khác đang làm (đang tải danh sách →
   // vẫn cho tra; nếu thật sự đang thi, API trả 403 và khoá ngay)
   const examLock = useExamLock(attempt.id);
@@ -188,10 +222,16 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   // URL ký 10′ → gia hạn ngầm (đề L&R 120′); Exam Mode: chuỗi phát một lần toàn bộ Listening theo thứ tự đề
   const media = useMediaUrls(attempt.id, attempt.questions);
   const examLike = traits.examLike;
-  const program = React.useMemo(
-    () => (examLike ? buildListeningProgram(questions, groups) : null),
-    [examLike, groups, questions],
-  );
+  const program = React.useMemo(() => {
+    if (!examLike) return null;
+    // C3/S170: IELTS – đọc trước mỗi part → audio cả part một lần → xem lại cuối bài
+    if (format) {
+      const p = buildIeltsListeningProgram(questions, ranges, format, isListeningSection);
+      return p.steps.length ? p : null;
+    }
+    return buildListeningProgram(questions, groups);
+  }, [examLike, format, groups, isListeningSection, questions, ranges]);
+  const submitRef = React.useRef<(opts?: { force?: boolean }) => Promise<void>>(async () => undefined);
   const navigateRef = React.useRef<(index: number) => void>(() => undefined);
   // Theo audio: đang xem câu/nhóm đang phát → tự chuyển theo; tự chuyển sang câu khác → hiện nút "Về câu đang nghe"
   const followingRef = React.useRef(true);
@@ -203,7 +243,7 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   const listening = useExamListening({
     attemptId: attempt.id,
     program,
-    audioPlays: attempt.audio_plays,
+    audioPlays: program && format ? ieltsAudioPlays(program, format.listening_parts, attempt.audio_plays) : attempt.audio_plays,
     resolveUrl: media.resolveLatest,
     refreshUrls: media.refresh,
     urlsVersion: media.resolve,
@@ -215,6 +255,16 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
     },
     onDone: () => {
       const next = program?.nextIndex ?? null;
+      // C3: IELTS Listening – hết thời gian xem lại (review_sec) mà không còn phần khác → tự nộp như hết giờ
+      if (format && next === null) {
+        const msg = t('ieltsListeningDone');
+        setLiveMessage(msg);
+        toast.info(msg, { id: 'listening-done' });
+        setForced(true);
+        setSubmitOpen(true);
+        void submitRef.current();
+        return;
+      }
       const msg = next !== null ? t('listeningDoneReading') : t('listeningDone');
       setLiveMessage(msg);
       toast.info(msg, { id: 'listening-done' });
@@ -261,14 +311,14 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   // ---------------------------------------------------------------- Trả lời / đánh dấu / điều hướng
   const setAnswerFor = React.useCallback(
     (q: QuestionPublic, answer: AnswerInput) => {
-      if (isLocked(q.question_id) || !answerable(indexOfId.get(q.question_id) ?? -1)) return;
+      if (isLocked(q.question_id) || lockedSections.has(q.section_code) || !answerable(indexOfId.get(q.question_id) ?? -1)) return;
       dispatch({ type: 'answer', questionId: q.question_id, answer });
       saver.enqueue({ question_id: q.question_id, answer, flagged: state.flags[q.question_id] });
       // Practice: trắc nghiệm một đáp án → lưu ngay và hiện đúng/sai (không chờ debounce/10 s)
       if (traits.feedback && q.question_type === 'mcq_single' && isAnswered(answer))
         void requestFeedback(q.question_id);
     },
-    [answerable, indexOfId, isLocked, requestFeedback, saver, state.flags, traits.feedback],
+    [answerable, indexOfId, isLocked, lockedSections, requestFeedback, saver, state.flags, traits.feedback],
   );
 
   const toggleFlagFor = React.useCallback(
@@ -299,8 +349,12 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
         sectionEnteredAtRef.current = now;
         sendAttemptEvent(attempt.id, {
           type: 'part_switch',
-          meta: { from: current.section_code, to: next.section_code, question_id: next.question_id },
+          // C3: `section_code` – server mở đồng hồ của kỹ năng kế (đề full Exam Mode) và khoá kỹ năng trước
+          meta: { from: current.section_code, to: next.section_code, section_code: next.section_code, question_id: next.question_id },
         });
+        // Sang kỹ năng khác ở đề có đồng hồ theo kỹ năng → tải lại attempt để nhận ends_at/locked mới
+        if (multiClock && skillOfSection(attempt.program, next.section_code) !== skillOfSection(attempt.program, current.section_code))
+          window.setTimeout(() => void qc.invalidateQueries({ queryKey: queryKeys.attempt(attempt.id), exact: true }), 800);
       }
       saver.setMeta({
         ui_state: { current_question_id: next.question_id, current_section_code: next.section_code },
@@ -311,7 +365,7 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
       void saver.flushNow();
       setGridOpen(false);
     },
-    [attempt.id, current, questions, saver, sectionElapsed, state.answers, state.currentIndex, setGridOpen],
+    [attempt.id, attempt.program, current, multiClock, qc, questions, saver, sectionElapsed, state.answers, state.currentIndex, setGridOpen],
   );
   React.useEffect(() => {
     navigateRef.current = goTo;
@@ -329,6 +383,22 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
     setFollowing(true);
     if (listenStep) goTo(listenStep.questionIndex);
   }, [goTo, listenStep, setFollowing]);
+  // C3: chọn một SỐ câu ở lưới → mở câu catalog chứa số đó và focus đúng ô/mục (chỗ trống, mệnh đề, mục nối)
+  const selectMark = React.useCallback(
+    (index: number, subKey: string | null) => {
+      userGoTo(index);
+      const qid = questions[index]?.question_id;
+      if (!qid || !subKey) return;
+      window.setTimeout(() => {
+        const el = document.querySelector<HTMLElement>(subItemSelector(qid, subKey));
+        if (!el) return;
+        el.scrollIntoView({ block: 'center' });
+        const target = el.matches('input,select,button,textarea') ? el : el.querySelector<HTMLElement>('input,select,button,textarea');
+        target?.focus({ preventScroll: true });
+      }, 60);
+    },
+    [questions, userGoTo],
+  );
   const goToPart = React.useCallback(
     (i: number) => {
       const r = ranges[i];
@@ -391,6 +461,9 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
     },
     [goToResult, saver, sectionElapsed, submit],
   );
+  React.useEffect(() => {
+    submitRef.current = doSubmit;
+  }, [doSubmit]);
 
   // Bài đã đóng phía server → nộp (idempotent; có thể job attempt.expire đã nộp) rồi mở kết quả
   const closedHandledRef = React.useRef(false);
@@ -405,8 +478,23 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
     });
   }, [closed, goToResult, saver.queue, submit]);
 
-  const clock = useExamClock(attempt.expires_at, attempt.server_time, {
+  // C3: hết giờ một section (chưa phải mốc cuối) → khoá section đó, sang section kế; mốc cuối → tự nộp như trước
+  const expireSection = () => {
+    const codes = attempt.sections.filter((s) => s.ends_at === clockTarget).map((s) => s.section_code);
+    setTimeLocked((prev) => [...new Set([...prev, ...codes])]);
+    const msg = t('sectionTimeUp');
+    setLiveMessage(msg);
+    toast.warning(msg, { id: `section-timeout-${clockTarget}` });
+    sendAttemptEvent(attempt.id, { type: 'section_timeout', meta: { section_codes: codes } });
+    const next = questions.findIndex((q) => !codes.includes(q.section_code) && !lockedSections.has(q.section_code));
+    if (next >= 0) goTo(next);
+  };
+  const clock = useExamClock(clockTarget, attempt.server_time, {
     onExpire: () => {
+      if (!finalDeadline) {
+        expireSection();
+        return;
+      }
       // Hết giờ → tự nộp với các câu đã trả lời (server còn nhận nháp trong 30 s ân hạn)
       setForced(true);
       setSubmitOpen(true);
@@ -572,27 +660,17 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   ]);
 
   // ---------------------------------------------------------------- Dữ liệu hiển thị
-  const gridItems = React.useMemo(
-    () =>
-      questions.map((q, i) => ({
-        questionId: q.question_id,
-        number: i + 1,
-        answered: isAnswered(state.answers[q.question_id]),
-        flagged: !!state.flags[q.question_id],
-        sectionCode: q.section_code,
-      })),
-    [questions, state.answers, state.flags],
-  );
+  // C3: lưới/tiến độ theo SỐ câu hỏi (IELTS: câu catalog nhiều mục → nhiều ô; TOEIC: mỗi câu một ô như trước)
+  const gridItems = React.useMemo(() => markGridItems(questions, marks, state.answers, state.flags), [marks, questions, state.answers, state.flags]);
   const partItems = React.useMemo(
     () =>
-      ranges.map((r) => ({
-        code: r.code,
-        total: r.end - r.start + 1,
-        answered: gridItems.slice(r.start, r.end + 1).filter((g) => g.answered).length,
-      })),
+      ranges.map((r) => {
+        const cells = gridItems.filter((g) => g.index >= r.start && g.index <= r.end);
+        return { code: r.code, total: cells.length, answered: cells.filter((g) => g.answered).length };
+      }),
     [gridItems, ranges],
   );
-  const unanswered = countUnanswered(questions, state.answers);
+  const unanswered = markTotal > questions.length ? gridItems.filter((g) => !g.answered).length : countUnanswered(questions, state.answers);
   const title =
     attempt.test_set && typeof attempt.test_set === 'object' && 'title' in attempt.test_set && attempt.test_set.title
       ? L(attempt.test_set.title as Record<string, string>) || t('examTitle')
@@ -617,6 +695,8 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
     if (listening.phase === 'done') return 'played';
     if (!answerable(index)) return 'upcoming';
     const cur = listening.current;
+    // C3 – IELTS: đang đọc trước câu hỏi của part chứa câu này (đã mở chọn đáp án, audio sắp phát)
+    if (cur?.kind === 'pause' && cur.phase === 'preread' && listening.phase !== 'gate' && index >= cur.groupStart && index <= cur.groupEnd) return 'preread';
     if (
       cur?.kind === 'audio' &&
       listening.phase !== 'gate' &&
@@ -645,8 +725,10 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
       <QuestionBlock
         key={q.question_id}
         question={q}
-        number={index + 1}
-        total={questions.length}
+        number={numberOf(index)}
+        total={markTotal}
+        markCount={marks[index]?.count ?? 1}
+        sectionLocked={lockedSections.has(q.section_code)}
         answer={state.answers[q.question_id] ?? null}
         flagged={!!state.flags[q.question_id]}
         current={index === state.currentIndex}
@@ -721,7 +803,7 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
 
   const highlight = markersInStem(content && 'stem' in content ? content.stem : null);
   const rangeLabel = inGroup
-    ? t('groupRange', { from: groupItems[0]!.index + 1, to: groupItems[groupItems.length - 1]!.index + 1 })
+    ? t('groupRange', { from: numberOf(groupItems[0]!.index), to: lastNumberOf(groupItems[groupItems.length - 1]!.index) })
     : undefined;
   // Part 3/4: passage audio_script không có chữ khi đang làm bài → đầu nhóm (trạng thái nghe / trình phát practice), không chia đôi màn hình
   const audioPassage = passage?.kind === 'audio_script' ? passage : null;
@@ -729,15 +811,18 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   let body: React.ReactNode = questionsColumn;
   if (audioPassage) {
     const groupStart = groupItems[0]!.index;
-    const groupStatus = listenStatusOf(groupStart);
+    // C3: part IELTS đã nghe xong (server – played, không còn URL) → "đã phát"
+    const playedPart = format?.listening_parts.some((p) => p.section_code === groupItems[0]!.q.section_code && p.played) && traits.examLike;
+    const groupStatus = listenStatusOf(groupStart) ?? (playedPart ? 'played' : null);
     const groupTranscript = traits.feedback
       ? (groupItems
           .map(({ q }) => parseTranscript(feedback[q.question_id]?.transcript))
           .find((x) => x?.source === 'passage') ?? null)
       : null;
-    const audioRange = inGroup
-      ? t('audioGroupRange', { from: groupStart + 1, to: groupItems[groupItems.length - 1]!.index + 1 })
-      : undefined;
+    const audioRange =
+      inGroup || lastNumberOf(groupStart) > numberOf(groupStart)
+        ? t('audioGroupRange', { from: numberOf(groupStart), to: lastNumberOf(groupItems[groupItems.length - 1]!.index) })
+        : undefined;
     body = (
       <div className="space-y-4">
         <AudioGroupHeader
@@ -816,19 +901,26 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
   }
 
   const listenQ = listenStep ? questions[listenStep.questionIndex] : undefined;
+  const ieltsPart = listenStep?.sectionCode ? sectionLabel(listenStep.sectionCode, { short: true }) : '';
   const listeningNowLabel = !listenStep
     ? ''
-    : listenStep.kind === 'audio' && listenStep.role === 'group'
+    : format && listenStep.kind === 'pause' && listenStep.phase === 'review'
+      ? t('ieltsNowReview')
+      : format && listenStep.kind === 'pause' && listenStep.phase === 'preread'
+        ? t('ieltsNowPreread', { part: ieltsPart, from: numberOf(listenStep.groupStart), to: lastNumberOf(listenStep.groupEnd) })
+        : format && listenStep.kind === 'audio'
+          ? t('ieltsNowPart', { part: ieltsPart, from: numberOf(listenStep.groupStart), to: lastNumberOf(listenStep.groupEnd) })
+          : listenStep.kind === 'audio' && listenStep.role === 'group'
       ? t('listeningNowGroup', {
           title: listenQ?.passage?.title ?? t('audioGroupTitle'),
-          from: listenStep.groupStart + 1,
-          to: listenStep.groupEnd + 1,
+          from: numberOf(listenStep.groupStart),
+          to: lastNumberOf(listenStep.groupEnd),
         })
       : listenStep.kind === 'pause'
-        ? t('listeningNowAnswer', { number: listenStep.questionIndex + 1 })
-        : t('listeningNowQuestion', { number: listenStep.questionIndex + 1 });
+        ? t('listeningNowAnswer', { number: numberOf(listenStep.questionIndex) })
+        : t('listeningNowQuestion', { number: numberOf(listenStep.questionIndex) });
   const listeningPartLabel = listenQ
-    ? `${sectionLabel(listenQ.section_code)} · ${t('listeningQuestionCount', { count: program?.unlockStep.size ?? 0 })}`
+    ? `${sectionLabel(listenQ.section_code)} · ${t('listeningQuestionCount', { count: format ? gridItems.filter((g) => program?.unlockStep.has(g.index)).length : (program?.unlockStep.size ?? 0) })}`
     : '';
 
   // Desktop có đoạn văn: khung cố định theo chiều cao màn hình, hai khung cuộn riêng (header/banner co giãn tự nhiên)
@@ -943,7 +1035,7 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
                 splitLayout ? 'max-h-full' : 'sticky top-28 max-h-[calc(100dvh-8rem)]',
               )}
             >
-              <QuestionGrid items={gridItems} currentIndex={state.currentIndex} onSelect={userGoTo} />
+              <QuestionGrid items={gridItems} currentIndex={state.currentIndex} onSelect={selectMark} />
             </div>
           </aside>
         ) : null}
@@ -965,7 +1057,7 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
             <Button variant="outline" size="sm" onClick={() => setGridOpen(true)} aria-label={t('gridOpen')}>
               <LayoutGrid aria-hidden />
               <span className="tabular">
-                {t('progress', { answered: questions.length - unanswered, total: questions.length })}
+                {t('progress', { answered: gridItems.length - gridItems.filter((g) => !g.answered).length, total: gridItems.length })}
               </span>
             </Button>
             <Button
@@ -985,7 +1077,7 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
           <DialogHeader>
             <DialogTitle>{t('gridTitle')}</DialogTitle>
           </DialogHeader>
-          <QuestionGrid items={gridItems} currentIndex={state.currentIndex} onSelect={userGoTo} />
+          <QuestionGrid items={gridItems} currentIndex={state.currentIndex} onSelect={selectMark} />
         </DialogContent>
       </Dialog>
 

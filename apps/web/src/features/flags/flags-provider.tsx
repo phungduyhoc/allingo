@@ -7,12 +7,23 @@ import { toast } from 'sonner';
 import { env } from '@/env';
 import { getApiFetch } from '@/lib/api';
 import { FEATURE_DISABLED_EVENT } from '@/lib/api-error-events';
+import { queryKeys } from '@/lib/queries';
 import { DEFAULT_FLAGS_TTL_SEC, fetchPublicFlags, isFlagOn, markFlagDisabled, type FeatureDisabledInfo, type FlagKey, type PublicFlags } from '@/lib/flags';
 
 /** Khoá cache cờ – ngoài nhánh `['me']` để đăng nhập/nộp bài (invalidate `['me']`) không làm mới cờ thừa */
 export const FLAGS_QUERY_KEY = ['flags'] as const;
 
 const FlagsContext = React.createContext<PublicFlags | null>(null);
+
+/** C3/S168: chữ ký các cờ ra mắt chương trình (`ff.catalog.program.*`) – đổi → `GET /programs` (status) phải làm mới */
+export function programFlagsSignature(flags: PublicFlags | null | undefined): string {
+  if (!flags) return '';
+  return Object.keys(flags.flags)
+    .filter((k) => k.startsWith('ff.catalog.program.'))
+    .sort()
+    .map((k) => `${k}=${flags.flags[k] ? 1 : 0}`)
+    .join('&');
+}
 
 function sameFlags(a: PublicFlags, b: PublicFlags): boolean {
   if (a.ttlSec !== b.ttlSec) return false;
@@ -46,6 +57,15 @@ export function FlagsProvider({ initial, children }: { initial: PublicFlags | nu
     // Lỗi tải cờ không phải lỗi của người dùng → không toast (giữ bản cũ / mặc định)
     meta: { inlineErrors: true },
   });
+
+  // S168: /programs cache 5′ (status available/coming_soon phụ thuộc cờ ra mắt) → làm mới ngay khi cờ chương trình đổi giữa hai lần tải
+  const programSig = programFlagsSignature(query.data ?? initial);
+  const lastProgramSigRef = React.useRef(programSig);
+  React.useEffect(() => {
+    if (lastProgramSigRef.current === programSig) return;
+    lastProgramSigRef.current = programSig;
+    void qc.invalidateQueries({ queryKey: queryKeys.programs });
+  }, [programSig, qc]);
 
   React.useEffect(() => {
     const onDisabled = (e: Event) => {

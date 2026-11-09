@@ -4,29 +4,25 @@ import { Flag } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { cn } from '@allingo/ui';
 import { useSectionLabel } from './section-label';
+import type { MarkGridItem } from './numbering';
 
-export interface GridItem {
-  questionId: string;
-  number: number;
-  answered: boolean;
-  flagged: boolean;
-  sectionCode?: string;
-}
+export type GridItem = MarkGridItem;
 
 /**
  * Lưới số câu: đã trả lời (nền navy) / đánh dấu (cờ vàng) / đang xem (viền vàng). Nhiều Part → chia nhóm theo Part.
+ * C3: mỗi ô là một SỐ câu hỏi (IELTS: câu catalog nhiều mục → nhiều ô); chọn ô → mở câu catalog và focus đúng mục (`subKey`).
  */
-export function QuestionGrid({ items, currentIndex, onSelect, className }: { items: GridItem[]; currentIndex: number; onSelect: (index: number) => void; className?: string }) {
+export function QuestionGrid({ items, currentIndex, onSelect, className }: { items: GridItem[]; currentIndex: number; onSelect: (index: number, subKey: string | null) => void; className?: string }) {
   const t = useTranslations('attempt');
   const sectionLabel = useSectionLabel();
   const answered = items.filter((i) => i.answered).length;
 
-  // Gom các câu liền kề cùng Part (giữ chỉ số gốc để onSelect đúng câu)
+  // Gom các ô liền kề cùng Part (giữ chỉ số câu gốc để onSelect đúng câu)
   const groups: { code: string | undefined; entries: { item: GridItem; index: number }[] }[] = [];
-  items.forEach((item, index) => {
+  items.forEach((item) => {
     const last = groups[groups.length - 1];
-    if (last && last.code === item.sectionCode) last.entries.push({ item, index });
-    else groups.push({ code: item.sectionCode, entries: [{ item, index }] });
+    if (last && last.code === item.sectionCode) last.entries.push({ item, index: item.index });
+    else groups.push({ code: item.sectionCode, entries: [{ item, index: item.index }] });
   });
   const showHeadings = groups.length > 1;
 
@@ -45,10 +41,10 @@ export function QuestionGrid({ items, currentIndex, onSelect, className }: { ite
             {g.entries.map(({ item: it, index: idx }) => {
               const current = idx === currentIndex;
               return (
-                <li key={it.questionId}>
+                <li key={it.key}>
                   <button
                     type="button"
-                    onClick={() => onSelect(idx)}
+                    onClick={() => onSelect(idx, it.subKey)}
                     aria-current={current ? 'true' : undefined}
                     aria-label={`${t('questionNumber', { number: it.number })}: ${it.answered ? t('answered') : t('unanswered')}${it.flagged ? `, ${t('flagged')}` : ''}${current ? `, ${t('current')}` : ''}`}
                     data-testid={`grid-${it.number}`}

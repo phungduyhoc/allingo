@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { saveAnswers } from '@/lib/queries';
+import { ApiError } from '@allingo/api-client';
 import { getErrorStatus } from '@/lib/errors';
 import { DraftQueue, type DraftEntry, type DraftStatus } from './draft-queue';
 import { browserDraftStore, type DraftStoreKind } from './draft-store';
@@ -31,13 +32,17 @@ export interface DraftSaverOptions {
   enabled: boolean;
   /** Server từ chối lưu vì bài đã đóng (409: hết giờ + ân hạn 30 s, hoặc đã nộp) – gọi một lần */
   onClosed?: (error: unknown) => void;
+  /** C3: section của câu (bỏ nháp của section đã khoá khi server trả 409 section_locked) */
+  sectionOf?: (questionId: string) => string | undefined;
+  /** C3: server báo các section đã hết giờ (409 section_locked) */
+  onSectionLocked?: (sectionCodes: string[]) => void;
 }
 
 /**
  * Kết nối DraftQueue với vòng đời trang: tự lưu mỗi 10 s, debounce khi vừa đổi đáp án,
  * flush khi ẩn tab/đóng trang, gửi lại khi có mạng trở lại. Nháp chưa gửi nằm trong IndexedDB (fallback bộ nhớ).
  */
-export function useDraftSaver(attemptId: string, { enabled, onClosed }: DraftSaverOptions): DraftSaver {
+export function useDraftSaver(attemptId: string, { enabled, onClosed, sectionOf, onSectionLocked }: DraftSaverOptions): DraftSaver {
   const [status, setStatus] = React.useState<DraftStatus>('idle');
   const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null);
   const [pending, setPending] = React.useState(0);
@@ -48,12 +53,14 @@ export function useDraftSaver(attemptId: string, { enabled, onClosed }: DraftSav
     onClosedRef.current = onClosed;
   }, [onClosed]);
 
+
   const queue = React.useMemo(
     () =>
       new DraftQueue({
         attemptId,
         flush: (body) => saveAnswers(attemptId, body),
-        isClosedError: (err) => getErrorStatus(err) === 409,
+        isClosedError: (err) => getErrorStatus(err) === 409 && !isSectionLockedError(err),
+
         store: typeof window === 'undefined' ? null : browserDraftStore(),
         legacyStorage: legacyLocalStorage(),
         onStatus: (s, info) => {
@@ -67,6 +74,17 @@ export function useDraftSaver(attemptId: string, { enabled, onClosed }: DraftSav
     [attemptId],
   );
   const debounceRef = React.useRef<number | null>(null);
+
+  // C3: 409 section_locked → bỏ nháp của section đã hết giờ (không đóng cả bài), báo trang làm bài khoá section
+  React.useEffect(() => {
+    queue.setRejectedEntries((err, batch) => {
+      if (!isSectionLockedError(err)) return null;
+      const codes = lockedSectionsOf(err);
+      const ids = batch.filter((e) => !codes.length || codes.includes(sectionOf?.(e.question_id) ?? '')).map((e) => e.question_id);
+      if (codes.length) onSectionLocked?.(codes);
+      return ids;
+    });
+  }, [onSectionLocked, queue, sectionOf]);
 
   // 409 khi lưu → báo nơi dùng (nộp & chuyển trang)
   React.useEffect(() => queue.onClosed((err) => onClosedRef.current?.(err)), [queue]);
@@ -173,4 +191,20 @@ export function useOnlineStatus(): boolean {
     () => navigator.onLine,
     () => true,
   );
+}
+
+/**
+ * C3: 409 lưu đáp án vào section (kỹ năng) đã hết giờ – API: `conflict` + `details.reason = 'section_locked'` (server vẫn lưu phần hợp lệ
+ * của lô); chấp nhận cả mã riêng `section_locked`.
+ */
+export function isSectionLockedError(err: unknown): err is ApiError {
+  return err instanceof ApiError && err.status === 409 && (err.code === 'section_locked' || (err.details as { reason?: unknown } | undefined)?.reason === 'section_locked');
+}
+
+/** Mã section bị khoá trong `details` (`section_codes[]` hoặc `section_code`) */
+export function lockedSectionsOf(err: unknown): string[] {
+  if (!(err instanceof ApiError)) return [];
+  const d = (err.details ?? {}) as { section_codes?: unknown; section_code?: unknown };
+  if (Array.isArray(d.section_codes)) return d.section_codes.filter((x): x is string => typeof x === 'string');
+  return typeof d.section_code === 'string' ? [d.section_code] : [];
 }
