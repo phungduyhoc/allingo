@@ -1,8 +1,35 @@
-# HANDOFF — Sprint 1 → Sprint 12 (08/11/2026)
+# HANDOFF — Sprint 1 → 12 và backlog tính năng B6 · B7 · B5 · B2 · C1 · C2 (09/11/2026)
 
-Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1–12 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`. Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A214), `docs/SPEC-ISSUES.md` (S1–S142), ADR 0001–0035, `docs/gates/GATE-2-report.md`. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
+Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1–12 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`, rồi backlog tính năng (chủ dự án: **xây đủ tính năng trước, thu phí/thương mại hoá làm sau cùng**). Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A257), `docs/SPEC-ISSUES.md` (S1–S170), ADR 0001–0038, `docs/gates/GATE-2-report.md`. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
 
 Mọi kiểm tra dưới đây chạy trong phiên cloud: Postgres 16 + pgvector, Valkey/Redis cục bộ, không Docker, không Meilisearch/MinIO/Azure/khoá AI/cổng thanh toán thật (A1, A25). Quy trình cài trên máy mới đã chạy thử trên bản clone sạch (A214).
+
+## 0. Chuyển máy – đọc trước khi mở phiên mới (09/11/2026)
+
+**Trạng thái.** Nhánh `main` trên GitHub `phungduyhoc/allingo` chứa toàn bộ việc đã làm; phiên cloud cũ không còn thay đổi chưa commit. Backlog đã xong: B6, B7, B5, B2, C1, C2 (bảng "Backlog tính năng" ở mục 1). Đợt C3 được giao rồi dừng ngay khi chuyển máy, **chưa sửa tệp nào** → bắt đầu C3 từ đầu theo phạm vi ở mục 5.
+
+**CI GitHub.** Commit `6739e72` và `f0debf8` xanh đủ 5 job (E2E lần đầu đạt hết: 148 pass, 22 skip, 0 fail). Commit C1 + C2 (`6ad840e..7869d7a`): Lint · Typecheck · Unit và Observability đã xanh trên `7869d7a`; lượt chạy đó bị huỷ giữa chừng khi push commit bàn giao này (CI `cancel-in-progress`), nên lượt CI của commit bàn giao kiểm lại toàn bộ C1 + C2 → mở tab Actions kiểm tra trước khi làm tiếp; nếu đỏ thì sửa trước khi bắt đầu C3.
+
+**Tiếp tục trên máy mới.**
+1. Cài Git, GitHub CLI `gh`, Node 22 LTS (`.nvmrc`), pnpm 10.28.0 (`corepack enable && corepack prepare pnpm@10.28.0 --activate`), Docker Desktop, ffmpeg. Windows: làm trong WSL2 Ubuntu, đặt mã nguồn trong thư mục nhà của Ubuntu.
+2. `gh auth login && gh repo clone phungduyhoc/allingo && cd allingo`, rồi chạy các lệnh ở mục 4.
+3. Tạo `.env` từ `.env.example` (tệp `.env` không có trong Git). Khoá Azure Speech: tạo khoá mới trên Azure (khoá cũ đã lộ trong hội thoại) rồi tự điền.
+4. Cài Claude Code, đăng nhập cùng tài khoản claude.ai, chạy `claude` trong thư mục repo. Câu lệnh mở đầu gợi ý:
+   > Đọc CLAUDE.md, docs/HANDOFF.md (mục 0 và 5), docs/ASSUMPTIONS.md, docs/SPEC-ISSUES.md, ADR-0036 → 0038. Kiểm tra CI của commit mới nhất trên main, rồi làm đầu mục C3 theo phạm vi ở HANDOFF mục 5: lập kế hoạch và task list, triển khai hết phạm vi, kiểm thử một lượt ở cuối, commit theo Conventional Commits.
+5. Tuỳ chọn cá nhân (không thuộc repo): thêm "Luôn trả lời bằng tiếng Việt" vào `~/.claude/CLAUDE.md` của máy mới.
+
+**Số liệu trong `CLAUDE.md` đã lệch – chờ chủ dự án duyệt rồi mới sửa.** Mục 2: DDL nay 106 bảng (đang ghi 97); OpenAPI 197 đường dẫn / 230 operation (đang ghi 100 đường dẫn); registry 15 prompt (đang ghi 14 – thêm `generate_item_set` ở B2).
+
+**Quy ước làm việc rút ra trong phiên (giữ khi làm tiếp).**
+- Sửa `db/` hoặc `packages/*` → build lại dist (`pnpm --filter './packages/*' --filter @allingo/db build`) trước khi chạy API hoặc typecheck web. `@allingo/schemas` là ESM nhiều entry, web import theo đường dẫn con.
+- Turbo `--concurrency>1`: `@allingo/api-client` chạy `gen` ở cả `typecheck` lẫn `build` → dist có thể thiếu kiểu; xử lý tạm `pnpm turbo run build --filter=@allingo/api-client --force` (sửa gốc ở mục 5).
+- Bảng/cột mới: migration Drizzle + `docs/spec/allingo-schema.sql` (`pnpm db:diff`). Endpoint mới: sửa YAML trước, rồi `pnpm api:openapi && pnpm api:diff`, `pnpm client:gen`. CMS production không push schema → `payload migrate:create`.
+- Integration test không phụ thuộc `.env` (CI không có): tự đặt `JOBS_INLINE`, TTL cache… trong `beforeAll`. DB test dùng chung giữa các tệp → không giả định bảng/cache trống.
+- BullMQ jobId không chứa `:` → dùng `jobIdFor()`. Không `console.log` trong API. UI không chuỗi cứng; chạy `node apps/web/scripts/i18n-scopes.mjs` khi thêm namespace/trang.
+- Đa chương trình: dùng registry `@allingo/schemas/program` + `scoreByProgram()` của `@allingo/scoring`, không so sánh cứng `'toeic'`. Cờ ra mắt `ff.catalog.program.<code>` (seed core: IELTS/JLPT/HSK tắt; bật bằng `PUT /admin/flags/{key}` với tài khoản admin).
+- E2E: máy không có chromium headless shell → `E2E_CHROME_CHANNEL=chrome`; mô phỏng font CI bằng `FONTCONFIG_FILE=$PWD/apps/web/e2e/fonts/ci-like.conf CI=1`; webServer mock cố định cổng 3000 → tạm dừng web dev trước khi chạy. CI dùng `E2E_CHROME_CHANNEL=chromium` (headless shell luôn từ chối quyền thông báo).
+- Semgrep chặn CI: ngoại lệ chỉ bằng `// nosemgrep: <rule-id> – <lý do>` theo `docs/security/semgrep-exclusions.md`.
+- Nội dung mẫu tự biên soạn (`source = 'human' | 'ai'`), tên riêng hư cấu; không sao chép đề ETS/IDP/British Council/JLPT/Hanban.
 
 ## 1. Nghiệm thu theo sprint
 
@@ -164,6 +191,17 @@ Bổ sung bảo mật: MFA TOTP step-up cho admin (RFC 6238), mật khẩu ≥ 1
 
 **Giao diện Sprint 12.** `/beta` (đổi mã `ALG-XXXX-XXXX`, xử lý 403 `beta_required` toàn cục), onboarding beta 5 câu + hướng dẫn 60 s, thẻ NPS ngày 7/14, góp ý, báo lỗi câu, trung tâm hỗ trợ, `/settings/security` (TOTP, mã khôi phục, step-up toàn cục cho `/admin/*`), `/admin` 8 mục (beta, góp ý, nội dung, hỗ trợ, người dùng, AI, hệ thống/DLQ, audit) có hộp xác nhận thao tác phá huỷ, `/legal/*` từ `/legal/policies` (nhãn bản nháp chờ luật sư), chân trang có tuyên bố không liên kết ETS, KPI sau mini một kỹ năng (S142). axe 0 serious/critical trên trang/hộp thoại S12 và 14 màn admin; không tràn ở 360 px. Giả định A216–A222; vấn đề API S144–S153.
 
+### Backlog tính năng sau Sprint 12 (09/11/2026)
+
+| Đầu mục | Nội dung chính | Tài liệu |
+| --- | --- | --- |
+| B6 – nợ kỹ thuật S12 | 403 `mfa_required` kèm `details.enrolled` (S144); OpenAPI required + Zod admin (S145); NPS chỉ cho beta tester (S146); gửi mời theo lô/đã chọn (S147); link báo lỗi câu về trang xem lại (S148); gộp mẫu thông báo (S149); `/feedback` miễn beta gate (S150); seed superadmin (S151); 404 thật cho route sai dạng (S152); runbook SMTP (S153); tách `@allingo/schemas` thành ESM nhiều entry, `sideEffects:false` (S141) | A224–A233, S155–S157 |
+| B7 – độ bền | Outbox giao theo từng consumer, lấy việc `FOR UPDATE SKIP LOCKED` + lease, retry backoff, dead-letter `ops.jobs_deadletter` + replay (S26, migration 0010) | ADR-0036 |
+| B5 – Part 7 đa đoạn, CMS | `catalog.passage_parts` (S24), tab văn bản Part 7 (tablist WAI-ARIA), trình dựng bộ đề kéo thả theo blueprint trong CMS (A26, `test_sets.metadata` – S30), passage nhiều văn bản đồng bộ catalog (migration 0011, Payload `b5_passage_parts_blueprint`) | ADR-0037 |
+| B2 – công cụ sản xuất nội dung | Kiểm tra tự động câu hỏi; lọc trùng pg_trgm + embedding; nhập Excel (dry-run → xác nhận, bộ đọc xlsx tự viết bằng `node:zlib`); AI soạn nháp cả đề theo blueprint (prompt `generate_item_set`, job `content.draft_test`); hàng chờ duyệt (lọc, duyệt hàng loạt, phân công, phím tắt) | ADR-0037, A234–A241, S158–S162 |
+| C1 – khu học đa chương trình | Registry chương trình `@allingo/schemas/program`; `scoreByProgram()` (TOEIC giữ nguyên, IELTS band); `iam.users.active_program` (migration 0012); `GET /programs` có `status` (`available` khi cờ ra mắt bật và có đề phát hành); route `/[program]/…` giữ URL `/toeic/…`; trang "sắp ra mắt" + danh sách chờ; mã chương trình sai → 404 thật; bộ chọn chương trình ở khu học, Cài đặt, onboarding | ADR-0038, A242–A257 |
+| C2 – 14 dạng câu IELTS R/L | Matching headings/information/features/sentence endings; completion sentence/summary/note/table/flow-chart/form; short answer; diagram/plan/map labelling; summary word bank; TFNG/YNNG; MCQ chọn hai. Chuẩn hoá đáp án gõ + giới hạn số từ + chính tả Anh/Mỹ, chấm theo mục; renderer a11y; xem trước CMS (migration enum Payload `c2_ielts_question_types`); đề mẫu `ielts-question-types-demo` 18 câu; explain/tutor/check_question nhiều mục; sửa lộ đáp án `fill_blank` khi làm bài (S163) | ADR-0038, S163–S170 |
+
 ## 2. Đã làm
 
 **Sprint 1.** `iam`: OAuth Google/Apple/Facebook tự triển khai bằng `jose` + JWKS (ADR-0022, không Better Auth), liên kết tài khoản cần mật khẩu/xác nhận (409 `link_required`), OTP email/SMS/Zalo (HMAC trong Redis, 5′, 5 lần sai khoá 30′, 3 yêu cầu/15′), thu hồi phiên tức thời, phát hiện tái sử dụng refresh, consents theo `POLICY_VERSION`, Turnstile, `DELETE /me` + job `iam.purge`, RBAC admin cấp vai trò. `packages/schemas`: đủ 12 dạng câu + `grade()` partial credit + JSON Schema. Web: đăng nhập mã email, nút Google, đồng ý điều khoản, trang Điều khoản/Chính sách. Infra: Dockerfile api/web/cms, Terraform phương án B (ADR-0023 Proposed), deploy-staging, runbooks.
@@ -188,24 +226,26 @@ Bổ sung bảo mật: MFA TOTP step-up cho admin (RFC 6238), mật khẩu ≥ 1
 
 **Sprint 12.** Beta gate + mời theo lô + Pro trial, khảo sát onboarding/NPS, góp ý, báo lỗi câu (đồng bộ CMS), ticket hỗ trợ SLA 24 giờ, admin (người dùng, nội dung, AI, hệ thống, DLQ, audit), MFA TOTP step-up, mật khẩu ≥ 12 + danh sách lộ, sự kiện analytics + `pnpm report:beta`, seed `beta-demo` giả lập (ADR-0035), báo cáo GATE-2 bản kỹ thuật. Web: xem mục giao diện Sprint 12 ở bảng nghiệm thu.
 
-**Sửa lỗi quan trọng phát hiện trong phiên.** `QueueService.enqueue` luôn thất bại âm thầm vì jobId chứa `:` (BullMQ ≥ 5) → `jobIdFor()`; Postgres jsonb đổi thứ tự khoá làm so sánh nội dung sai → so sánh chuẩn hoá; `@allingo/db` dist nhúng kiểu cũ → luôn build lại sau khi sửa schema; SSE thiếu header CORS làm trình duyệt chặn explain/gia sư (S6); CMS production thiếu migration Payload (S6); deadlock pool kết nối dưới tải (S11); `POST /submit` 500 khi truyền Date vào SQL thô (S11); `seed:media` không dựng được context và thoát im lặng, `db:migrate` không đọc `.env`, compose dev thiếu bucket hoá đơn (phát hiện khi chạy thử cài máy mới).
+**Sửa lỗi quan trọng phát hiện trong phiên.** `QueueService.enqueue` luôn thất bại âm thầm vì jobId chứa `:` (BullMQ ≥ 5) → `jobIdFor()`; Postgres jsonb đổi thứ tự khoá làm so sánh nội dung sai → so sánh chuẩn hoá; `@allingo/db` dist nhúng kiểu cũ → luôn build lại sau khi sửa schema; SSE thiếu header CORS làm trình duyệt chặn explain/gia sư (S6); CMS production thiếu migration Payload (S6); deadlock pool kết nối dưới tải (S11); `POST /submit` 500 khi truyền Date vào SQL thô (S11); `seed:media` không dựng được context và thoát im lặng, `db:migrate` không đọc `.env`, compose dev thiếu bucket hoá đơn (phát hiện khi chạy thử cài máy mới). Sau Sprint 12: cài sạch (CI, Docker) không có `node_modules/.bin/esbuild` nên bản build thiếu service worker (PWA offline/push hỏng) → esbuild thành devDependency trực tiếp của web, `build-sw` dừng hẳn khi thiếu; E2E Web Push đỏ vì chromium headless shell luôn từ chối quyền thông báo → CI chạy Chromium đầy đủ; quét axe khi hộp thoại đang fade báo tương phản giả → chờ animation xong.
 
-## 3. Số liệu kiểm thử (lần chạy cuối, 08/11/2026)
+## 3. Số liệu kiểm thử (lần chạy cuối, 09/11/2026 – sau C1 + C2)
 
 | Bộ | Kết quả |
 | --- | --- |
-| `pnpm turbo run lint typecheck test` | xanh toàn repo (lint `@allingo/api` chạy lại riêng vì hết RAM khi chạy song song – exit 137, không phải lỗi lint) |
-| api (unit + integration Postgres/Redis thật) | 473 |
-| web unit | 370 |
-| schemas | 275 |
-| db | 92 |
-| cms | 49 |
-| scoring / planner / fsrs / api-client | 32 / 28 / 10 / 8 |
-| **Tổng unit + integration** | **1.337** |
-| E2E API thật (desktop + mobile, 168 ca) | 147 pass, 21 skip có chủ đích (chỉ mock / chỉ desktop), 0 fail – 38,8 phút |
-| E2E mock (lượt cuối giao diện S12) | 149 pass, 19 skip, 0 fail |
-| `db:diff` | 105 bảng, 236 index, 4 policy khớp spec |
-| `api:diff` | 195/219 operation đã triển khai, 0 lệch hợp đồng |
+| `pnpm turbo run lint typecheck` | 29/29 task xanh (concurrency 1) |
+| api (unit + integration Postgres/Redis thật) | 514 (lần đầu 2 đỏ: test C1/C2 giả định cache explain trống – đã sửa; `billing-s7` thỉnh thoảng đỏ do thứ tự thông báo – mục 5) |
+| web unit | 382 |
+| schemas | 657 |
+| db | 101 |
+| cms | 74 |
+| scoring / planner / fsrs / api-client | 42 / 28 / 10 / 8 (planner, fsrs: số lần chạy Sprint 12) |
+| **Tổng unit + integration** | **1.816** |
+| E2E mock trên CI GitHub (commit `6739e72`, trước C1/C2) | 148 pass, 22 skip, 0 fail |
+| E2E mock cục bộ mô phỏng CI sau C1/C2 | lượt toàn bộ 166 pass, 24 skip, 2 fail (onboarding, a11y admin – lỗi do C1, đã sửa); chạy lại chromium 91 pass / 5 skip, mobile các spec liên quan 14 pass / 3 skip |
+| E2E API thật sau C1/C2 (programs, ielts-question-types, onboarding, content-tools, cms-builder) | chromium 16/16 pass; mobile 2 pass, 3 skip (test đổi cờ toàn cục chỉ chạy desktop) |
+| E2E API thật toàn bộ (Sprint 12, 168 ca) | 147 pass, 21 skip có chủ đích, 0 fail – 38,8 phút |
+| `db:diff` | 106 bảng, 240 index, 4 policy khớp spec |
+| `api:diff` | 206/230 operation đã triển khai, 0 lệch hợp đồng |
 | `pnpm install --frozen-lockfile` | lockfile khớp |
 | Cài máy mới (bản clone sạch) | install → build → migrate → seed core+demo → seed:media → API đăng nhập + 15 đề (A214) |
 
@@ -217,7 +257,7 @@ cp .env.example .env                                   # mặc định AI/thanh 
 pnpm docker:up                                         # postgres, redis, meilisearch, minio (+ bucket media/recordings/invoices), mailpit
 pnpm --filter './packages/*' --filter @allingo/db build
 pnpm db:migrate
-pnpm db:seed --set core,demo                           # + beta-demo: dữ liệu beta GIẢ LẬP cho report:beta (chặn production)
+pnpm db:seed --set core,demo                           # + beta-demo: dữ liệu beta GIẢ LẬP cho report:beta (chặn production); demo có đề ielts-question-types-demo – IELTS hiện "sắp ra mắt" tới khi bật cờ ff.catalog.program.ielts
 pnpm --filter @allingo/api seed:media                  # audio Listening + ảnh Part 1 (cần ffmpeg)
 pnpm --filter @allingo/cms exec tsx scripts/seed-cms.ts
 pnpm dev                                               # web :3000, api :4000 (/docs), cms :3001/admin, worker
@@ -231,9 +271,23 @@ Windows: chạy trong WSL2 (Ubuntu), mã nguồn đặt trong thư mục nhà c�
 
 ## 5. Việc còn lại
 
+### 5a. Backlog tính năng – làm tiếp theo thứ tự (thu phí/thương mại hoá để sau cùng)
+
+| # | Đầu mục | Phạm vi |
+| --- | --- | --- |
+| C3 | IELTS Reading & Listening hoàn chỉnh (khu `/ielts`) | **Định dạng thi trên máy tính:** Reading 3 passage / 40 câu / 60 phút, hỗ trợ Academic và General Training (bảng quy đổi band Reading tách riêng trong `@allingo/scoring`, unit test các mốc biên); Listening 4 part / 40 câu / ~30 phút + 2 phút xem lại, thời gian đọc trước mỗi part, Exam Mode phát audio một lần không tua/dừng (ràng buộc cả phía server), Practice được nghe lại và xem transcript sau khi nộp. Đánh số 1–40 xuyên suốt (S167), điều hướng theo số, bảng tổng quan câu đã làm/đánh dấu, đồng hồ theo section, tự nộp khi hết giờ. **Kết quả & xem lại:** band 0–9 bước 0.5, số câu đúng /40, phân tích theo dạng câu và theo passage/part, giải thích AI nhiều mục, transcript có mốc thời gian và tô đoạn chứa đáp án, câu sai vào sổ lỗi/FSRS. **Học theo chương trình:** thống kê, chẩn đoán IELTS ngắn, lộ trình theo band mục tiêu và ngày thi, tóm tắt tuần chạy qua registry; overall band chỉ tính khi đủ 4 kỹ năng. **Nội dung tự biên soạn:** 1 đề Reading Academic đủ 40 câu phủ nhiều dạng C2, 1 đề Listening 4 part nhiều giọng, audio sinh bằng `SpeechProvider` qua `seed:media` (mock sinh audio thay thế); seed demo bật cờ IELTS (core vẫn tắt); mock web dùng cùng nội dung. **Tồn đọng:** S168 (làm mới cache `/programs` khi đổi cờ/phát hành đề), S169 (thêm ca IELTS vào eval `explain_mcq_v1`), S170 (luồng nghe theo phần). **CMS:** soạn đề IELTS theo section/part, kiểm tra tự động (đủ 40 câu, đánh số liên tục, part có audio). **Kiểm thử:** unit (band, đánh số, audio một lần), integration làm trọn đề R/L → band đúng + Exam Mode khoá giải thích, E2E mock + API thật |
+| C4 | Writing: IELTS Task 1 (Academic biểu đồ/sơ đồ, GT thư) + Task 2; TOEIC Writing | Trình soạn có đếm từ và đồng hồ; nộp → job BullMQ chấm qua `AiGateway` (`grade_writing_ielts`/`grade_writing_toeic`, provider mock) → Socket.IO; band từng tiêu chí (TR/TA, CC, LR, GRA), nhận xét song ngữ, gợi ý viết lại (`upgrade_phrasing`); credit/quota kiểm ở server, trừ trong cùng transaction; Exam Mode khoá trợ giúp; bài viết lưu theo quy định dữ liệu cá nhân (CLAUDE.md §9) |
+| C5 + C6 | Speaking + phát âm; shadowing + chép chính tả | Speaking IELTS Part 1–3 (cue card, 1 phút chuẩn bị) và TOEIC Speaking: ghi âm trên web, tải lên bucket riêng (URL ký 10 phút, vòng đời 90/365 ngày), ASR + đánh giá phát âm qua `SpeechProvider` (Azure; mock), chấm `grade_speaking_*`. Shadowing: nghe câu → ghi âm lặp → chấm phát âm theo từ/âm vị. Chép chính tả từ audio Listening sẵn có, so khớp từng từ |
+| C7 | Đề TOEIC Speaking & Writing đầy đủ | Speaking 11 câu (~20 phút), Writing 8 câu (~60 phút), quy đổi 0–200 (`toeic_speaking_scaled`/`toeic_writing_scaled` – ghi "ước tính"), đề mẫu tự biên soạn |
+| #25 | Chốt backlog | Kiểm thử tổng; cập nhật `docs/HANDOFF.md` và danh mục tính năng Excel; sửa số liệu `CLAUDE.md` (sau khi duyệt); bộ cài Windows cập nhật; chuyển job E2E thành bắt buộc sau vài lượt xanh liên tiếp; branch protection; tag `v0.9.0-beta` |
+
+**Dọn nhỏ đã biết.** (1) Turbo race `@allingo/api-client` (`gen` chạy ở cả `typecheck` và `build`) → bỏ `gen` khỏi `typecheck` hoặc cho `typecheck` phụ thuộc `build` trong `turbo.json`. (2) `billing-s7` thỉnh thoảng đỏ vì sắp thông báo chỉ theo `created_at` → thêm khoá phụ `id` trong truy vấn. (3) Nhập Excel mới hỗ trợ `mcq_single`; đề Listening do AI soạn chưa có audio; ngưỡng lọc trùng embedding đang đặt theo mock; chưa đồng bộ ngược catalog → CMS (B2). (4) Trước khi bật model thật cho IELTS: bổ sung eval `explain_mcq_v1` (S169).
+
+### 5b. Hạ tầng, credential, vận hành
+
 | # | Việc | Khi nào |
 | --- | --- | --- |
-| T1 | Đã push (08/11/2026). CI GitHub: Lint · Typecheck · Unit, Integration (db:diff, api:diff, build), Observability xanh; Security – Semgrep xử lý theo chính sách `docs/security/semgrep-exclusions.md` (chủ dự án duyệt, A223/S154); E2E timeout 50′. Tiếp: branch protection, tag `v0.9.0-beta` khi CI xanh toàn bộ | Ngay |
+| T1 | CI GitHub 5 job; E2E vẫn `continue-on-error` (đã xanh đủ trên `6739e72`, `f0debf8`). Security – Semgrep theo chính sách `docs/security/semgrep-exclusions.md` (A223/S154). Tiếp: branch protection, E2E bắt buộc, tag `v0.9.0-beta` | Khi CI xanh liên tiếp |
 | T2 | Credential thật: OAuth Google/Apple/Facebook, VNPay/MoMo/ZaloPay sandbox, MISA, khoá AI (Gemini/Claude/OpenAI), Azure Speech, PostHog, Sentry, SMTP/Zalo ZNS/eSMS | Tuần 1–2 trước beta |
 | T3 | Staging theo ADR-0023 (Terraform), Payload `migrate`, Meilisearch/MinIO/R2 thật; k6 5.000 VU/30′; SLO 2 tuần | Tuần 1–3 |
 | T4 | Nội dung: ≥ 3.000 câu, ≥ 10 đề full, 30 mini, 60 drill (AI nháp + duyệt 2 lớp), rà ngẫu nhiên không sao chép | Tuần 1–6 |
@@ -242,15 +296,17 @@ Windows: chạy trong WSL2 (Ubuntu), mã nguồn đặt trong thư mục nhà c�
 | T7 | Beta kín thật 300 người, 2 tuần; điền lại `GATE-2-report.md` bằng số thật | Tuần 5–6 |
 | T8 | Bật RLS 3 bảng billing có `org_id` (S124) trước khi bán B2B | Trước B2B |
 | T9 | Hiệu năng: tree-shake `@allingo/schemas` (S141), đo Lighthouse dashboard trên staging | GĐ2 |
-| T10 | Outbox retry + dead-letter cho consumer (S26); xếp hạng tìm kiếm (S140) | GĐ2 |
-| T11 | Bảng `passage_parts` cho Part 7 đa đoạn (S24); custom view kéo thả test set trong CMS (A26) | v1.2 |
+| T10 | Xếp hạng tìm kiếm (S140). Outbox retry + dead-letter (S26) đã xong ở B7 | GĐ2 |
+| T11 | Staging/production chạy Payload migration `b5_passage_parts_blueprint`, `c2_ielts_question_types` (CMS dev đang push schema, enum C2 thêm tay – A256) và `pnpm db:seed --set core` để cập nhật prompt đã sửa ở C2 | Lần triển khai đầu |
 | T12 | Theo dõi GHSA bắc cầu đã override (hạn 30/11/2026, Renovate) | 30/11/2026 |
 
 ## 6. Rủi ro & lưu ý
 
 - **Chưa có hạ tầng/credential thật**: Meilisearch, MinIO/R2, Azure Speech, OAuth, cổng thanh toán, MISA, AI thật, Terraform chưa chạy với môi trường thật — adapter đều có test với mock/fake; lần chạy thật đầu tiên có thể lộ lỗi cấu hình.
 - **Số liệu beta trong báo cáo là giả lập** (`beta-demo`), chỉ để kiểm công cụ đo; không dùng để ra quyết định GATE-2.
-- **Thang điểm 5–495 là ước tính** do Allingo tự xây dựng, không phải bảng ETS — giao diện luôn ghi "ước tính".
+- **Thang điểm 5–495 và band IELTS là ước tính** do Allingo tự xây dựng, không phải bảng ETS/IELTS chính thức — giao diện luôn ghi "ước tính".
+- **E2E chưa chặn merge** (`continue-on-error`): lỗi giao diện có thể lọt nếu không xem kết quả job E2E.
+- **DB dev cục bộ của phiên cloud có dữ liệu thử thừa** (khách E2E, waitlist, cache giải thích, câu nháp `toeic-ai-draft-*`) — máy mới seed lại từ đầu nên không bị ảnh hưởng.
 - **Đề demo** tự biên soạn (`source = human`), tên riêng hư cấu, tên miền `.example`; trước khi bán cần biên tập viên rà soát.
 - **ffmpeg bắt buộc** cho worker và `seed:media`; thiếu ffmpeg thì test media tự skip — CI đã cài.
 - **`INTERNAL_API_TOKEN`, `AUTH_SECRET`, `MFA_ENCRYPTION_KEY`, `PAYLOAD_SECRET`**: đặt riêng trên staging/prod (Key Vault), không dùng giá trị dev.
