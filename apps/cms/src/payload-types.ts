@@ -391,7 +391,7 @@ export interface Question {
   createdAt: string;
 }
 /**
- * TOEIC full requires Part 1–7 (6/25/39/30/30/16/54). Mini/part_drill ≥ 1 item. All items must be published. Use the drag-and-drop builder to order parts/groups/items and check the blueprint.
+ * TOEIC full requires Part 1–7 (6/25/39/30/30/16/54). IELTS full counts numbered questions: Reading 3 passages 13/13/14 = 40, Listening 4 parts × 10 = 40, every listening part has audio; tests with Reading pick Academic/General Training. Mini/part_drill ≥ 1 item. All items must be published. Use the drag-and-drop builder to order parts/groups/items and check the blueprint.
  *
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "test_sets".
@@ -407,6 +407,7 @@ export interface TestSet {
   };
   isFree?: boolean | null;
   durationSec?: number | null;
+  ieltsModule?: ('academic' | 'general_training') | null;
   /**
    * TOEIC: part1, part2, part3, part4, part5, part6, part7
    */
@@ -1285,6 +1286,7 @@ export interface TestSetsSelect<T extends boolean = true> {
       };
   isFree?: T;
   durationSec?: T;
+  ieltsModule?: T;
   sections?:
     | T
     | {

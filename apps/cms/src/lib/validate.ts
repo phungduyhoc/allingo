@@ -1,11 +1,16 @@
 import {
+  IELTS_CBT,
   QUESTION_TYPE_CODES,
   questionContentSchemasByType,
+  runTestSetChecks,
   type QuestionContent,
   type QuestionTypeCode,
+  type SectionSpec,
+  type TestSetCheckResult,
 } from '@allingo/schemas';
 import type { z } from 'zod';
 import { TOEIC_FULL_COUNTS, TOEIC_SECTIONS } from './reference';
+import { marksOfContent } from './test-set-builder';
 
 /**
  * Hàm thuần kiểm tra dữ liệu CMS – không phụ thuộc Payload, có unit test (test/validate.test.ts).
@@ -121,6 +126,69 @@ export function validateTestSetStructure(set: TestSetShape): string[] {
     }
   }
   return errors;
+}
+
+/** C3 – thông tin câu cho kiểm tra cấp bộ đề (đọc từ collection questions + passage + media) */
+export interface ItemCheckInfo {
+  /** content JSON của câu (để đếm số mục – markCount) */
+  content: unknown;
+  /** Câu hoặc passage của câu có audio */
+  hasAudio: boolean;
+  /** Định danh audio (media/asset id) – phát hiện part có nhiều audio */
+  audioKey: string | null;
+}
+
+/** Số mục chuẩn từng part/passage IELTS (catalog.sections.question_count – seed core): Listening 10 × 4, Reading 13/13/14 */
+export function ieltsSectionSpecs(): SectionSpec[] {
+  return [
+    ...IELTS_CBT.listening_sections.map((code, i) => ({ code, skill: 'listening', question_count: 10, sort_order: i + 1 })),
+    ...IELTS_CBT.reading_sections.map((code, i) => ({ code, skill: 'reading', question_count: i === 2 ? 14 : 13, sort_order: 10 + i })),
+  ];
+}
+
+/**
+ * C3 – kiểm tra tự động bộ đề theo mục đánh số (`runTestSetChecks` của packages/schemas): IELTS full đủ 40 câu hỏi mỗi kỹ năng và đúng số
+ * mục từng part/passage, đánh số "Questions 1–40" liên tục, mỗi part Listening có audio (một audio liên tục). Câu chưa tải được thông tin
+ * → coi như thiếu số mục (đứt dãy số). Trả lỗi (chặn lưu/phát hành) và cảnh báo (chỉ hiển thị).
+ */
+export function testSetCheckIssues(set: TestSetShape, info: ReadonlyMap<string, ItemCheckInfo>): { errors: string[]; warnings: string[] } {
+  const results = runTestSetChecks({
+    program: set.program,
+    kind: set.kind,
+    sections: set.program === 'ielts' ? ieltsSectionSpecs() : [],
+    items: set.items.map((it) => {
+      const q = info.get(relationshipId(it.question) ?? '');
+      return { section_code: it.sectionCode, sort_order: it.sortOrder, group_key: it.groupKey ?? null, marks: q ? marksOfContent(q.content) : null, has_audio: q?.hasAudio ?? false, audio_key: q?.audioKey ?? null };
+    }),
+  });
+  return {
+    errors: results.filter((r) => r.level === 'error').map(describeTestSetCheck),
+    warnings: results.filter((r) => r.level === 'warning').map(describeTestSetCheck),
+  };
+}
+
+/** Thông điệp tiếng Việt cho biên tập viên theo mã kiểm tra bộ đề */
+export function describeTestSetCheck(r: TestSetCheckResult): string {
+  const p = r.params ?? {};
+  switch (r.code) {
+    case 'numbering_gap':
+      return `Đánh số câu hỏi bị đứt tại câu số ${p.number} (${p.section}, thứ tự ${p.sort_order}): nội dung câu không hợp lệ hoặc không xác định được số mục.`;
+    case 'ielts_mark_total':
+      return `Đề IELTS ${p.skill === 'listening' ? 'Listening' : 'Reading'} đầy đủ cần đúng ${p.expected} câu hỏi, hiện có ${p.actual}.`;
+    case 'ielts_section_marks':
+      return `${p.section}: cần đúng ${p.expected} câu hỏi (mục), hiện có ${p.actual}.`;
+    case 'listening_part_audio_missing':
+      return `${p.section}: part Listening chưa có audio (câu hoặc passage script phải gắn audio).`;
+    case 'listening_part_multiple_audio':
+      return `${p.section}: part có ${p.count} audio khác nhau – định dạng thi máy tính phát liên tục một audio mỗi part.`;
+    default:
+      return String(r.code);
+  }
+}
+
+/** C3 – `level` gửi catalog (catalog.test_sets.level): chỉ IELTS – hình thức Reading Academic/GT; đề chỉ Listening để trống */
+export function catalogLevelOf(d: { program?: string | null; ieltsModule?: string | null }): string | undefined {
+  return d.program === 'ielts' && d.ieltsModule ? d.ieltsModule : undefined;
 }
 
 /** Mọi câu trong bộ đề phải đã `published` (đã đồng bộ sang catalog) */
