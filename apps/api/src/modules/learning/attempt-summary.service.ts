@@ -2,7 +2,7 @@ import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import { JOB_NAMES, SUMMARY_EVERY_N_ATTEMPTS, type ScoreBreakdown, type SummarizeAttemptOutput } from '@allingo/schemas';
+import { DEFAULT_PROGRAM, JOB_NAMES, SUMMARY_EVERY_N_ATTEMPTS, type ScoreBreakdown, type SummarizeAttemptOutput } from '@allingo/schemas';
 import { DbService } from '../../shared/db/db.module.js';
 import { JobsService } from '../../shared/queue/jobs.service.js';
 import { getLogger } from '../../shared/telemetry/logger.js';
@@ -88,7 +88,7 @@ export class AttemptSummaryService implements OnModuleInit {
   /** Bài thứ 3, 6, 9… của người học trong chương trình → đặt job. Trả jobId (hoặc null nếu chưa đến lượt). */
   async maybeEnqueue(p: GradedPayload): Promise<{ jobId: string; done?: Promise<unknown> } | null> {
     if (!p?.attempt_id || !p.user_id) return null;
-    const program = p.program ?? 'toeic';
+    const program = p.program ?? DEFAULT_PROGRAM;
     // Vị trí của CHÍNH attempt này (không phải tổng hiện tại) → sự kiện đến muộn/trùng không đặt job sai
     const n = await this.attempts.gradedPosition(p.user_id, program, p.attempt_id);
     if (!n || n % SUMMARY_EVERY_N_ATTEMPTS !== 0) return null;
@@ -98,7 +98,7 @@ export class AttemptSummaryService implements OnModuleInit {
 
   /** Bộ xử lý job summary.attempt */
   async run(p: GradedPayload): Promise<{ note_id: string | null; skipped?: string; ai_task_id?: string }> {
-    const program = p.program ?? 'toeic';
+    const program = p.program ?? DEFAULT_PROGRAM;
     const [existing] = await this.dbs.db
       .select({ id: learnNotes.id })
       .from(learnNotes)

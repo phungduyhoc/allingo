@@ -3,6 +3,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import {
+  DEFAULT_PROGRAM,
+  describeQuestion,
   FEATURE_GATES,
   pickLocalized,
   type AiStreamEvent,
@@ -126,7 +128,7 @@ export class ThreadsService {
   }
 
   private async turnsOf(userId: string, t: ThreadRow): Promise<{ used: number; limit: number | null }> {
-    const ctx = await this.gate.context(userId, t.programCode ?? 'toeic');
+    const ctx = await this.gate.context(userId, t.programCode ?? DEFAULT_PROGRAM);
     const [used, limit] = await Promise.all([this.turnsUsed([t.id]).then((m) => m.get(t.id) ?? 0), this.turnLimit(ctx.planKind)]);
     return { used, limit };
   }
@@ -134,7 +136,7 @@ export class ThreadsService {
   // ------------------------------------------------------------------ thread
   async create(userId: string, input: { program?: ProgramCode; context?: Partial<ThreadContext>; title?: string }): Promise<Thread> {
     const c = input.context ?? {};
-    let program: string = input.program ?? 'toeic';
+    let program: string = input.program ?? DEFAULT_PROGRAM;
     let context: ThreadContext;
     if (c.kind === 'free' || (!c.attempt_id && !c.question_version_id)) {
       context = { kind: 'free', mode: c.mode ?? 'text', ...(c.lesson_id ? { lesson_id: c.lesson_id } : {}) };
@@ -169,9 +171,9 @@ export class ThreadsService {
     const page = rows.slice(0, limit);
     const used = await this.turnsUsed(page.map((t) => t.id));
     const limits = new Map<string, number | null>();
-    for (const p of new Set(page.map((t) => t.programCode ?? 'toeic'))) limits.set(p, await this.turnLimit((await this.gate.context(userId, p)).planKind));
+    for (const p of new Set(page.map((t) => t.programCode ?? DEFAULT_PROGRAM))) limits.set(p, await this.turnLimit((await this.gate.context(userId, p)).planKind));
     return {
-      data: page.map((t) => this.toThreadDto(t, { used: used.get(t.id) ?? 0, limit: limits.get(t.programCode ?? 'toeic') ?? null })),
+      data: page.map((t) => this.toThreadDto(t, { used: used.get(t.id) ?? 0, limit: limits.get(t.programCode ?? DEFAULT_PROGRAM) ?? null })),
       next_cursor: rows.length > limit ? encodeCursor({ u: page.at(-1)!.updatedAt.toISOString(), id: page.at(-1)!.id }) : null,
     };
   }
@@ -216,22 +218,26 @@ export class ThreadsService {
     // Có attempt: chỉ lộ đáp án khi attempt đã nộp/chấm (hoặc practice đã trả lời câu); không attempt (Review/duyệt) → như /ai/explain
     const rs = ctx.attempt_id ? await this.insights.revealState(userId, ctx.attempt_id, ctx.question_version_id) : null;
     const reveal = rs ? rs.reveal : true;
-    const content = q.content as { stem?: string; options?: Array<{ key: string; text: string }>; answer_key?: { correct?: unknown }; explanation?: LocalizedText };
-    const correct = content.answer_key?.correct;
+    const content = q.content as { explanation?: LocalizedText };
     const user = await this.users.findById(userId);
+    // C2: mọi dạng câu qua describeQuestion() – đáp án đúng/của người học chỉ khi reveal (Exam Mode không lộ – ADR-0028)
+    const d = describeQuestion(q.content, reveal ? (rs?.answer ?? null) : null);
+    const multi = q.content.type !== 'mcq_single';
     return {
       loaded: q,
       data: {
         question_version_id: q.question_version_id,
         section_code: q.section_code,
         question_type: q.question_type,
-        stem: content.stem ?? '',
-        options: (content.options ?? []).map((o) => ({ key: o.key, text: o.text })),
+        stem: d.stem,
+        options: d.options,
         passage_excerpt: q.passage && q.passage.kind !== 'audio_script' ? q.passage.body : null,
         reveal,
-        correct_option: reveal ? (Array.isArray(correct) ? correct.join(',') : typeof correct === 'string' ? correct : null) : null,
+        correct_option: reveal ? d.correct_text || null : null,
         explanation: reveal && content.explanation ? pickLocalized(content.explanation, user?.explainLocale ?? 'vi') || null : null,
-        learner_choice: reveal ? (rs?.chosen ?? null) : null,
+        learner_choice: reveal ? (multi ? d.chosen_text : (rs?.chosen ?? null)) : null,
+        items: multi ? d.items : undefined,
+        instructions: d.instructions,
       },
     };
   }
@@ -269,7 +275,7 @@ export class ThreadsService {
     const thread = await this.getOwned(userId, threadId);
     const raw = input.text?.trim();
     if (!raw) throw new ValidationFailed({ issues: [{ path: 'text', message: input.recording_id ? 'voice messages are not supported yet (GĐ2)' : 'text is required' }] });
-    const program = thread.programCode ?? 'toeic';
+    const program = thread.programCode ?? DEFAULT_PROGRAM;
     const ctx = this.contextOf(thread);
     const ent = await this.gate.context(userId, program);
 

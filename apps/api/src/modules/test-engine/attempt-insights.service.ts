@@ -1,7 +1,7 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import { ATTEMPT_GRACE_SECONDS, attemptDraftStateSchema, correctAnswerOf, isAnswered, type AnswerInput } from '@allingo/schemas';
+import { ATTEMPT_GRACE_SECONDS, attemptDraftStateSchema, correctAnswerOf, isAnswered, isSpokenSection, type AnswerInput } from '@allingo/schemas';
 import { DbService } from '../../shared/db/db.module.js';
 import { ExamModeService } from '../../shared/exam/exam-mode.js';
 import { Forbidden, NotFound } from '../../shared/http/errors.js';
@@ -43,6 +43,8 @@ export interface QuestionRevealState {
   reveal: boolean;
   answered: boolean;
   chosen: string | null;
+  /** C2: câu trả lời đầy đủ (chỉ khi reveal) – dạng nhiều mục cho gia sư */
+  answer: AnswerInput | null;
   status: string;
   mode: string;
 }
@@ -163,7 +165,7 @@ export class AttemptInsightsService implements OnModuleInit {
     const chosen = answer && answer.type === 'mcq_single' ? answer.selected : null;
     const done = row.status === 'graded' || row.status === 'submitted';
     const reveal = contains && (done || (row.status === 'in_progress' && FEEDBACK_MODES.has(row.mode) && answered));
-    return { contains, reveal, answered, chosen, status: row.status, mode: row.mode };
+    return { contains, reveal, answered, chosen, answer: reveal ? answer : null, status: row.status, mode: row.mode };
   }
 
   /**
@@ -213,7 +215,8 @@ export class AttemptInsightsService implements OnModuleInit {
     const out: RecentMistake[] = [];
     for (const r of picked) {
       const q = qs.get(r.qv);
-      if (!q || (q.program_code === 'toeic' && (q.section_code === 'part1' || q.section_code === 'part2'))) continue;
+      // Phần thi "đọc trong audio" (TOEIC Part 1/2 – registry spoken_sections) không có đề chữ để trích
+      if (!q || isSpokenSection(q.program_code, q.section_code)) continue;
       const answer = (r.answer) ?? null;
       const correct = correctAnswerOf(q.content);
       out.push({

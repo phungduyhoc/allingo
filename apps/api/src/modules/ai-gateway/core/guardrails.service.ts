@@ -4,6 +4,7 @@ import { EXAM_LOCK_KEY, ExamModeService } from '../../../shared/exam/exam-mode.j
 import { getLogger } from '../../../shared/telemetry/logger.js';
 import { AiGatewayService } from './ai-gateway.service.js';
 import { localGuard, redactPii, refusalCodeOf, type GuardCategory } from './guard-rules.js';
+import { DEFAULT_PROGRAM } from '@allingo/schemas';
 
 export { EXAM_LOCK_KEY };
 
@@ -54,7 +55,7 @@ export class GuardrailsService {
       userId,
       chargeCredits: false,
       program: ctx.program,
-      variables: { mode: ctx.mode, exam_mode: String(ctx.examMode), task_code: ctx.taskCode, program: ctx.program ?? 'toeic', text },
+      variables: { mode: ctx.mode, exam_mode: String(ctx.examMode), task_code: ctx.taskCode, program: ctx.program ?? DEFAULT_PROGRAM, text },
       inputRef: { purpose: 'guard', task_code: ctx.taskCode },
     });
     return { ...r.data, aiTaskId: r.aiTaskId };

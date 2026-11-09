@@ -2,7 +2,7 @@ import { randomInt } from 'node:crypto';
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import type { Locale, ProgramCode, User } from '@allingo/schemas';
+import { isProgramCode, type Locale, type ProgramCode, type User } from '@allingo/schemas';
 import { DbService, type DbOrTx } from '../../shared/db/db.module.js';
 import { UserDirectory, type UserContact } from '../../shared/events/user-directory.js';
 import { Conflict, NotFound } from '../../shared/http/errors.js';
@@ -214,7 +214,7 @@ export class UsersService implements OnModuleInit {
     return new Map(rows.map((r) => [r.id, { timezone: r.timezone, uiLocale: r.uiLocale, status: r.status, isGuest: r.isGuest }]));
   }
 
-  async update(userId: string, patch: Partial<Pick<UserRow, 'displayName' | 'avatarUrl' | 'uiLocale' | 'explainLocale' | 'timezone'>>): Promise<UserRow> {
+  async update(userId: string, patch: Partial<Pick<UserRow, 'displayName' | 'avatarUrl' | 'uiLocale' | 'explainLocale' | 'timezone' | 'activeProgram'>>): Promise<UserRow> {
     const [row] = await this.dbs.db
       .update(iamUsers)
       .set({ ...patch, updatedAt: new Date() })
@@ -224,8 +224,13 @@ export class UsersService implements OnModuleInit {
     return row;
   }
 
-  /** Chương trình đang học = enrollment active cập nhật gần nhất */
-  async activeProgram(userId: string, db: DbOrTx = this.dbs.db): Promise<ProgramCode | null> {
+  /**
+   * Chương trình đang học. C1: ưu tiên lựa chọn tường minh `iam.users.active_program` (bộ chọn chương trình); chưa chọn (người dùng
+   * trước C1) → enrollment active cập nhật gần nhất như trước. `explicit` truyền sẵn khi đã có hàng users (tránh đọc lại).
+   */
+  async activeProgram(userId: string, db: DbOrTx = this.dbs.db, explicit?: string | null): Promise<ProgramCode | null> {
+    const chosen = explicit !== undefined ? explicit : ((await db.select({ p: iamUsers.activeProgram }).from(iamUsers).where(eq(iamUsers.id, userId)).limit(1))[0]?.p ?? null);
+    if (isProgramCode(chosen)) return chosen;
     const [row] = await db
       .select({ program: learnEnrollments.programCode })
       .from(learnEnrollments)
@@ -236,7 +241,7 @@ export class UsersService implements OnModuleInit {
   }
 
   async toDto(row: UserRow, db: DbOrTx = this.dbs.db): Promise<User> {
-    const [roles, activeProgram] = await Promise.all([this.getRoles(row.id, db), this.activeProgram(row.id, db)]);
+    const [roles, activeProgram] = await Promise.all([this.getRoles(row.id, db), this.activeProgram(row.id, db, row.activeProgram ?? null)]);
     return {
       id: row.id,
       email: row.email ?? null,

@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import type { AiStreamEvent, ExplainMcqOutput, Explanation, Locale } from '@allingo/schemas';
+import { DEFAULT_PROGRAM, describeQuestion, type AiStreamEvent, type AnswerInput, type ExplainMcqOutput, type Explanation, type Locale } from '@allingo/schemas';
 import { InsufficientCredits, NotFound, ValidationFailed } from '../../../shared/http/errors.js';
 import { CatalogQueryService, type LoadedQuestion } from '../../catalog/index.js';
 import { CreditService, FeatureGateService } from '../../billing/index.js';
 import { UsersService } from '../../iam/index.js';
 import { AiGatewayService } from '../core/ai-gateway.service.js';
 import { ExplanationCacheService } from '../core/explanation-cache.service.js';
+import { explainChoiceKey } from '../core/explain-key.js';
 import { GuardrailsService } from '../core/guardrails.service.js';
 
 export interface ExplainRequest {
@@ -13,6 +14,8 @@ export interface ExplainRequest {
   questionVersionId: string;
   chosenOption?: string | null;
   attemptId?: string | null;
+  /** C2: câu trả lời dạng nhiều mục (cá nhân hoá giải thích, khoá cache = mã băm) */
+  answer?: AnswerInput | null;
   traceId?: string;
 }
 
@@ -65,11 +68,20 @@ export class ExplainService {
     return (u?.explainLocale as Locale | undefined) ?? 'vi';
   }
 
-  /** Biến cho template explain_mcq (nội dung câu nằm trong <user_input> theo template; không PII) */
-  static variablesOf(q: LoadedQuestion, chosen: string | null, locale: string): Record<string, unknown> {
+  /** Dạng câu giải thích được (tự chấm – C2 mở rộng từ trắc nghiệm sang mọi dạng nhiều mục); essay/speaking/handwriting → 400 */
+  static explainable(q: LoadedQuestion): boolean {
+    return !['essay', 'speaking', 'handwriting'].includes(q.content.type);
+  }
+
+  /**
+   * Biến cho template explain_mcq (nội dung câu nằm trong <user_input> theo template; không PII). C2: mọi dạng qua describeQuestion()
+   * – `options` = lựa chọn dùng chung, `items` = mục đánh số kèm đáp án đúng/của người học, `instructions` = giới hạn từ.
+   */
+  static variablesOf(q: LoadedQuestion, chosen: string | null, locale: string, answer?: AnswerInput | null): Record<string, unknown> {
     const content = q.content;
-    if (!('options' in content)) throw new ValidationFailed({ issues: [{ path: 'question_version_id', message: 'explain_mcq only supports multiple-choice questions' }] });
-    const correct = 'answer_key' in content && 'correct' in content.answer_key ? (content.answer_key as { correct: string | string[] }).correct : '';
+    if (!ExplainService.explainable(q)) throw new ValidationFailed({ issues: [{ path: 'question_version_id', message: 'explain_mcq does not support this question type' }] });
+    const mcqAnswer: AnswerInput | null = content.type === 'mcq_single' && chosen ? { type: 'mcq_single', selected: chosen } : null;
+    const d = describeQuestion(content, answer ?? mcqAnswer);
     return {
       program: q.program_code,
       section_code: q.section_code,
@@ -77,10 +89,12 @@ export class ExplainService {
       learner_level: 'B1',
       explanation_seed: content.explanation?.[locale as Locale] ?? content.explanation?.vi ?? content.explanation?.en ?? '',
       related_codes: q.subskill_codes,
-      stem: content.stem,
-      options: content.options.map((o) => ({ key: o.key, text: o.text })),
-      correct_option: Array.isArray(correct) ? correct.join(',') : correct,
-      chosen_option: chosen ?? 'null',
+      instructions: d.instructions ?? '',
+      stem: d.stem,
+      options: d.options,
+      items: d.items,
+      correct_option: d.correct_text,
+      chosen_option: (content.type === 'mcq_single' ? chosen : d.chosen_text) ?? 'null',
       excerpt: (content.evidence ?? q.passage?.body?.slice(0, 1200) ?? ''),
     };
   }
@@ -88,9 +102,11 @@ export class ExplainService {
   /** Trả { kind: 'json', explanation } khi cache hit; { kind: 'stream', events } khi cần sinh mới */
   async explain(req: ExplainRequest): Promise<{ kind: 'json'; explanation: Explanation } | { kind: 'stream'; events: AsyncGenerator<AiStreamEvent> }> {
     const q = await this.loadQuestion(req.questionVersionId);
-    if (!('options' in q.content)) throw new ValidationFailed({ issues: [{ path: 'question_version_id', message: 'explain_mcq only supports multiple-choice questions' }] });
+    if (!ExplainService.explainable(q)) throw new ValidationFailed({ issues: [{ path: 'question_version_id', message: 'explain_mcq does not support this question type' }] });
     const locale = await this.localeOf(req.userId);
-    const chosen = req.chosenOption?.trim() || null;
+    const rawChosen = req.chosenOption?.trim() || null;
+    const answer = req.answer && req.answer.type === q.content.type ? req.answer : null;
+    const chosen = explainChoiceKey(q.content.type, rawChosen, answer);
     const program = q.program_code;
 
     // Exam Mode chặn trước mọi thứ, kể cả cache hit (CLAUDE.md §5.8)
@@ -111,7 +127,7 @@ export class ExplainService {
     if (balance < cost) throw new InsufficientCredits({ required: cost, balance });
     const ticket = await this.gate.consume(req.userId, program, 'ai_explain');
 
-    const variables = ExplainService.variablesOf(q, chosen, locale);
+    const variables = ExplainService.variablesOf(q, rawChosen, locale, answer);
     const cache = this.cache;
     const toExplanation = this.toExplanation.bind(this);
     const writeShared = task.status === 'active';
@@ -149,8 +165,8 @@ export class ExplainService {
   }
 
   /** Giải thích đã có trong cache (dùng ở Review) */
-  async cached(questionVersionId: string, chosenOption: string | null, locale: string, userId: string | null = null): Promise<Explanation | null> {
-    const pv = await this.gateway.currentPromptVersionId('explain_mcq', 'toeic', userId);
+  async cached(questionVersionId: string, chosenOption: string | null, locale: string, userId: string | null = null, program: string = DEFAULT_PROGRAM): Promise<Explanation | null> {
+    const pv = await this.gateway.currentPromptVersionId('explain_mcq', program, userId);
     if (!pv) return null;
     const hit = await this.cache.get(questionVersionId, chosenOption, locale, pv);
     return hit ? this.toExplanation(hit.content, locale, true, null, hit.promptVersionId) : null;

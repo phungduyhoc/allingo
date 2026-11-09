@@ -1,4 +1,6 @@
 import { addDays, weekdayOf } from '@allingo/planner';
+import { targetBucketFor } from '@allingo/scoring';
+import { programDef } from '@allingo/schemas';
 
 /**
  * Hàm thuần cho thống kê dashboard (Sprint 10) – test đơn vị: cộng breakdown, so sánh độ chính xác hai cửa sổ, percentile
@@ -57,16 +59,9 @@ export function percentileOf(value: number, sample: readonly number[]): number |
   return Math.round(((below + equal / 2) / sample.length) * 1000) / 10;
 }
 
-/** Nhóm mục tiêu ẩn danh: TOEIC theo trăm (600–695 → "600-695"), IELTS theo 0,5 band, còn lại theo chục; không mục tiêu → null */
+/** Nhóm mục tiêu ẩn danh theo thang của chương trình (registry): TOEIC theo trăm ("600-695"), IELTS theo 0,5 band, còn lại theo chục */
 export function targetBucket(program: string, target: number | null): { label: string; lo: number; hi: number } | null {
-  if (target === null || !Number.isFinite(target)) return null;
-  if (program === 'ielts') {
-    const lo = Math.floor(target * 2) / 2;
-    return { label: lo.toFixed(1), lo, hi: lo + 0.5 };
-  }
-  const step = program === 'toeic' ? 100 : 10;
-  const lo = Math.floor(target / step) * step;
-  return { label: `${lo}-${lo + step - (program === 'toeic' ? 5 : 1)}`, lo, hi: lo + step };
+  return targetBucketFor(programDef(program)?.scale.kind ?? 'points', target);
 }
 
 /** Thứ Hai của tuần chứa ngày `iso` (YYYY-MM-DD) */

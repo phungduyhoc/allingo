@@ -12,9 +12,16 @@ type Row = typeof learnEnrollments.$inferSelect;
 export class EnrollmentsService {
   constructor(private readonly dbs: DbService) {}
 
-  async list(userId: string): Promise<Enrollment[]> {
+  /** C1: `current` = chương trình đang học (UsersService.activeProgram) → `is_current` */
+  async list(userId: string, current: string | null = null): Promise<Enrollment[]> {
     const rows = await this.dbs.db.select().from(learnEnrollments).where(eq(learnEnrollments.userId, userId)).orderBy(desc(learnEnrollments.updatedAt));
-    return Promise.all(rows.map((r) => this.toDto(r)));
+    return Promise.all(rows.map(async (r) => ({ ...(await this.toDto(r)), is_current: r.programCode === current })));
+  }
+
+  /** C1: chọn chương trình đang học – tạo enrollment nếu chưa có, bật lại nếu đã tắt; KHÔNG đổi mục tiêu/ngày thi/phút học */
+  async activate(userId: string, program: ProgramCode, db: DbOrTx = this.dbs.db): Promise<void> {
+    const row = await this.ensure(userId, program, db);
+    if (!row.isActive) await db.update(learnEnrollments).set({ isActive: true, updatedAt: new Date() }).where(eq(learnEnrollments.id, row.id));
   }
 
   async get(userId: string, program: ProgramCode, db: DbOrTx = this.dbs.db): Promise<Row | null> {
@@ -108,6 +115,7 @@ export class EnrollmentsService {
       days_to_exam: daysToExam,
       diagnostic_attempt_id: diag?.id ?? null,
       started_at: r.startedAt.toISOString(),
+      is_active: r.isActive,
     };
   }
 }

@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { sql } from 'drizzle-orm';
 import { addDays, localDate, zonedDayStart } from '@allingo/planner';
-import { DOMAIN_EVENTS, scorePartOf, scoreScaleOf, type ProgramCode, type Stats } from '@allingo/schemas';
+import { DEFAULT_PROGRAM, DOMAIN_EVENTS, scorePartOf, scoreScaleOf, type ProgramCode, type Stats } from '@allingo/schemas';
 import { ENV, type Env } from '../../config/env.js';
 import { RedisService } from '../../shared/cache/redis.module.js';
 import { CLOCK, type Clock } from '../../shared/clock/clock.module.js';
@@ -96,14 +96,14 @@ export class StatsService {
   }
 
   /** Xoá cache khi dữ liệu nguồn đổi (mọi chương trình đã nêu; thiếu → toeic) */
-  async invalidate(userId: string, programs: readonly string[] = ['toeic']): Promise<void> {
+  async invalidate(userId: string, programs: readonly string[] = [DEFAULT_PROGRAM]): Promise<void> {
     if (!userId) return;
     await this.redis.safe((r) => r.del(...programs.map((p) => statsCacheKey(userId, p))));
   }
 
   @OnEvent('local.attempt.graded')
   async onLocalGraded(p: { user_id: string; program?: string }): Promise<void> {
-    await this.invalidate(p?.user_id, [p?.program ?? 'toeic']);
+    await this.invalidate(p?.user_id, [p?.program ?? DEFAULT_PROGRAM]);
   }
 
   @OnEvent('outbox.attempt.graded')
@@ -113,17 +113,17 @@ export class StatsService {
 
   @OnEvent(`local.${SRS_REVIEWED_EVENT}`)
   async onSrs(ev: { user_id: string; programs?: string[] }): Promise<void> {
-    await this.invalidate(ev?.user_id, ev?.programs ?? ['toeic']);
+    await this.invalidate(ev?.user_id, ev?.programs ?? [DEFAULT_PROGRAM]);
   }
 
   @OnEvent(`local.${DOMAIN_EVENTS.ERROR_LOG_UPDATED}`)
   async onErrorsUpdated(ev: { user_id: string; program?: string }): Promise<void> {
-    await this.invalidate(ev?.user_id, [ev?.program ?? 'toeic']);
+    await this.invalidate(ev?.user_id, [ev?.program ?? DEFAULT_PROGRAM]);
   }
 
   @OnEvent(`local.${ERROR_RESOLVED_EVENT}`)
   async onErrorResolved(ev: { user_id: string; program?: string }): Promise<void> {
-    await this.invalidate(ev?.user_id, [ev?.program ?? 'toeic']);
+    await this.invalidate(ev?.user_id, [ev?.program ?? DEFAULT_PROGRAM]);
   }
 
   // ------------------------------------------------------------------ tính toán (kho đọc)

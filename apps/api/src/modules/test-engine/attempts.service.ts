@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import { diagnoseAttempt, toeicLrEstimate, TOEIC_PART_SKILL, SCALE_INFO, ieltsLrBand, type DiagnosisQuestion } from '@allingo/scoring';
+import { diagnoseAttempt, scoreByProgram, type DiagnosisQuestion } from '@allingo/scoring';
 import {
   ATTEMPT_GRACE_SECONDS,
   AUDIO_PLAY_EVENT_TYPES,
@@ -13,6 +13,9 @@ import {
   grade,
   isAnswered,
   correctAnswerOf,
+  marksOf,
+  programDef,
+  skillOfSection,
   timedDrillBudgetSeconds,
   type AnswerInput,
   type AttemptMediaList,
@@ -42,7 +45,7 @@ import { encodeCursor, decodeCursor } from '../../shared/http/cursor.js';
 import { getLogger } from '../../shared/telemetry/logger.js';
 import { CatalogQueryService, SearchService, type LoadedQuestion, type PracticeHistory } from '../catalog/index.js';
 import { FeatureGateService } from '../billing/index.js';
-import { AiGatewayService, ExplanationCacheService } from '../ai-gateway/index.js';
+import { AiGatewayService, ExplanationCacheService, explainChoiceKey } from '../ai-gateway/index.js';
 import { EnrollmentsService, UsersService } from '../iam/index.js';
 import { EXAM_LOCK_KEY } from '../../shared/exam/exam-mode.js';
 import { NotesService } from './notes.service.js';
@@ -233,7 +236,7 @@ export class AttemptsService {
       if (!q || !isAnswered(answer)) continue;
       const g = grade(q.content, answer);
       const expl = (q.content as { explanation?: Record<string, string> }).explanation ?? null;
-      out[a.questionId] = { is_correct: g.is_correct, correct_answer: correctAnswerOf(q.content), explanation: expl, transcript: transcripts.get(q.question_id) ?? null };
+      out[a.questionId] = { is_correct: g.is_correct, correct_answer: correctAnswerOf(q.content), explanation: expl, transcript: transcripts.get(q.question_id) ?? null, details: g.details ?? null };
     }
     return out;
   }
@@ -391,7 +394,11 @@ export class AttemptsService {
       const diagInput: DiagnosisQuestion[] = [];
       const sectionTimes: Record<string, number[]> = {};
       const sectionCommunity: Record<string, number[]> = {};
-      const skills: Record<string, { correct: number; total: number; times: number[]; community: number[]; by_subskill: Record<string, { correct: number; total: number }>; by_topic: Record<string, { correct: number; total: number }> }> = {};
+      const skills: Record<string, { correct: number; total: number; marks: number; max_marks: number; times: number[]; community: number[]; by_subskill: Record<string, { correct: number; total: number }>; by_topic: Record<string, { correct: number; total: number }> }> = {};
+      // C1: điểm thô theo registry chương trình (TOEIC: mỗi câu 1; IELTS: theo mục đánh số – markCount) + kỹ năng của phần thi
+      const program = programDef(row.programCode);
+      const marking = program?.marking ?? 'per_question';
+      const sectionSkill = new Map<string, string>();
       const gradedRows: Array<{ id: string; is_correct: boolean | null; score: string }> = [];
       const missingRows: Array<typeof learnAttemptAnswers.$inferInsert> = [];
 
@@ -414,20 +421,26 @@ export class AttemptsService {
         if (g.is_correct) correctCount++;
         if (a) gradedRows.push({ id: a.id, is_correct: g.is_correct, score: String(Math.round(earned * 100) / 100) });
         else missingRows.push({ attemptId, questionId: o.question_id, questionVersionId: o.question_version_id, answer: null, isCorrect: g.is_correct, score: '0', flagged: false });
-        const sec = (bySection[o.section_code] ??= { correct: 0, total: 0, avg_time_ms: null, score: null, community_avg_time_ms: null });
+        const mk = marksOf(q.content, g, marking);
+        const sec = (bySection[o.section_code] ??= { correct: 0, total: 0, avg_time_ms: null, score: null, community_avg_time_ms: null, marks: 0, max_marks: 0 });
         sec.total++;
         if (g.is_correct) sec.correct++;
+        sec.marks = (sec.marks ?? 0) + mk.earned;
+        sec.max_marks = (sec.max_marks ?? 0) + mk.max;
         const time = a?.timeSpentMs ?? null;
         if (time !== null) (sectionTimes[o.section_code] ??= []).push(time);
         if (q.avg_time_ms !== null) (sectionCommunity[o.section_code] ??= []).push(q.avg_time_ms);
         bump(byType, q.question_type, g.is_correct);
         for (const sub of q.subskill_codes) bump(bySub, sub, g.is_correct);
         if (q.topic_code) bump(byTopic, q.topic_code, g.is_correct);
-        // Theo kỹ năng (TOEIC: Part → listening/reading; chương trình khác: skill của section)
-        const skillCode = (row.programCode === 'toeic' ? TOEIC_PART_SKILL[o.section_code] : undefined) ?? q.skill_code;
-        const sk = (skills[skillCode] ??= { correct: 0, total: 0, times: [], community: [], by_subskill: {}, by_topic: {} });
+        // Theo kỹ năng: registry chương trình (TOEIC Part → listening/reading), mã lạ → skill của catalog.sections
+        const skillCode = skillOfSection(row.programCode, o.section_code) ?? q.skill_code;
+        sectionSkill.set(o.section_code, skillCode);
+        const sk = (skills[skillCode] ??= { correct: 0, total: 0, marks: 0, max_marks: 0, times: [], community: [], by_subskill: {}, by_topic: {} });
         sk.total++;
         if (g.is_correct) sk.correct++;
+        sk.marks += mk.earned;
+        sk.max_marks += mk.max;
         if (time !== null) sk.times.push(time);
         if (q.avg_time_ms !== null) sk.community.push(q.avg_time_ms);
         for (const sub of q.subskill_codes) bump(sk.by_subskill, sub, g.is_correct);
@@ -451,15 +464,16 @@ export class AttemptsService {
       }
       if (missingRows.length) await tx.insert(learnAttemptAnswers).values(missingRows);
 
-      const scaled = this.scale(row.programCode, bySection);
+      const scaled = this.scale(row.programCode, bySection, (code) => sectionSkill.get(code) ?? null);
       const bySkill: Record<string, SkillBreakdown> = {};
       for (const [code, sk] of Object.entries(skills)) {
-        const toeicSkill = code === 'listening' || code === 'reading' ? code : null;
         bySkill[code] = {
           correct: sk.correct,
           total: sk.total,
-          scaled: toeicSkill && scaled.scaled ? scaled.scaled[toeicSkill] : null,
-          range: toeicSkill && scaled.scaled?.ranges ? scaled.scaled.ranges[toeicSkill] : null,
+          marks: sk.marks,
+          max_marks: sk.max_marks,
+          scaled: scaled.skills[code]?.scaled ?? null,
+          range: scaled.skills[code]?.range ?? null,
           avg_time_ms: mean(sk.times),
           community_avg_time_ms: mean(sk.community),
           by_subskill: sk.by_subskill,
@@ -534,39 +548,18 @@ export class AttemptsService {
   }
 
   /**
-   * Quy đổi điểm theo chương trình. TOEIC: Part 1–4 → Listening, Part 5–7 → Reading, bảng ước tính của @allingo/scoring
-   * (không phải bảng ETS), tổng 10–990 chỉ khi có đủ hai kỹ năng, khoảng ước tính ±25 (`scaled.range`).
+   * Quy đổi điểm theo chương trình (C1 – @allingo/scoring `scoreByProgram`, thang theo registry): TOEIC Part 1–4 → Listening, Part
+   * 5–7 → Reading, bảng ước tính Allingo (không phải bảng ETS), tổng 10–990 khi đủ hai kỹ năng, khoảng ±25; IELTS band theo số câu
+   * đúng tính theo mục (sẵn cho C3); JLPT/HSK chỉ khai báo thang. Gán `score` cho từng phần thi.
    */
-  private scale(program: string, bySection: ScoreBreakdown['by_section']): { value: number | null; scale: Record<string, unknown>; scaled: ToeicScaled | null } {
-    if (program === 'toeic') {
-      const agg = { listening: { correct: 0, total: 0 }, reading: { correct: 0, total: 0 } };
-      for (const [code, s] of Object.entries(bySection)) {
-        const skill = TOEIC_PART_SKILL[code];
-        if (!skill) continue;
-        agg[skill].correct += s.correct;
-        agg[skill].total += s.total;
-      }
-      const r = toeicLrEstimate({ listening: agg.listening.total ? agg.listening : undefined, reading: agg.reading.total ? agg.reading : undefined });
-      for (const [code, s] of Object.entries(bySection)) {
-        const skill = TOEIC_PART_SKILL[code];
-        if (skill) s.score = r[skill];
-      }
-      const value = r.total ?? r.listening ?? r.reading;
-      const scaled: ToeicScaled | null = r.listening !== null || r.reading !== null ? { listening: r.listening, reading: r.reading, total: r.total, range: r.range, ranges: r.ranges, estimated: true } : null;
-      return { value, scale: { ...SCALE_INFO.toeic, listening: r.listening, reading: r.reading, total: r.total, ci: r.half_width, range: r.range, partial: r.total === null }, scaled };
-    }
-    if (program === 'ielts') {
-      let correct = 0;
-      let total = 0;
-      for (const s of Object.values(bySection)) {
-        correct += s.correct;
-        total += s.total;
-      }
-      const band = total ? ieltsLrBand(correct, total) : null;
-      return { value: band, scale: { ...SCALE_INFO.ielts, band }, scaled: null };
-    }
-    const info = SCALE_INFO[program as keyof typeof SCALE_INFO] ?? SCALE_INFO.toeic;
-    return { value: null, scale: { ...info }, scaled: null };
+  private scale(program: string, bySection: ScoreBreakdown['by_section'], skillOf: (sectionCode: string) => string | null): { value: number | null; scale: Record<string, unknown>; scaled: ToeicScaled | null; skills: Record<string, { scaled: number | null; range: ToeicScaled['range'] }> } {
+    const def = programDef(program);
+    const marks = Object.fromEntries(Object.entries(bySection).map(([code, s]) => [code, { marks: s.marks ?? s.correct, max_marks: s.max_marks ?? s.total }]));
+    const r = scoreByProgram({ program, kind: def?.scale.kind ?? 'points', bySection: marks, skillOf: (code) => skillOfSection(program, code) ?? skillOf(code) });
+    for (const [code, s] of Object.entries(bySection)) s.score = r.sections[code] ?? null;
+    const t = r.toeic;
+    const scaled: ToeicScaled | null = t ? { listening: t.listening, reading: t.reading, total: t.total, range: t.range, ranges: t.ranges, estimated: true } : null;
+    return { value: r.value, scale: r.scale, scaled, skills: r.skills };
   }
 
   private async resultFromRow(row: AttemptRow, tx: DbOrTx): Promise<AttemptResult> {
@@ -605,11 +598,12 @@ export class AttemptsService {
     // Ghi chú của người học theo câu (S6 – ReviewItem.note)
     const notes = await this.notes.latestByQuestion(userId, ordered.map((x) => x.o.question_id));
     // S11: một lượt MGET + một truy vấn DB cho mọi giải thích đã cache (trước: N+1 – mỗi câu GET Redis + SELECT + UPDATE hit_count)
-    const chosenOf = (qid: string) => {
+    // C2: dạng nhiều mục – khoá cache = mã băm câu trả lời (cùng quy tắc POST /ai/explain)
+    const chosenOf = (qid: string, type: string) => {
       const ans = (answerByQ.get(qid)?.answer as AnswerInput | null) ?? null;
-      return ans && ans.type === 'mcq_single' ? ans.selected : null;
+      return explainChoiceKey(type, ans && ans.type === 'mcq_single' ? ans.selected : null, ans);
     };
-    const explanations = explainVersion ? await this.explanationCache.getMany(ordered.map((x) => ({ questionVersionId: x.q.question_version_id, chosenOption: chosenOf(x.o.question_id) })), locale, explainVersion) : new Map();
+    const explanations = explainVersion ? await this.explanationCache.getMany(ordered.map((x) => ({ questionVersionId: x.q.question_version_id, chosenOption: chosenOf(x.o.question_id, x.q.content.type) })), locale, explainVersion) : new Map();
     const items = [];
     for (let i = 0; i < ordered.length; i++) {
       const { o, q } = ordered[i]!;
@@ -619,7 +613,7 @@ export class AttemptsService {
       if (onlyWrong && g.is_correct !== false) continue;
       if (filter.flagged && !a?.flagged) continue;
       if (filter.section && o.section_code !== filter.section) continue;
-      const chosen = answer && answer.type === 'mcq_single' ? answer.selected : null;
+      const chosen = chosenOf(o.question_id, q.content.type);
       const explanation = explanations.get(`${q.question_version_id}:${chosen ?? '_'}`) ?? null;
       items.push({
         question: publicQs[i]!,
@@ -784,7 +778,7 @@ export class AttemptsService {
         question_id: o.question_id,
         question_version_id: o.question_version_id,
         section_code: o.section_code,
-        skill_code: (row.programCode === 'toeic' ? TOEIC_PART_SKILL[o.section_code] : undefined) ?? q.skill_code,
+        skill_code: skillOfSection(row.programCode, o.section_code) ?? q.skill_code,
         question_type: q.question_type,
         subskill_codes: q.subskill_codes,
         topic_code: q.topic_code ?? null,

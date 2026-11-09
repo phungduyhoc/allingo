@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, inArray, param, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import { isSpokenTextSection, questionContentSchema, redactSpokenText, toPublicContent, type LocalizedText, type ProgramCode, type QuestionContent, type QuestionPublic, type QuestionTypeCode, type TranscriptHighlight } from '@allingo/schemas';
+import { isSpokenTextSection, programDef, questionContentSchema, redactSpokenText, toPublicContent, type LocalizedText, type ProgramCode, type ProgramStatus, type QuestionContent, type QuestionPublic, type QuestionTypeCode, type TranscriptHighlight } from '@allingo/schemas';
 import { DbService, type DbOrTx } from '../../shared/db/db.module.js';
 import { StorageService } from '../../shared/storage/storage.module.js';
 import { NotFound } from '../../shared/http/errors.js';
@@ -148,9 +148,37 @@ export class CatalogQueryService {
     @Inject(ENV) private readonly env: Env,
   ) {}
 
-  async programs() {
+  /**
+   * C1: chương trình + trạng thái ra mắt. `launched(program)` = cờ `ff.catalog.program.<code>` (registry; TOEIC không có cờ).
+   * available ⇔ đã ra mắt VÀ có ≥ 1 đề đã phát hành; còn lại coming_soon (web: trang "sắp ra mắt" + danh sách chờ).
+   */
+  async programs(launched: (program: string) => Promise<boolean> = async () => true) {
     const rows = await this.dbs.db.select().from(catalogPrograms).where(eq(catalogPrograms.isActive, true)).orderBy(catalogPrograms.sortOrder);
-    return rows.map((r) => ({ code: r.code as ProgramCode, name: r.name, score_scale: (r.scoreScale as Record<string, unknown>) ?? {}, languages: r.languages }));
+    const counts = await this.dbs.db
+      .select({ program: catalogTestSets.programCode, n: sql<number>`count(*)`.mapWith(Number) })
+      .from(catalogTestSets)
+      .where(eq(catalogTestSets.status, 'published'))
+      .groupBy(catalogTestSets.programCode);
+    const published = new Map(counts.map((c) => [c.program, c.n]));
+    return Promise.all(
+      rows.map(async (r) => {
+        const def = programDef(r.code);
+        const n = published.get(r.code) ?? 0;
+        const status: ProgramStatus = def && n > 0 && (await launched(r.code)) ? 'available' : 'coming_soon';
+        return {
+          code: r.code as ProgramCode,
+          name: r.name,
+          score_scale: (r.scoreScale as Record<string, unknown>) ?? {},
+          languages: r.languages,
+          status,
+          phase: def?.phase ?? 3,
+          sort_order: r.sortOrder,
+          skills: [...(def?.skills ?? [])],
+          published_test_sets: n,
+          question_types: [...(def?.question_types ?? [])],
+        };
+      }),
+    );
   }
 
   async sections(program: string, level?: string): Promise<SectionRow[]> {

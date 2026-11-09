@@ -8,6 +8,7 @@ import { getLogger } from '../../../shared/telemetry/logger.js';
 import { UsersService } from '../../iam/index.js';
 import { AttemptsService } from '../../test-engine/index.js';
 import { ANALYTICS_SINK, analyticsSalt, hashUserId, type AnalyticsSink } from './analytics-sink.js';
+import { DEFAULT_PROGRAM } from '@allingo/schemas';
 
 type Props = Record<string, string | number | boolean | null>;
 const DEDUPE_TTL_SECONDS = 30 * 86_400;
@@ -64,7 +65,7 @@ export class FunnelService {
   async onGraded(ev: { payload: { attempt_id: string; user_id: string; program?: string; mode?: string; scaled_score?: number | null; total?: number }; created_at?: Date }): Promise<void> {
     const p = ev?.payload;
     if (!p?.attempt_id || !p.user_id) return;
-    const program = p.program ?? 'toeic';
+    const program = p.program ?? DEFAULT_PROGRAM;
     try {
       if (p.mode === 'diagnostic') await this.emit('diagnostic_done', p.user_id, `diagnostic_done:${p.attempt_id}`, { program, scaled_score: p.scaled_score ?? null, questions: p.total ?? null }, ev.created_at);
       const pos = await this.attempts.gradedPosition(p.user_id, program, p.attempt_id);

@@ -5,6 +5,7 @@ export { GuardrailsService, EXAM_LOCK_KEY, type GuardDecision } from './core/gua
 export { localGuard, redactPii, refusalCodeOf, foldText, type GuardCategory, type LocalGuardResult } from './core/guard-rules.js';
 export { createJsonFieldStreamer, type JsonFieldStreamer } from './core/json-field-stream.js';
 export { ExplanationCacheService } from './core/explanation-cache.service.js';
+export { explainChoiceKey } from './core/explain-key.js';
 export { TaskRegistry, bucket } from './core/task-registry.js';
 export { ModelRouter, type RouteCandidate } from './core/model-router.js';
 export { CircuitBreaker, type BreakerState } from './core/circuit-breaker.js';

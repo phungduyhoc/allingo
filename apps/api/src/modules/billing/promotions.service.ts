@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, ilike, inArray, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import {
+  DEFAULT_PROGRAM,
   DOMAIN_EVENTS,
   promotionConditionsSchema,
   type PromotionAdmin,
@@ -133,11 +134,11 @@ export class PromotionsService {
     const mode = opts.mode ?? (plan ? 'order' : 'redeem');
     if (!promo) return { promo, result: evaluatePromotion(null, { subtotal, now, userPaidUses: 0, mode }) };
     // S10: ẩn danh (validate trên /pricing) – chỉ điều kiện không phụ thuộc người dùng (A169)
-    if (!userId) return { promo, result: evaluatePromotion(promo, { mode, planId: plan ? plan.id : null, planKind: plan?.kind ?? null, planPrograms: plan?.programCodes ?? null, subtotal, now, userPaidUses: 0, activeReservations: await this.activeReservations(promo.id, now, db), program: opts.program ?? promo.conditions?.program_codes?.[0] ?? 'toeic' }) };
+    if (!userId) return { promo, result: evaluatePromotion(promo, { mode, planId: plan ? plan.id : null, planKind: plan?.kind ?? null, planPrograms: plan?.programCodes ?? null, subtotal, now, userPaidUses: 0, activeReservations: await this.activeReservations(promo.id, now, db), program: opts.program ?? promo.conditions?.program_codes?.[0] ?? DEFAULT_PROGRAM }) };
     const [uses, reserved, user] = await Promise.all([this.userUses(userId, promo.id, now, db), this.activeReservations(promo.id, now, db), this.userContext(userId, db)]);
     let trialUsed = false;
     let alreadyPro = false;
-    const program = opts.program ?? promo.conditions?.program_codes?.[0] ?? 'toeic';
+    const program = opts.program ?? promo.conditions?.program_codes?.[0] ?? DEFAULT_PROGRAM;
     if (promo.kind === 'trial_days') {
       trialUsed = await this.trialUsed(userId, db);
       alreadyPro = (await this.entitlements.getContext(userId, program)).isPro;
@@ -258,7 +259,7 @@ export class PromotionsService {
         const kind = promotionKind(promo.kind);
         await tx.update(billingPromotions).set({ usedCount: sql`${billingPromotions.usedCount} + 1` }).where(eq(billingPromotions.id, promo.id));
         if (kind === 'trial_days') {
-          const prog = program ?? promo.conditions?.program_codes?.[0] ?? 'toeic';
+          const prog = program ?? promo.conditions?.program_codes?.[0] ?? DEFAULT_PROGRAM;
           const planCode = promo.conditions?.trial_plan_code ?? `${prog}_pro_monthly`;
           const [plan] = await tx.select().from(billingPlans).where(eq(billingPlans.code, planCode)).limit(1);
           if (!plan) throw new Conflict('Trial plan is not configured', { reason: 'trial_plan_missing', plan_code: planCode });

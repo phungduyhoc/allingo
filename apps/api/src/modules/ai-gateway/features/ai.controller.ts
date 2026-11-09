@@ -29,7 +29,7 @@ export class AiController {
   @RateLimit('explain')
   @ApiZod({ body: explainInputSchema, responses: { 200: explanationSchema, 402: 'empty', 403: 'empty', 429: 'empty' } })
   async explainQuestion(@CurrentUser() user: AuthUser, @ZodBody(explainInputSchema) body: ExplainInput, @Req() req: FastifyRequest, @Res() reply: FastifyReply) {
-    const r = await this.explain.explain({ userId: user.id, questionVersionId: body.question_version_id, chosenOption: body.chosen_option ?? null, attemptId: body.attempt_id ?? null, traceId: (req as FastifyRequest & { traceId?: string }).traceId });
+    const r = await this.explain.explain({ userId: user.id, questionVersionId: body.question_version_id, chosenOption: body.chosen_option ?? null, attemptId: body.attempt_id ?? null, answer: body.answer ?? null, traceId: (req as FastifyRequest & { traceId?: string }).traceId });
     // JSON khi cache hit; SSE (start → delta* → result → done | error → done) khi sinh mới
     if (r.kind === 'json') return reply.status(200).send(r.explanation);
     await writeSse(reply, r.events, req);

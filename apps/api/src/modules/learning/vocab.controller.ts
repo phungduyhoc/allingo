@@ -3,6 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
 import {
+  DEFAULT_PROGRAM,
   dictionaryEntrySchema,
   dictionaryLookupQuerySchema,
   pageSchema,
@@ -27,7 +28,7 @@ import { ApiZod, ZodBody, ZodParams, ZodQuery } from '../../shared/http/zod.js';
 import { DictionaryService } from '../catalog/index.js';
 import { SrsService } from './srs.service.js';
 
-const programQuery = z.object({ program: programCodeSchema.default('toeic') });
+const programQuery = z.object({ program: programCodeSchema.default(DEFAULT_PROGRAM) });
 const listParam = z.object({ listId: z.uuid() });
 
 /**

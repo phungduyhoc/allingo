@@ -59,6 +59,10 @@ export interface TutorReferencedQuestion {
   correct_option: string | null;
   explanation: string | null;
   learner_choice: string | null;
+  /** C2: dạng nhiều mục (TFNG, nối, điền từ, gán nhãn) – mục đánh số; `correct`/`chosen` chỉ có khi reveal */
+  items?: Array<{ key: string; text: string; correct?: string; chosen?: string | null }>;
+  /** C2: hướng dẫn đề (giới hạn từ "NO MORE THAN TWO WORDS…") */
+  instructions?: string | null;
 }
 
 export interface TutorMistake {
@@ -116,6 +120,8 @@ export function referencedQuestionData(q: TutorReferencedQuestion, opts: { passa
     stem: cut(q.stem, STEM_CHARS),
     options: q.options.map((o) => ({ key: o.key, text: cut(o.text, 200) })),
   };
+  if (q.instructions) base.instructions = q.instructions;
+  if (q.items?.length) base.items = q.items.slice(0, 20).map((i) => (q.reveal ? { key: i.key, text: cut(i.text, 200), correct: i.correct, chosen: i.chosen ?? null } : { key: i.key, text: cut(i.text, 200) }));
   if (q.passage_excerpt && (opts.passageChars ?? PASSAGE_CHARS) > 0) base.passage_excerpt = cut(q.passage_excerpt, opts.passageChars ?? PASSAGE_CHARS);
   if (q.reveal) {
     base.correct_option = q.correct_option;

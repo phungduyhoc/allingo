@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { schema } from '@allingo/db';
 import {
+  DEFAULT_PROGRAM,
   DOMAIN_EVENTS,
   MINI_SEED_MAX,
   TOEIC_MINI_BLUEPRINT_60,
@@ -28,7 +29,7 @@ const { catalogSections, catalogSkills, catalogTestSets, catalogTestSetItems, ca
 
 /** POST /admin/test-sets/generate (v1.1 – Sprint 4) */
 export const generateTestSetInputSchema = z.object({
-  program: programCodeSchema.default('toeic'),
+  program: programCodeSchema.default(DEFAULT_PROGRAM),
   /** Bỏ trống → seed ngẫu nhiên (trả lại trong phản hồi để tạo lại đúng đề) */
   seed: z.number().int().min(0).max(MINI_SEED_MAX).optional(),
   /** Bỏ trống → blueprint mặc định của chương trình (TOEIC: 60 câu L&R) */

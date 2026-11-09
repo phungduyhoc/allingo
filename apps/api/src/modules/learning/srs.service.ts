@@ -4,6 +4,7 @@ import { schema } from '@allingo/db';
 import { FSRS_MODEL_VERSION, MIN_REVIEWS_FOR_OPTIMIZATION, fromStored, isMastered, optimizeWeights, previewIntervals, reviewCard, sanitizeWeights, type SrsOptions, type SrsRating, type StoredSrsCard } from '@allingo/fsrs';
 import { addDays, localDate, zonedDayStart } from '@allingo/planner';
 import {
+  DEFAULT_PROGRAM,
   XP_TABLE,
   correctAnswerOf,
   pickLocalized,
@@ -291,7 +292,7 @@ export class SrsService {
     let applied = 0;
     const flags = new Map<string, { duplicate: boolean }>();
     // S11: ngữ cảnh ngày học đọc TRƯỚC transaction (tránh deadlock pool)
-    const studyCtx = await this.gamification.studyDayContext(userId, programs[0] ?? 'toeic');
+    const studyCtx = await this.gamification.studyDayContext(userId, programs[0] ?? DEFAULT_PROGRAM);
     try {
       await this.dbs.db.transaction(async (tx) => {
         await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`gamification:${userId}`}))`);
@@ -323,7 +324,7 @@ export class SrsService {
           await this.gamification.awardXp(tx, userId, 'srs_review', XP_TABLE.srs_review, { type: 'srs_review', id: rev.id });
           applied++;
         }
-        if (applied > 0) await this.gamification.recordStudyDay(tx, userId, programs[0] ?? 'toeic', studyCtx);
+        if (applied > 0) await this.gamification.recordStudyDay(tx, userId, programs[0] ?? DEFAULT_PROGRAM, studyCtx);
       });
     } catch (err) {
       for (const t of tickets) await t.release();
@@ -335,7 +336,7 @@ export class SrsService {
     const payloads = await this.payloadsFor(userId, fresh, locale);
     const byId = new Map(fresh.map((c) => [c.id, c]));
     if (applied > 0) {
-      const summary = await this.dueSummary(userId, programs[0] ?? 'toeic').catch(() => ({ due_now: 0, new_available: 0, total: 0 }));
+      const summary = await this.dueSummary(userId, programs[0] ?? DEFAULT_PROGRAM).catch(() => ({ due_now: 0, new_available: 0, total: 0 }));
       const ev: SrsReviewedEvent = { user_id: userId, programs, reviewed: applied, due_now_left: summary.total };
       this.outbox.emitLocal(SRS_REVIEWED_EVENT, ev as unknown as Record<string, unknown>);
     }

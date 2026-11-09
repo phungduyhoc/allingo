@@ -1,8 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import { TOEIC_PART_SKILL } from '@allingo/scoring';
-import { grade, isAnswered, correctAnswerOf, type AiStreamEvent, type AnswerInput, type AttemptAiDiagnosis, type DiagnoseRlOutput, type ScoreBreakdown } from '@allingo/schemas';
+import { grade, isAnswered, isSpokenSection, correctAnswerOf, skillOfSection, type AiStreamEvent, type AnswerInput, type AttemptAiDiagnosis, type DiagnoseRlOutput, type ScoreBreakdown } from '@allingo/schemas';
 import { RedisService } from '../../shared/cache/redis.module.js';
 import { DbService } from '../../shared/db/db.module.js';
 import { AppError, Conflict, NotFound } from '../../shared/http/errors.js';
@@ -15,7 +14,6 @@ import { UsersService } from '../iam/index.js';
 const { learnAttempts, learnAttemptAnswers, catalogTestSets } = schema;
 
 /** Phần Listening Part 1/2: chữ của câu được đọc trong audio – không đưa vào prompt (A40) */
-const SPOKEN_SECTIONS = new Set(['part1', 'part2']);
 const MAX_WRONG_ITEMS = 5;
 const STEM_EXCERPT = 160;
 
@@ -92,7 +90,7 @@ export class AttemptDiagnosisService {
       const answer = (a?.answer as AnswerInput | null) ?? null;
       const ok = a?.isCorrect ?? grade(q.content, answer).is_correct;
       if (ok === null) continue;
-      skills.add((row.programCode === 'toeic' ? TOEIC_PART_SKILL[o.section_code] : undefined) ?? q.skill_code);
+      skills.add(skillOfSection(row.programCode, o.section_code) ?? q.skill_code);
       const keys = q.subskill_codes.length ? q.subskill_codes.map((s) => `${o.section_code}:${s}`) : [`${o.section_code}:${q.question_type}`];
       for (const k of keys) {
         const m = (byType[k] ??= { correct: 0, total: 0 });
@@ -100,7 +98,7 @@ export class AttemptDiagnosisService {
         if (ok) m.correct++;
       }
       if (!ok) {
-        const stem = 'stem' in q.content && typeof q.content.stem === 'string' && !SPOKEN_SECTIONS.has(o.section_code) ? q.content.stem.replace(/\s+/g, ' ').trim().slice(0, STEM_EXCERPT) : null;
+        const stem = 'stem' in q.content && typeof q.content.stem === 'string' && !isSpokenSection(row.programCode, o.section_code) ? q.content.stem.replace(/\s+/g, ' ').trim().slice(0, STEM_EXCERPT) : null;
         const chosen = answer && answer.type === 'mcq_single' ? answer.selected : isAnswered(answer) ? '(answered)' : null;
         wrong.push({ type: keys[0]!, section: o.section_code, question_type: q.question_type, stem_excerpt: stem || null, chosen, correct: correctAnswerOf(q.content), time_ms: a?.timeSpentMs ?? null, answered: isAnswered(answer) });
       }

@@ -3,7 +3,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import { isValidTimeZone, localDate, zonedDayStart, addDays } from '@allingo/planner';
-import { DOMAIN_EVENTS, XP_TABLE, levelForXp, type Badge, type XpKind } from '@allingo/schemas';
+import { DEFAULT_PROGRAM, DOMAIN_EVENTS, XP_TABLE, levelForXp, type Badge, type XpKind } from '@allingo/schemas';
 import { CLOCK, type Clock } from '../../../shared/clock/clock.module.js';
 import { DbService, type DbOrTx } from '../../../shared/db/db.module.js';
 import { OutboxService } from '../../../shared/events/outbox.service.js';
@@ -60,7 +60,7 @@ export class GamificationService {
   }
 
   /** Pro có quyền đóng băng chuỗi (entitlement streak_freeze) */
-  async canFreeze(userId: string, program = 'toeic'): Promise<boolean> {
+  async canFreeze(userId: string, program: string = DEFAULT_PROGRAM): Promise<boolean> {
     return (await this.gate.context(userId, program)).features.has('streak_freeze');
   }
 
@@ -122,7 +122,7 @@ export class GamificationService {
   /** attempt.graded → XP (một lần/attempt) + ngày học + huy hiệu. Idempotent (local + relay cùng tới). */
   async onAttemptGraded(p: AttemptGradedPayload): Promise<{ xp: number; awarded: string[] }> {
     if (!p?.attempt_id || !p.user_id) return { xp: 0, awarded: [] };
-    const program = p.program ?? 'toeic';
+    const program = p.program ?? DEFAULT_PROGRAM;
     const kind: XpKind = p.mode === 'diagnostic' ? 'diagnostic_completed' : p.mode === 'exam' && (p.total ?? 0) >= 100 ? 'attempt_full_test_submitted' : 'attempt_submitted';
     // S11: mọi đọc ngoài transaction làm TRƯỚC (deadlock pool khi tải cao – xem studyDayContext)
     const [pre, base] = await Promise.all([this.studyDayContext(p.user_id, program), this.badgeFactsBase(p.user_id, program)]);
@@ -193,7 +193,7 @@ export class GamificationService {
   }
 
   // ------------------------------------------------------------------ đọc
-  async streakView(userId: string, program = 'toeic') {
+  async streakView(userId: string, program: string = DEFAULT_PROGRAM) {
     const [{ today }, canFreeze, row] = await Promise.all([this.todayOf(userId), this.canFreeze(userId, program), this.dbs.db.select().from(learnStreaks).where(eq(learnStreaks.userId, userId)).limit(1).then((r) => r[0] ?? null)]);
     const s: StreakState | null = row ? { currentStreak: row.currentStreak, longestStreak: row.longestStreak, lastActiveDate: row.lastActiveDate ?? null, freezeAvailableAt: row.freezeAvailableAt ?? null, freezesUsed: row.freezesUsed } : null;
     return { ...effectiveStreak(s, today, canFreeze), last_active_date: s?.lastActiveDate ?? null, freezes_used: s?.freezesUsed ?? 0, today };

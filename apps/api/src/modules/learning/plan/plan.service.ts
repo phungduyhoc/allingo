@@ -2,7 +2,7 @@ import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { and, asc, desc, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import { suggestToeicTarget } from '@allingo/scoring';
+import { suggestTargetFor } from '@allingo/scoring';
 import {
   addDays,
   daysBetween,
@@ -17,7 +17,7 @@ import {
   type MasteryRow,
   type Weekday,
 } from '@allingo/planner';
-import { DOMAIN_EVENTS, JOB_NAMES, XP_TABLE, type PlanCreateInput, type PlanSettings, type PlanTask, type PlanTaskPatch, type PlanToday, type ProgramCode, type StudyPlan } from '@allingo/schemas';
+import { DEFAULT_PROGRAM, DOMAIN_EVENTS, programDef, JOB_NAMES, XP_TABLE, type PlanCreateInput, type PlanSettings, type PlanTask, type PlanTaskPatch, type PlanToday, type ProgramCode, type StudyPlan } from '@allingo/schemas';
 import { CLOCK, type Clock } from '../../../shared/clock/clock.module.js';
 import { DbService, type DbOrTx } from '../../../shared/db/db.module.js';
 import { OutboxService } from '../../../shared/events/outbox.service.js';
@@ -217,7 +217,8 @@ export class PlanService implements OnModuleInit {
     }
     const level = (enrollment.currentLevel ?? {}) as { overall?: number; low?: number; high?: number; source?: string };
     const baseline = typeof level.overall === 'number' ? { score: level.overall, low: level.low ?? null, high: level.high ?? null, source: level.source ?? 'diagnostic' } : null;
-    const suggestion = baseline?.score !== null && baseline?.score !== undefined && program === 'toeic' ? suggestToeicTarget({ current: baseline.score, today: settings.start_date, examDate: settings.exam_date, weeklyMinutes: settings.weekly_minutes, desired: settings.target_score }) : null;
+    // C1: gợi ý mục tiêu theo thang của chương trình (registry) – chỉ TOEIC có mô hình tốc độ tăng điểm
+    const suggestion = baseline?.score !== null && baseline?.score !== undefined ? suggestTargetFor(programDef(program)?.scale.kind ?? 'points', { current: baseline.score, today: settings.start_date, examDate: settings.exam_date, weeklyMinutes: settings.weekly_minutes, desired: settings.target_score }) : null;
     const strategy: StoredStrategy = {
       ...generated.strategy,
       settings,
@@ -390,7 +391,7 @@ export class PlanService implements OnModuleInit {
         if (SELF_REPORTED_TYPES.has(task.taskType) && !patch.result_ref?.attempt_id) {
           await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`gamification:${userId}`}))`);
           const xp = await this.gamification.awardXp(tx, userId, 'plan_task_done', XP_TABLE.plan_task_done, { type: 'plan_task', id: taskId });
-          if (xp) await this.gamification.recordStudyDay(tx, userId, (await this.enrollments.byIds([plan.enrollmentId]))[0]?.programCode ?? 'toeic');
+          if (xp) await this.gamification.recordStudyDay(tx, userId, (await this.enrollments.byIds([plan.enrollmentId]))[0]?.programCode ?? DEFAULT_PROGRAM);
         }
       }
       const [fresh] = await tx.select().from(learnPlanTasks).where(eq(learnPlanTasks.id, taskId));
@@ -468,7 +469,7 @@ export class PlanService implements OnModuleInit {
   async onLessonCompleted(ev: { payload: { user_id: string; lesson_id: string; program?: string } }): Promise<void> {
     const p = ev.payload;
     if (!p?.user_id || !p.lesson_id) return;
-    await this.completeMatching(p.user_id, p.program ?? 'toeic', { kind: 'lesson', id: p.lesson_id }, { lesson_id: p.lesson_id }).catch((err: Error) => this.logger.warn({ err: err.message }, 'lesson auto-complete failed'));
+    await this.completeMatching(p.user_id, p.program ?? DEFAULT_PROGRAM, { kind: 'lesson', id: p.lesson_id }, { lesson_id: p.lesson_id }).catch((err: Error) => this.logger.warn({ err: err.message }, 'lesson auto-complete failed'));
   }
 
   /**
@@ -493,7 +494,7 @@ export class PlanService implements OnModuleInit {
     }
     const ref = p.test_set_id ? { kind: 'test_set' as const, id: p.test_set_id } : p.section_id ? { kind: 'section' as const, id: p.section_id } : null;
     if (!ref) return null;
-    return this.completeMatching(p.user_id, p.program ?? 'toeic', ref, result, p.mode);
+    return this.completeMatching(p.user_id, p.program ?? DEFAULT_PROGRAM, ref, result, p.mode);
   }
 
   private async completeMatching(userId: string, program: string, ref: { kind: 'test_set' | 'section' | 'lesson'; id: string }, result: Record<string, unknown>, mode?: string): Promise<string | null> {

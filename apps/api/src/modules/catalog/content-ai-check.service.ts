@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { AiCheckReport, CheckQuestionOutput, QuestionContent } from '@allingo/schemas';
+import { describeQuestion, markCount, type AiCheckReport, type CheckQuestionOutput, type QuestionContent } from '@allingo/schemas';
 import { AiGatewayService } from '../ai-gateway/core/ai-gateway.service.js';
 import { ContentWorkflowService, type Actor } from './content-workflow.service.js';
 
@@ -8,6 +8,12 @@ export interface AiCheckResult {
   issues: Array<{ field?: string; severity: 'error' | 'warning'; message: string }>;
   report: CheckQuestionOutput;
   ai_task_id: string | null;
+}
+
+/** C2: tóm tắt định dạng cho check_question (mục `format_rules`): dạng, hướng dẫn giới hạn từ, số câu hỏi/lựa chọn */
+export function formatNotes(content: QuestionContent): string {
+  const d = describeQuestion(content);
+  return JSON.stringify({ format: content.type, instructions: d.instructions, numbered_items: markCount(content), shared_options: d.options.length, ...('allow_reuse' in content ? { allow_reuse: content.allow_reuse } : {}) });
 }
 
 /** AI kiểm tra câu hỏi (`check_question` qua AiGateway – CLAUDE.md §5.2); không trừ credit người dùng */
@@ -24,7 +30,7 @@ export class ContentAiCheckService {
       userId: null,
       chargeCredits: false,
       program: input.program,
-      variables: { program: input.program, section_code: input.section_code, question_type: input.content.type, difficulty_target: { level: input.difficulty_target ?? 'B1', irt_b: 0 }, section_rules: {}, item: input.content },
+      variables: { program: input.program, section_code: input.section_code, question_type: input.content.type, format_notes: formatNotes(input.content), difficulty_target: { level: input.difficulty_target ?? 'B1', irt_b: 0 }, section_rules: {}, item: input.content },
       inputRef: { purpose: 'content_check' },
     });
     return {

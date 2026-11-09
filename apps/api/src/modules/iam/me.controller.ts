@@ -45,9 +45,13 @@ export class MeController {
     if (body.ui_locale !== undefined) patch.uiLocale = body.ui_locale;
     if (body.explain_locale !== undefined) patch.explainLocale = body.explain_locale;
     if (body.timezone !== undefined) patch.timezone = body.timezone;
+    // C1: chương trình đang học lưu tường minh (iam.users.active_program); enrollment tạo nếu chưa có – mục tiêu/ngày thi giữ nguyên
+    if (body.active_program) {
+      patch.activeProgram = body.active_program;
+      await this.enrollments.activate(user.id, body.active_program);
+    }
     const row = Object.keys(patch).length ? await this.users.update(user.id, patch) : await this.users.findById(user.id);
     if (!row) throw new NotFound('user', user.id);
-    if (body.active_program) await this.enrollments.upsert(user.id, { program: body.active_program });
     return this.users.toDto(row);
   }
 
@@ -92,21 +96,23 @@ export class MeController {
 
   @Get('enrollments')
   @ApiZod({ responses: { 200: z.array(enrollmentSchema) } })
-  listEnrollments(@CurrentUser() user: AuthUser) {
-    return this.enrollments.list(user.id);
+  async listEnrollments(@CurrentUser() user: AuthUser) {
+    return this.enrollments.list(user.id, await this.users.activeProgram(user.id));
   }
 
   @Post('enrollments')
   @HttpCode(201)
   @ApiZod({ body: enrollmentInputSchema, responses: { 201: enrollmentSchema } })
-  createEnrollment(@CurrentUser() user: AuthUser, @ZodBody(enrollmentInputSchema) body: EnrollmentInput) {
-    return this.enrollments.upsert(user.id, body);
+  async createEnrollment(@CurrentUser() user: AuthUser, @ZodBody(enrollmentInputSchema) body: EnrollmentInput) {
+    const e = await this.enrollments.upsert(user.id, body);
+    return { ...e, is_current: (await this.users.activeProgram(user.id)) === e.program };
   }
 
   @Patch('enrollments/:program')
   @ApiZod({ body: enrollmentInputSchema.partial(), responses: { 200: enrollmentSchema } })
-  patchEnrollment(@CurrentUser() user: AuthUser, @ZodParams(programParam) params: z.infer<typeof programParam>, @ZodBody(enrollmentInputSchema.partial()) body: Partial<EnrollmentInput>) {
-    return this.enrollments.patch(user.id, params.program, { ...body, program: params.program });
+  async patchEnrollment(@CurrentUser() user: AuthUser, @ZodParams(programParam) params: z.infer<typeof programParam>, @ZodBody(enrollmentInputSchema.partial()) body: Partial<EnrollmentInput>) {
+    const e = await this.enrollments.patch(user.id, params.program, { ...body, program: params.program });
+    return { ...e, is_current: (await this.users.activeProgram(user.id)) === e.program };
   }
 }
 

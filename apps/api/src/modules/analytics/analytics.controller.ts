@@ -2,13 +2,13 @@ import { Controller, Get, HttpCode, Post, Req } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { funnelEventInputSchema, funnelEventResultSchema, programCodeSchema, statsSchema, type FunnelEventInput } from '@allingo/schemas';
+import { DEFAULT_PROGRAM, funnelEventInputSchema, funnelEventResultSchema, programCodeSchema, statsSchema, type FunnelEventInput } from '@allingo/schemas';
 import { CurrentUser, Public, type AuthUser } from '../../shared/auth/auth.guard.js';
 import { ApiZod, ZodBody, ZodQuery } from '../../shared/http/zod.js';
 import { FunnelService } from './funnel/funnel.service.js';
 import { StatsService } from './stats.service.js';
 
-const programQuery = z.object({ program: programCodeSchema.default('toeic') });
+const programQuery = z.object({ program: programCodeSchema.default(DEFAULT_PROGRAM) });
 
 /** GET /me/stats (S10 – đọc replica, cache 1 giờ) và POST /analytics/events (sự kiện phễu client có đồng ý cookie) */
 @Controller()

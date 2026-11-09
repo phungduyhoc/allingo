@@ -4,13 +4,12 @@ import { schema } from '@allingo/db';
 import {
   DiagnosticRuleError,
   TOEIC_DIAGNOSTIC_BLUEPRINT,
-  TOEIC_PART_SKILL,
   buildDiagnosticPool,
   diagnosticAdvance,
   estimateToeicDiagnostic,
   initDiagnosticState,
   masteryFromDiagnostic,
-  suggestToeicTarget,
+  suggestTargetFor,
   type DiagnosticBlueprintEntry,
   type DiagnosticEstimate,
   type DiagnosticItem,
@@ -18,7 +17,7 @@ import {
   type DiagnosticState,
 } from '@allingo/scoring';
 import { localDate } from '@allingo/planner';
-import { grade, type AnswerInput, type DiagnosticResult, type DiagnosticStep, type ProgramCode } from '@allingo/schemas';
+import { grade, programDef, skillOfSection, type AnswerInput, type DiagnosticResult, type DiagnosticStep, type ProgramCode } from '@allingo/schemas';
 import { CLOCK, type Clock } from '../../../shared/clock/clock.module.js';
 import { DbService } from '../../../shared/db/db.module.js';
 import { Conflict, NotFound } from '../../../shared/http/errors.js';
@@ -34,6 +33,11 @@ const { learnSkillMastery } = schema;
 function genericBlueprint(pool: DiagnosticPool): DiagnosticBlueprintEntry[] {
   return [...pool.entries()].map(([section_code, units]) => ({ section_code, units: Math.min(3, units.length) }));
 }
+
+/** C1: chương trình chưa có mô hình ước tính thang điểm (registry `diagnostic = generic`) → ước tính rỗng, chỉ đếm câu đã làm */
+const emptyEstimate = (answered: number): DiagnosticResult['estimate'] => ({ score: null, se: null, low: null, high: null, listening: null, reading: null, answered, estimated: true });
+/** Chương trình có blueprint + ước tính TOEIC L&R (S9) */
+const isToeicDiagnostic = (program: string) => programDef(program)?.diagnostic === 'toeic_lr';
 
 function toEstimateDto(e: DiagnosticEstimate): DiagnosticResult['estimate'] {
   const L = e.by_skill.listening;
@@ -80,14 +84,14 @@ export class DiagnosticService {
   }
 
   private itemsOf(questions: Map<string, LoadedQuestion>): DiagnosticItem[] {
-    return [...questions.values()].map((q) => ({ question_id: q.question_id, section_code: q.section_code, skill: TOEIC_PART_SKILL[q.section_code] ?? q.skill_code, group_key: q.group_key, subskills: q.subskill_codes, difficulty: q.difficulty, order: q.order_no }));
+    return [...questions.values()].map((q) => ({ question_id: q.question_id, section_code: q.section_code, skill: skillOfSection(q.program_code, q.section_code) ?? q.skill_code, group_key: q.group_key, subskills: q.subskill_codes, difficulty: q.difficulty, order: q.order_no }));
   }
 
   /** Một bước: không có `answer` → trả câu đang chờ (hoặc câu đầu tiên); có → chấm, đổi mức theo luật, chọn câu kế tiếp */
   async step(userId: string, attemptId: string, answer?: { question_id: string; answer: AnswerInput; time_spent_ms?: number }): Promise<DiagnosticStep> {
     const r = await this.attempts.adaptiveStep(userId, attemptId, (ctx) => {
       const pool = buildDiagnosticPool(this.itemsOf(ctx.questions));
-      const blueprint = ctx.attempt.program === 'toeic' ? TOEIC_DIAGNOSTIC_BLUEPRINT : genericBlueprint(pool);
+      const blueprint = isToeicDiagnostic(ctx.attempt.program) ? TOEIC_DIAGNOSTIC_BLUEPRINT : genericBlueprint(pool);
       let state = (ctx.draft.adaptive) ?? null;
       const base = { program: ctx.attempt.program, questions: ctx.questions, open: ctx.attempt.open };
       if (!ctx.attempt.open) {
@@ -134,7 +138,7 @@ export class DiagnosticService {
       done: !!state?.done,
       next_question: pub ? (pub) : null,
       progress: { answered: answered.length, served: state?.served.length ?? 0, planned: Math.max(state?.planned ?? 0, state?.served.length ?? 0), section_code: current?.section_code ?? null, level: servedNow?.level ?? null, group_remaining: state?.queue.length ?? 0 },
-      estimate: answered.length && r.program === 'toeic' ? toEstimateDto(estimateToeicDiagnostic(state!.served)) : null,
+      estimate: answered.length && isToeicDiagnostic(r.program) ? toEstimateDto(estimateToeicDiagnostic(state!.served)) : null,
       last_correct: r.lastCorrect,
       result,
     };
@@ -142,7 +146,9 @@ export class DiagnosticService {
 
   /** Kết quả cuối (idempotent): mastery theo subskill + current_level + gợi ý mục tiêu */
   async finalize(userId: string, attemptId: string, program: ProgramCode, state: DiagnosticState): Promise<DiagnosticResult> {
-    const estimate = estimateToeicDiagnostic(state.served);
+    const toeic = isToeicDiagnostic(program);
+    const estimate = toeic ? estimateToeicDiagnostic(state.served) : null;
+    const answeredCount = state.served.filter((s) => s.correct !== null).length;
     const mastery = masteryFromDiagnostic(state.served);
     const enrollment = await this.enrollments.ensure(userId, program);
     const level = (enrollment.currentLevel ?? {}) as { attempt_id?: string };
@@ -158,18 +164,30 @@ export class DiagnosticService {
             .values({ userId, programCode: program, subskillId, mastery: String(m.mastery), confidence: String(m.confidence), nObs: m.n_obs, updatedAt: now })
             .onConflictDoUpdate({ target: [learnSkillMastery.userId, learnSkillMastery.subskillId], set: { mastery: sql`excluded.mastery`, confidence: sql`excluded.confidence`, nObs: sql`excluded.n_obs`, programCode: sql`excluded.program_code`, updatedAt: sql`excluded.updated_at` } });
         }
-        await this.enrollments.setCurrentLevel(userId, program, { overall: estimate.total?.score ?? null, listening: estimate.by_skill.listening?.score ?? null, reading: estimate.by_skill.reading?.score ?? null, low: estimate.total?.low ?? null, high: estimate.total?.high ?? null, source: 'diagnostic', attempt_id: attemptId, estimated_at: now.toISOString() }, tx);
+        await this.enrollments.setCurrentLevel(userId, program, { overall: estimate?.total?.score ?? null, listening: estimate?.by_skill.listening?.score ?? null, reading: estimate?.by_skill.reading?.score ?? null, low: estimate?.total?.low ?? null, high: estimate?.total?.high ?? null, source: 'diagnostic', attempt_id: attemptId, estimated_at: now.toISOString() }, tx);
       });
-      this.logger.info({ attempt_id: attemptId, answered: estimate.answered, subskills: mastery.length }, 'diagnostic finalized');
+      this.logger.info({ attempt_id: attemptId, answered: answeredCount, subskills: mastery.length }, 'diagnostic finalized');
     }
     const tree = await this.plans.currentTree(userId, program);
     const { today } = await this.plans.userCtx(userId);
     const fresh = await this.enrollments.get(userId, program);
     const weekly = tree?.strategy.settings.weekly_minutes ?? (fresh?.dailyMinutes ?? 30) * 7;
-    const target = suggestToeicTarget({ current: estimate.total?.score ?? 10, today: today ?? localDate(this.clock.now(), 'Asia/Ho_Chi_Minh'), examDate: fresh?.examDate ?? null, weeklyMinutes: weekly, desired: fresh?.targetScore !== null && fresh?.targetScore !== undefined ? Number(fresh.targetScore) : null });
+    const desired = fresh?.targetScore !== null && fresh?.targetScore !== undefined ? Number(fresh.targetScore) : null;
+    // C1: gợi ý mục tiêu chỉ khi chương trình có mô hình tốc độ tăng điểm (TOEIC); còn lại giữ mục tiêu người học
+    const def = programDef(program);
+    const target = (estimate && suggestTargetFor(def?.scale.kind ?? 'points', { current: estimate.total?.score ?? 10, today: today ?? localDate(this.clock.now(), 'Asia/Ho_Chi_Minh'), examDate: fresh?.examDate ?? null, weeklyMinutes: weekly, desired })) || {
+      current: 0,
+      suggested: desired ?? def?.target.default ?? 0,
+      desired,
+      feasible: null,
+      weeks_left: fresh?.examDate ? Math.max(0, Math.ceil((new Date(fresh.examDate).getTime() - this.clock.now()) / (7 * 86_400_000))) : 0,
+      weekly_minutes: weekly,
+      required_weekly_minutes: null,
+      reason: (desired === null ? 'no_target' : fresh?.examDate ? 'stretch' : 'no_exam_date') as DiagnosticResult['target']['reason'],
+    };
     return {
       attempt_id: attemptId,
-      estimate: toEstimateDto(estimate),
+      estimate: estimate ? toEstimateDto(estimate) : emptyEstimate(answeredCount),
       mastery: mastery.map((m) => ({ subskill: m.subskill, skill: m.skill, mastery: m.mastery, confidence: m.confidence, n_obs: m.n_obs })),
       target: { current: target.current, suggested: target.suggested, desired: target.desired, feasible: target.feasible, weeks_left: target.weeks_left, weekly_minutes: target.weekly_minutes, required_weekly_minutes: target.required_weekly_minutes, reason: target.reason },
     };

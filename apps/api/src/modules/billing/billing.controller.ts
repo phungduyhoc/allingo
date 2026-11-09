@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import {
+  DEFAULT_PROGRAM,
   creditBalanceSchema,
   cursorQuerySchema,
   entitlementsSchema,
@@ -40,7 +41,7 @@ import { SubscriptionsService } from './subscriptions.service.js';
 /** S10: POST /promotions/validate ẩn danh – lượt/phút/IP */
 const ANON_VALIDATE_PER_MINUTE = 30;
 
-const programQuery = z.object({ program: programCodeSchema.default('toeic') });
+const programQuery = z.object({ program: programCodeSchema.default(DEFAULT_PROGRAM) });
 const plansQuery = z.object({ program: programCodeSchema.optional(), region: z.string().max(8).default('VN') });
 const subParam = z.object({ subscriptionId: z.uuid() });
 

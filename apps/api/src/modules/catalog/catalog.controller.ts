@@ -1,22 +1,23 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Req } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import { gateForTestSetKind, pageSchema, programCodeSchema, programSchema, sectionSchema, testSetListQuerySchema, testSetSchema, testSetSummarySchema, type TestSetSummary } from '@allingo/schemas';
+import { DEFAULT_PROGRAM, gateForTestSetKind, pageSchema, programCodeSchema, programDef, programSchema, sectionSchema, testSetListQuerySchema, testSetSchema, testSetSummarySchema, type TestSetSummary } from '@allingo/schemas';
 import { CurrentUser, Public, type AuthUser } from '../../shared/auth/auth.guard.js';
 import { DbService } from '../../shared/db/db.module.js';
 import { NotFound } from '../../shared/http/errors.js';
 import { encodeCursor, decodeCursor } from '../../shared/http/cursor.js';
 import { ApiZod, ZodParams, ZodQuery } from '../../shared/http/zod.js';
-import { FeatureGateService } from '../billing/index.js';
+import { FeatureFlagService, FeatureGateService } from '../billing/index.js';
 import { CatalogQueryService } from './catalog-query.service.js';
 
 const programParam = z.object({ program: programCodeSchema });
 const levelQuery = z.object({ level: z.string().max(16).optional() });
 const idParam = z.object({ testSetId: z.uuid() });
 const lessonParam = z.object({ lessonId: z.uuid() });
-const programQuery = z.object({ program: programCodeSchema.default('toeic') });
+const programQuery = z.object({ program: programCodeSchema.default(DEFAULT_PROGRAM) });
 
 @ApiTags('Catalog')
 @Controller()
@@ -25,13 +26,20 @@ export class CatalogController {
     private readonly catalog: CatalogQueryService,
     private readonly gate: FeatureGateService,
     private readonly dbs: DbService,
+    private readonly flags: FeatureFlagService,
   ) {}
 
+  /** C1: kèm `status` (available | coming_soon) theo cờ ra mắt `ff.catalog.program.<code>` + số đề đã phát hành */
   @Public()
   @Get('programs')
   @ApiZod({ responses: { 200: z.array(programSchema) } })
-  programs() {
-    return this.catalog.programs();
+  programs(@Req() req: FastifyRequest & { user?: { id: string } }) {
+    // Công khai: có phiên → cờ đánh giá theo người dùng (rollout), ẩn danh → theo cấu hình chung (như GET /flags)
+    const userId = req.user?.id ?? null;
+    return this.catalog.programs(async (program) => {
+      const flag = programDef(program)?.launch_flag ?? null;
+      return flag === null || this.flags.isEnabled(flag, { userId, program }, false);
+    });
   }
 
   @Public()

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { addDays, localDate, zonedDayStart } from '@allingo/planner';
+import { DEFAULT_PROGRAM } from '@allingo/schemas';
 import { CLOCK, type Clock } from '../../shared/clock/clock.module.js';
 import { getLogger } from '../../shared/telemetry/logger.js';
 import { NotificationService } from '../growth/index.js';
@@ -48,18 +49,18 @@ export class WeeklySummaryService {
     return { weekStart, from: zonedDayStart(weekStart, VN_TZ), to: zonedDayStart(thisMonday, VN_TZ) };
   }
 
-  async summaries(from: Date, to: Date, limit: number, userIds?: string[], dedupeKey?: string): Promise<Array<{ userId: string; data: Omit<WeeklySummaryData, 'week_start' | 'program'> }>> {
+  async summaries(from: Date, to: Date, limit: number, userIds?: string[], dedupeKey?: string): Promise<Array<{ userId: string; program: string; data: Omit<WeeklySummaryData, 'week_start' | 'program'> }>> {
     const onlyUsers = userIds?.length ? sql`and u.id = any(${`{${userIds.join(',')}}`}::uuid[])` : sql``;
     // Đã gửi tuần này (mọi kênh) → bỏ qua, để lần chạy sau tiếp tục người kế tiếp
     const notSent = dedupeKey ? sql`and not exists (select 1 from ops.notifications n where n.user_id = u.id and n.template_code = 'learning.weekly_summary' and n.payload ->> 'dedupe_key' = ${dedupeKey})` : sql``;
     const rows = await this.store.read((tx) =>
-      tx.execute<{ user_id: string; sec: number; attempts: number; reviews: number; words: number; xp: number; streak: number; estimate: string | null; errors_open: number; errors_resolved: number }>(sql`
+      tx.execute<{ user_id: string; program: string; sec: number; attempts: number; reviews: number; words: number; xp: number; streak: number; estimate: string | null; errors_open: number; errors_resolved: number }>(sql`
         with active as (
           select a.user_id from learn.attempts a where a.status = 'graded' and a.submitted_at >= ${from.toISOString()}::timestamptz and a.submitted_at < ${to.toISOString()}::timestamptz
           union
           select c.user_id from learn.srs_reviews r join learn.srs_cards c on c.id = r.card_id where r.reviewed_at >= ${from.toISOString()}::timestamptz and r.reviewed_at < ${to.toISOString()}::timestamptz
         )
-        select u.id as user_id,
+        select u.id as user_id, p.program,
                coalesce((select sum(a.time_spent_sec) from learn.attempts a where a.user_id = u.id and a.status = 'graded' and a.submitted_at >= ${from.toISOString()}::timestamptz and a.submitted_at < ${to.toISOString()}::timestamptz), 0)::int as sec,
                (select count(*) from learn.attempts a where a.user_id = u.id and a.status = 'graded' and a.submitted_at >= ${from.toISOString()}::timestamptz and a.submitted_at < ${to.toISOString()}::timestamptz)::int as attempts,
                (select count(*) from learn.srs_reviews r join learn.srs_cards c on c.id = r.card_id where c.user_id = u.id and r.reviewed_at >= ${from.toISOString()}::timestamptz and r.reviewed_at < ${to.toISOString()}::timestamptz)::int as reviews,
@@ -67,16 +68,19 @@ export class WeeklySummaryService {
                   and not exists (select 1 from learn.srs_reviews r0 where r0.card_id = r.card_id and r0.reviewed_at < ${from.toISOString()}::timestamptz))::int as words,
                coalesce((select sum(x.amount) from learn.xp_events x where x.user_id = u.id and x.created_at >= ${from.toISOString()}::timestamptz and x.created_at < ${to.toISOString()}::timestamptz), 0)::int as xp,
                coalesce((select s.current_streak from learn.streaks s where s.user_id = u.id), 0)::int as streak,
-               (select a.scaled_score from learn.attempts a where a.user_id = u.id and a.status = 'graded' and a.scaled_score is not null and a.mode not in ('drill','timed_drill') order by a.submitted_at desc limit 1) as estimate,
+               (select a.scaled_score from learn.attempts a where a.user_id = u.id and a.program_code = p.program and a.status = 'graded' and a.scaled_score is not null and a.mode not in ('drill','timed_drill') order by a.submitted_at desc limit 1) as estimate,
                (select count(*) from learn.error_log_entries e where e.user_id = u.id and e.resolved_at is null)::int as errors_open,
                (select count(*) from learn.error_log_entries e where e.user_id = u.id and e.resolved_at >= ${from.toISOString()}::timestamptz and e.resolved_at < ${to.toISOString()}::timestamptz)::int as errors_resolved
           from iam.users u join active on active.user_id = u.id
+          -- C1: chương trình đang học (iam.users.active_program → enrollment active gần nhất → mặc định) – ước tính điểm theo đúng thang
+          cross join lateral (select coalesce(u.active_program, (select e.program_code from learn.enrollments e where e.user_id = u.id and e.is_active order by e.updated_at desc limit 1), ${DEFAULT_PROGRAM}) as program) p
          where u.is_guest = false and u.status = 'active' ${onlyUsers} ${notSent}
          order by u.id
          limit ${limit}`),
     );
     return [...rows].map((r) => ({
       userId: r.user_id,
+      program: r.program,
       data: { minutes: Math.round((Number(r.sec) + Number(r.reviews) * SRS_REVIEW_SECONDS) / 60), attempts: Number(r.attempts), reviews: Number(r.reviews), words_learned: Number(r.words), xp: Number(r.xp), streak: Number(r.streak), estimate: r.estimate !== null ? Number(r.estimate) : null, errors_open: Number(r.errors_open), errors_resolved: Number(r.errors_resolved) },
     }));
   }
@@ -89,7 +93,7 @@ export class WeeklySummaryService {
     let skipped = 0;
     for (const s of list) {
       try {
-        const r = await this.notify.send(s.userId, 'learning.weekly_summary', { ...s.data, week_start: weekStart, program: 'toeic' }, { dedupeKey: `weekly:${weekStart}`, now });
+        const r = await this.notify.send(s.userId, 'learning.weekly_summary', { ...s.data, week_start: weekStart, program: s.program }, { dedupeKey: `weekly:${weekStart}`, now });
         if (r.results.some((x) => x.status === 'sent' || x.status === 'scheduled')) sent++;
         else skipped++;
       } catch (err) {

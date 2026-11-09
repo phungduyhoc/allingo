@@ -1,13 +1,13 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { badgeListSchema, forecastSchema, programCodeSchema } from '@allingo/schemas';
+import { DEFAULT_PROGRAM, badgeListSchema, forecastSchema, programCodeSchema } from '@allingo/schemas';
 import { CurrentUser, type AuthUser } from '../../shared/auth/auth.guard.js';
 import { ApiZod, ZodQuery } from '../../shared/http/zod.js';
 import { ForecastService } from './forecast/forecast.service.js';
 import { GamificationService } from './gamification/gamification.service.js';
 
-const programQuery = z.object({ program: programCodeSchema.default('toeic') });
+const programQuery = z.object({ program: programCodeSchema.default(DEFAULT_PROGRAM) });
 
 /** GET /me/badges (S9), GET /me/forecast (S10 v0). GET /me/stats chuyển sang module analytics (đọc replica, cache) ở S10. */
 @ApiTags('Learning')
