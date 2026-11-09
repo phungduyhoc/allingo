@@ -3,7 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { schema } from '@allingo/db';
 import { addDays, localDate, zonedDayStart } from '@allingo/planner';
 import { SCALE_INFO } from '@allingo/scoring';
-import { scorePartOf, type Forecast, type ProgramCode } from '@allingo/schemas';
+import { scaledPartsOf, scorePartOf, type Forecast, type ProgramCode } from '@allingo/schemas';
 import { CLOCK, type Clock } from '../../../shared/clock/clock.module.js';
 import { DbService } from '../../../shared/db/db.module.js';
 import { EnrollmentsService, UsersService } from '../../iam/index.js';
@@ -39,7 +39,8 @@ export class ForecastService {
     const since = now - FORECAST_WINDOW_DAYS * 86_400_000;
     const points = history
       // S12 (fix web S10): chỉ điểm thang tổng (mini một kỹ năng 5–495 không trộn vào dự báo 10–990)
-      .filter((a) => a.scaled !== null && a.submittedAt && a.submittedAt.getTime() >= since && a.mode !== 'drill' && a.mode !== 'timed_drill' && scorePartOf((a.breakdown as { scaled?: { total?: number | null; listening?: number | null; reading?: number | null } | null } | null)?.scaled ?? null) === 'total')
+      // C3: IELTS – chỉ overall (đủ 4 kỹ năng); band một kỹ năng không trộn vào dự báo overall
+      .filter((a) => a.scaled !== null && a.submittedAt && a.submittedAt.getTime() >= since && a.mode !== 'drill' && a.mode !== 'timed_drill' && scorePartOf(scaledPartsOf(a.breakdown as Parameters<typeof scaledPartsOf>[0])) === 'total')
       .map((a) => ({ at: a.submittedAt!.getTime(), score: Number(a.scaled) }));
     const today = localDate(now, tz);
     const examDate = enrollment?.examDate && enrollment.examDate > today ? enrollment.examDate : null;

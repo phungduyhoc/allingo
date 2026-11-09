@@ -2,7 +2,7 @@ import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { and, asc, desc, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import { suggestTargetFor } from '@allingo/scoring';
+import { ieltsRoundOverall, suggestTargetFor } from '@allingo/scoring';
 import {
   addDays,
   daysBetween,
@@ -215,9 +215,12 @@ export class PlanService implements OnModuleInit {
       this.logger.error({ violations: violations.slice(0, 5) }, 'generated plan violates constraints');
       throw new Error('plan generator produced an invalid plan');
     }
-    const level = (enrollment.currentLevel ?? {}) as { overall?: number; low?: number; high?: number; source?: string };
-    const baseline = typeof level.overall === 'number' ? { score: level.overall, low: level.low ?? null, high: level.high ?? null, source: level.source ?? 'diagnostic' } : null;
-    // C1: gợi ý mục tiêu theo thang của chương trình (registry) – chỉ TOEIC có mô hình tốc độ tăng điểm
+    const level = (enrollment.currentLevel ?? {}) as { overall?: number; listening?: number; reading?: number; low?: number; high?: number; source?: string };
+    // C3: thang band (IELTS) – chẩn đoán không có overall (cần đủ 4 kỹ năng) → mốc = trung bình band Listening/Reading đã ước tính
+    const bands = [level.listening, level.reading].filter((x): x is number => typeof x === 'number');
+    const bandMean = programDef(program)?.scale.kind === 'band' && bands.length ? ieltsRoundOverall(bands.reduce((a, b) => a + b, 0) / bands.length) : null;
+    const baseline = typeof level.overall === 'number' ? { score: level.overall, low: level.low ?? null, high: level.high ?? null, source: level.source ?? 'diagnostic' } : bandMean !== null ? { score: bandMean, low: null, high: null, source: level.source ?? 'diagnostic' } : null;
+    // C1: gợi ý mục tiêu theo thang của chương trình (registry) – TOEIC và band IELTS (C3) có mô hình tốc độ tăng điểm
     const suggestion = baseline?.score !== null && baseline?.score !== undefined ? suggestTargetFor(programDef(program)?.scale.kind ?? 'points', { current: baseline.score, today: settings.start_date, examDate: settings.exam_date, weeklyMinutes: settings.weekly_minutes, desired: settings.target_score }) : null;
     const strategy: StoredStrategy = {
       ...generated.strategy,

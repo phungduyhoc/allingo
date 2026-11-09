@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ieltsListeningBand, ieltsReadingBand, scoreByProgram, suggestTargetFor, targetBucketFor, toeicLrEstimate } from '../src/index.js';
+import { estimateIeltsDiagnostic, suggestBandTarget, ieltsListeningBand, ieltsReadingBand, scoreByProgram, suggestTargetFor, targetBucketFor, toeicLrEstimate } from '../src/index.js';
 
 const toeicSkill = (code: string) => (/^part[1-4]$/.test(code) ? 'listening' : /^part[5-7]$/.test(code) ? 'reading' : null);
 const ieltsSkill = (code: string) => (code.startsWith('listening_') ? 'listening' : code.startsWith('reading_') ? 'reading' : null);
@@ -84,9 +84,45 @@ describe('targetBucketFor / suggestTargetFor', () => {
     expect(targetBucketFor('band', null)).toBeNull();
     expect(targetBucketFor('toeic_lr', Number.NaN)).toBeNull();
   });
-  it('gợi ý mục tiêu chỉ có cho TOEIC', () => {
-    const input = { estimate: 500, examDate: '2027-03-01', today: '2026-11-09', minutesPerDay: 30 } as unknown as Parameters<typeof suggestTargetFor>[1];
-    expect(suggestTargetFor('band', input)).toBeNull();
+  it('gợi ý mục tiêu: TOEIC và band (C3); thang points chưa có mô hình', () => {
+    const input = { current: 5.5, examDate: '2027-03-01', today: '2026-11-09', weeklyMinutes: 300 };
+    expect(suggestTargetFor('band', input)).toMatchObject({ current: 5.5 });
     expect(suggestTargetFor('points', input)).toBeNull();
+  });
+});
+
+describe('C3 – suggestBandTarget / estimateIeltsDiagnostic', () => {
+  it('nhiều tuần + nhiều phút → band cao hơn, làm tròn xuống 0,5, không vượt 9, không thấp hơn hiện tại', () => {
+    const few = suggestBandTarget({ current: 5.5, today: '2026-11-09', examDate: '2026-11-23', weeklyMinutes: 60 });
+    const many = suggestBandTarget({ current: 5.5, today: '2026-11-09', examDate: '2027-05-09', weeklyMinutes: 600 });
+    expect(few.suggested).toBe(5.5);
+    expect(many.suggested).toBeGreaterThan(5.5);
+    expect(many.suggested * 2).toBe(Math.round(many.suggested * 2));
+    expect(suggestBandTarget({ current: 8.5, today: '2026-11-09', examDate: '2028-11-09', weeklyMinutes: 2000 }).suggested).toBeLessThanOrEqual(9);
+  });
+  it('mục tiêu mong muốn: feasible / stretch (phút cần) / unreachable; không có ngày thi → 12 tuần', () => {
+    const base = { current: 5.5, today: '2026-11-09', examDate: '2027-02-01', weeklyMinutes: 180 };
+    expect(suggestBandTarget({ ...base, desired: 5.5 })).toMatchObject({ feasible: true, reason: 'feasible' });
+    const stretch = suggestBandTarget({ ...base, desired: 6.5 });
+    expect(stretch.feasible).toBe(false);
+    expect(['stretch', 'unreachable']).toContain(stretch.reason);
+    if (stretch.reason === 'stretch') expect(stretch.required_weekly_minutes).toBeGreaterThan(180);
+    expect(suggestBandTarget({ ...base, desired: 9 }).reason).toBe('unreachable');
+    expect(suggestBandTarget({ ...base, examDate: null }).weeks_left).toBe(12);
+  });
+  it('ước tính band chẩn đoán theo kỹ năng, khoảng ±1 khi < 10 câu, current = trung bình L/R', () => {
+    const served = [
+      ...Array.from({ length: 8 }, (_, i) => ({ skill: 'listening', correct: i < 6 })),
+      ...Array.from({ length: 12 }, (_, i) => ({ skill: 'reading', correct: i < 9 })),
+      { skill: 'reading', correct: null },
+    ];
+    const e = estimateIeltsDiagnostic(served);
+    expect(e.listening).toEqual({ score: ieltsListeningBand(6, 8), low: ieltsListeningBand(6, 8) - 1, high: ieltsListeningBand(6, 8) + 1 });
+    expect(e.reading?.score).toBe(ieltsReadingBand(9, 12));
+    expect(e.reading).not.toBeNull();
+    expect(e.reading!.high - e.reading!.low).toBe(1);
+    expect(e.answered).toBe(20);
+    expect(e.current).not.toBeNull();
+    expect(estimateIeltsDiagnostic([]).current).toBeNull();
   });
 });

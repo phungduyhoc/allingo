@@ -19,7 +19,7 @@ import type { ResolvedTask } from './types.js';
 
 const { aiEvalSets, aiEvalItems, aiEvalRuns, aiEvalRunItems, aiPromptVersions } = schema;
 
-/** Một dòng eval/data/explain_mcq_v1.jsonl */
+/** Một dòng eval/data/explain_mcq_v1.jsonl (C3/S169: cả explain_mcq_ielts_v1.jsonl – dạng nhiều mục có `items`, có thể < 2 lựa chọn) */
 export const explainEvalLineSchema = z.object({
   key: z.string().min(1),
   vars: z.object({
@@ -30,7 +30,10 @@ export const explainEvalLineSchema = z.object({
     explanation_seed: z.string().default(''),
     related_codes: z.array(z.string()).default([]),
     stem: z.string(),
-    options: z.array(z.object({ key: z.string(), text: z.string() })).min(2),
+    options: z.array(z.object({ key: z.string(), text: z.string() })).default([]),
+    /** C3/S169: hướng dẫn đề + mục đánh số của câu nhiều mục (describeQuestion) */
+    instructions: z.string().default(''),
+    items: z.array(z.record(z.string(), z.unknown())).default([]),
     correct_option: z.string(),
     chosen_option: z.string().default('null'),
     excerpt: z.string().default(''),
@@ -191,7 +194,8 @@ export class EvalService implements OnModuleInit {
     if (!schemaValid || !out) return 1;
     let r = 5;
     if (out.correct_option !== vars.correct_option) r = Math.min(r, 2);
-    if (Object.keys(out.why_others_wrong).length !== vars.options.length - 1) r -= 1;
+    // Dạng nhiều mục (IELTS – < 2 lựa chọn) không có phương án nhiễu để giải thích
+    if (vars.options.length >= 2 && Object.keys(out.why_others_wrong).length !== vars.options.length - 1) r -= 1;
     const chosen = vars.chosen_option && vars.chosen_option !== 'null' ? vars.chosen_option : null;
     if (chosen && chosen !== vars.correct_option && !out.chosen_option_trap) r -= 1;
     if (out.why_correct.length < 20 || out.how_to_spot.length < 10) r -= 1;
@@ -240,7 +244,7 @@ export class EvalService implements OnModuleInit {
         error = (err as Error).message.slice(0, 300);
       }
       const correct = !!out && out.correct_option === gold.correct_option;
-      const covers = !!out && Object.keys(out.why_others_wrong).length === vars.options.length - 1;
+      const covers = !!out && (vars.options.length < 2 || Object.keys(out.why_others_wrong).length === vars.options.length - 1);
       let rating: number | null;
       if (this.isMock) rating = EvalService.heuristicRating(vars, out, schemaValid);
       else {

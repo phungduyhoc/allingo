@@ -6,6 +6,7 @@ import {
   TOEIC_DIAGNOSTIC_BLUEPRINT,
   buildDiagnosticPool,
   diagnosticAdvance,
+  estimateIeltsDiagnostic,
   estimateToeicDiagnostic,
   initDiagnosticState,
   masteryFromDiagnostic,
@@ -38,6 +39,12 @@ function genericBlueprint(pool: DiagnosticPool): DiagnosticBlueprintEntry[] {
 const emptyEstimate = (answered: number): DiagnosticResult['estimate'] => ({ score: null, se: null, low: null, high: null, listening: null, reading: null, answered, estimated: true });
 /** Chương trình có blueprint + ước tính TOEIC L&R (S9) */
 const isToeicDiagnostic = (program: string) => programDef(program)?.diagnostic === 'toeic_lr';
+/** C3: thang band (IELTS) – ước tính band Listening/Reading từ tỷ lệ đúng (blueprint chung); không có overall (cần đủ 4 kỹ năng) */
+const isBandProgram = (program: string) => programDef(program)?.scale.kind === 'band';
+
+function bandEstimateDto(e: ReturnType<typeof estimateIeltsDiagnostic>): DiagnosticResult['estimate'] {
+  return { score: null, se: null, low: null, high: null, listening: e.listening, reading: e.reading, answered: e.answered, estimated: true };
+}
 
 function toEstimateDto(e: DiagnosticEstimate): DiagnosticResult['estimate'] {
   const L = e.by_skill.listening;
@@ -138,7 +145,7 @@ export class DiagnosticService {
       done: !!state?.done,
       next_question: pub ? (pub) : null,
       progress: { answered: answered.length, served: state?.served.length ?? 0, planned: Math.max(state?.planned ?? 0, state?.served.length ?? 0), section_code: current?.section_code ?? null, level: servedNow?.level ?? null, group_remaining: state?.queue.length ?? 0 },
-      estimate: answered.length && isToeicDiagnostic(r.program) ? toEstimateDto(estimateToeicDiagnostic(state!.served)) : null,
+      estimate: !answered.length ? null : isToeicDiagnostic(r.program) ? toEstimateDto(estimateToeicDiagnostic(state!.served)) : isBandProgram(r.program) ? bandEstimateDto(estimateIeltsDiagnostic(state!.served)) : null,
       last_correct: r.lastCorrect,
       result,
     };
@@ -148,6 +155,7 @@ export class DiagnosticService {
   async finalize(userId: string, attemptId: string, program: ProgramCode, state: DiagnosticState): Promise<DiagnosticResult> {
     const toeic = isToeicDiagnostic(program);
     const estimate = toeic ? estimateToeicDiagnostic(state.served) : null;
+    const band = !toeic && isBandProgram(program) ? estimateIeltsDiagnostic(state.served) : null;
     const answeredCount = state.served.filter((s) => s.correct !== null).length;
     const mastery = masteryFromDiagnostic(state.served);
     const enrollment = await this.enrollments.ensure(userId, program);
@@ -164,7 +172,7 @@ export class DiagnosticService {
             .values({ userId, programCode: program, subskillId, mastery: String(m.mastery), confidence: String(m.confidence), nObs: m.n_obs, updatedAt: now })
             .onConflictDoUpdate({ target: [learnSkillMastery.userId, learnSkillMastery.subskillId], set: { mastery: sql`excluded.mastery`, confidence: sql`excluded.confidence`, nObs: sql`excluded.n_obs`, programCode: sql`excluded.program_code`, updatedAt: sql`excluded.updated_at` } });
         }
-        await this.enrollments.setCurrentLevel(userId, program, { overall: estimate?.total?.score ?? null, listening: estimate?.by_skill.listening?.score ?? null, reading: estimate?.by_skill.reading?.score ?? null, low: estimate?.total?.low ?? null, high: estimate?.total?.high ?? null, source: 'diagnostic', attempt_id: attemptId, estimated_at: now.toISOString() }, tx);
+        await this.enrollments.setCurrentLevel(userId, program, { overall: estimate?.total?.score ?? null, listening: estimate?.by_skill.listening?.score ?? band?.listening?.score ?? null, reading: estimate?.by_skill.reading?.score ?? band?.reading?.score ?? null, low: estimate?.total?.low ?? null, high: estimate?.total?.high ?? null, source: 'diagnostic', attempt_id: attemptId, estimated_at: now.toISOString() }, tx);
       });
       this.logger.info({ attempt_id: attemptId, answered: answeredCount, subskills: mastery.length }, 'diagnostic finalized');
     }
@@ -175,7 +183,9 @@ export class DiagnosticService {
     const desired = fresh?.targetScore !== null && fresh?.targetScore !== undefined ? Number(fresh.targetScore) : null;
     // C1: gợi ý mục tiêu chỉ khi chương trình có mô hình tốc độ tăng điểm (TOEIC); còn lại giữ mục tiêu người học
     const def = programDef(program);
-    const target = (estimate && suggestTargetFor(def?.scale.kind ?? 'points', { current: estimate.total?.score ?? 10, today: today ?? localDate(this.clock.now(), 'Asia/Ho_Chi_Minh'), examDate: fresh?.examDate ?? null, weeklyMinutes: weekly, desired })) || {
+    // C3: IELTS – band hiện tại = trung bình band L/R của bài chẩn đoán
+    const current = estimate ? (estimate.total?.score ?? 10) : (band?.current ?? null);
+    const target = (current !== null && suggestTargetFor(def?.scale.kind ?? 'points', { current, today: today ?? localDate(this.clock.now(), 'Asia/Ho_Chi_Minh'), examDate: fresh?.examDate ?? null, weeklyMinutes: weekly, desired })) || {
       current: 0,
       suggested: desired ?? def?.target.default ?? 0,
       desired,
@@ -187,7 +197,7 @@ export class DiagnosticService {
     };
     return {
       attempt_id: attemptId,
-      estimate: estimate ? toEstimateDto(estimate) : emptyEstimate(answeredCount),
+      estimate: estimate ? toEstimateDto(estimate) : band ? bandEstimateDto(band) : emptyEstimate(answeredCount),
       mastery: mastery.map((m) => ({ subskill: m.subskill, skill: m.skill, mastery: m.mastery, confidence: m.confidence, n_obs: m.n_obs })),
       target: { current: target.current, suggested: target.suggested, desired: target.desired, feasible: target.feasible, weeks_left: target.weeks_left, weekly_minutes: target.weekly_minutes, required_weekly_minutes: target.required_weekly_minutes, reason: target.reason },
     };

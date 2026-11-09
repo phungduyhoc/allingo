@@ -239,6 +239,20 @@ export function scorePartOf(scaled: { total?: number | null; listening?: number 
   if (scaled.reading !== null && scaled.reading !== undefined) return 'reading';
   return 'total';
 }
+/**
+ * C3: điểm quy đổi từng phần của một bài từ `score_breakdown`: TOEIC dùng `scaled` (L/R/tổng); thang band (IELTS – `scaled` null) lấy
+ * `scale.bands` từng kỹ năng và `scale.band` (overall – chỉ có khi đủ 4 kỹ năng) làm `total`. Dùng chung cho thống kê/dự báo.
+ */
+export function scaledPartsOf(b: { scaled?: { total?: number | null; listening?: number | null; reading?: number | null } | null; scale?: Record<string, unknown> | null } | null | undefined): { total: number | null; listening: number | null; reading: number | null } | null {
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null);
+  if (b?.scaled) return { total: num(b.scaled.total), listening: num(b.scaled.listening), reading: num(b.scaled.reading) };
+  const sc = b?.scale;
+  if (sc && sc.unit === 'band') {
+    const bands = (sc.bands ?? {}) as Record<string, unknown>;
+    return { total: num(sc.band), listening: num(bands.listening), reading: num(bands.reading) };
+  }
+  return null;
+}
 export function scoreScaleOf(program: string, part: ScorePart): { min: number; max: number } {
   if (program === 'toeic') return part === 'total' ? { min: 10, max: 990 } : { min: 5, max: 495 };
   if (program === 'ielts') return { min: 0, max: 9 };
