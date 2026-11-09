@@ -1,9 +1,10 @@
-export { seedCatalog } from './core/catalog.js';
+export { seedCatalog, CATALOG_SEED_DEFINITION } from './core/catalog.js';
 export { seedBilling, PLANS, PROMOTIONS } from './core/billing.js';
 export { seedPrompts, loadPromptSpec } from './core/prompts.js';
 export { seedDemo, DEMO_USERS, DEMO_PASSWORD } from './demo/index.js';
 export { DEMO_PART5, DEMO_PART2, DEMO_VOCAB, DEMO_LESSON, type DemoQuestion } from './demo/content.js';
 export { listeningMediaSources, questionReadout, LR_FULL_01, type SeedMediaSource } from './demo/listening-01.seed.js';
+export { ieltsDemoMediaSources, ieltsDemoItems, IELTS_DEMO_CODE } from './demo/ielts-types-demo.seed.js';
 export {
   LISTENING_FULL_01,
   LISTENING_DRILLS,

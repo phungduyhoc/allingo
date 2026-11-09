@@ -121,6 +121,8 @@ export interface SeedQuestionInput {
   content: QuestionContent;
   testCode: string;
   changeNote: string;
+  /** C1: chương trình (mặc định toeic – các seed GĐ1) */
+  program?: string;
 }
 
 /** Tạo hoặc cập nhật (idempotent) một câu đã phát hành + phiên bản 1, trả question_id */
@@ -147,7 +149,7 @@ export async function upsertSeedQuestion(
   const [question] = await db
     .insert(catalogQuestions)
     .values({
-      programCode: 'toeic',
+      programCode: q.program ?? 'toeic',
       sectionId,
       questionTypeCode: content.type,
       passageId: q.passageId,
@@ -191,6 +193,8 @@ export interface SeedTestSetInput {
   questionIdByKey: ReadonlyMap<string, string>;
   /** Thời lượng riêng từng section (NULL = đồng hồ chung của đề) */
   sectionDurationSec?: (sectionCode: string) => number | null;
+  /** C1: chương trình (mặc định toeic) */
+  program?: string;
 }
 
 /** Tạo/cập nhật bộ đề đã phát hành: section theo thứ tự xuất hiện, item giữ group_key */
@@ -198,7 +202,7 @@ export async function upsertSeedTestSet(db: Db, ctx: SeedContext, input: SeedTes
   const [ts] = await db
     .insert(catalogTestSets)
     .values({
-      programCode: 'toeic',
+      programCode: input.program ?? 'toeic',
       code: input.code,
       title: input.title,
       kind: input.kind,

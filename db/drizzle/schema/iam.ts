@@ -63,6 +63,8 @@ export const iamUsers = iam.table(
     referralCode: text('referral_code'),
     // v1.1 – Sprint 10 (migration 0007): UTM/referrer lần chạm đầu khi đăng ký
     attribution: jsonb(),
+    // v1.1 – C1 (migration 0012): chương trình đang học (FK catalog.programs.code – fk_users_active_program)
+    activeProgram: text('active_program'),
   },
   (table) => [unique('users_email_key').on(table.email), unique('users_phone_key').on(table.phone), unique('users_referral_code_key').on(table.referralCode)],
 );

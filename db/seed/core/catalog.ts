@@ -545,7 +545,7 @@ const TOPICS: Array<{ program: string | null; code: string; name: { vi: string; 
   { program: null, code: 'education', name: { vi: 'Giáo dục', en: 'Education' } },
 ];
 
-const QUESTION_TYPE_NAMES: Record<string, { vi: string; en: string }> = {
+const QUESTION_TYPE_NAMES: Record<(typeof QUESTION_TYPE_CODES)[number], { vi: string; en: string }> = {
   mcq_single: { vi: 'Trắc nghiệm 1 đáp án', en: 'Multiple choice (single)' },
   mcq_multi: { vi: 'Trắc nghiệm nhiều đáp án', en: 'Multiple choice (multi)' },
   fill_blank: { vi: 'Điền từ/số', en: 'Fill in the blank' },
@@ -558,8 +558,31 @@ const QUESTION_TYPE_NAMES: Record<string, { vi: string; en: string }> = {
   essay: { vi: 'Viết tự luận', en: 'Essay' },
   speaking: { vi: 'Nói ghi âm', en: 'Speaking (recorded)' },
   handwriting: { vi: 'Viết tay chữ Hán/Kanji', en: 'Handwriting (Hanzi/Kanji)' },
+  // C2 – IELTS Reading/Listening (packages/schemas/src/question/rl-types.ts)
+  matching_headings: { vi: 'Nối tiêu đề với đoạn văn', en: 'Matching headings' },
+  matching_information: { vi: 'Nối thông tin với đoạn văn', en: 'Matching information' },
+  matching_features: { vi: 'Nối đặc điểm', en: 'Matching features' },
+  matching_sentence_endings: { vi: 'Nối đuôi câu', en: 'Matching sentence endings' },
+  sentence_completion: { vi: 'Hoàn thành câu', en: 'Sentence completion' },
+  summary_completion: { vi: 'Hoàn thành tóm tắt', en: 'Summary completion' },
+  note_completion: { vi: 'Hoàn thành ghi chú', en: 'Note completion' },
+  table_completion: { vi: 'Hoàn thành bảng', en: 'Table completion' },
+  flow_chart_completion: { vi: 'Hoàn thành sơ đồ quy trình', en: 'Flow-chart completion' },
+  form_completion: { vi: 'Hoàn thành biểu mẫu', en: 'Form completion' },
+  short_answer: { vi: 'Trả lời ngắn', en: 'Short-answer questions' },
+  diagram_labelling: { vi: 'Gán nhãn sơ đồ (điền từ)', en: 'Diagram labelling' },
+  summary_word_bank: { vi: 'Hoàn thành tóm tắt (chọn từ ngân hàng)', en: 'Summary completion (word bank)' },
+  plan_map_labelling: { vi: 'Gán nhãn bản đồ/mặt bằng (chọn chữ cái)', en: 'Plan/map labelling' },
 };
 const NOT_AUTO = new Set(['essay', 'speaking', 'handwriting']);
+
+/** C1 – định nghĩa seed chỉ đọc (test `program-registry.test.ts` so khớp với PROGRAM_REGISTRY ở @allingo/schemas) */
+export const CATALOG_SEED_DEFINITION = {
+  programs: PROGRAMS,
+  skills: SKILLS as readonly SkillSeed[],
+  sections: SECTIONS as readonly SectionSeed[],
+  questionTypes: Object.keys(QUESTION_TYPE_NAMES),
+} as const;
 
 export async function seedCatalog(db: Db): Promise<void> {
   await db
@@ -589,7 +612,7 @@ export async function seedCatalog(db: Db): Promise<void> {
     .values(
       QUESTION_TYPE_CODES.map((code) => ({
         code,
-        name: QUESTION_TYPE_NAMES[code]!,
+        name: QUESTION_TYPE_NAMES[code],
         contentSchema: {
           $ref: `schemas/question/${code}.json`,
           package: '@allingo/schemas',
