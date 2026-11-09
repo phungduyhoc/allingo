@@ -92,7 +92,9 @@ export class CatalogController {
           .groupBy(schema.learnAttempts.testSetId)
       : [];
     const statMap = new Map(stats.map((s) => [s.testSetId, s]));
-    return rows.map((r) => {
+    // C3: IELTS đếm theo mục ("40 câu hỏi"), TOEIC giữ số câu catalog
+    const questionCounts = await Promise.all(rows.map((r) => this.catalog.questionCountOf(r.ts.id, program, r.count)));
+    return rows.map((r, i) => {
       const s = statMap.get(r.ts.id);
       // Cùng quy tắc với POST /attempts (FEATURE_GATES – S7): đề miễn phí không khoá; part_drill dùng gate part_drill
       const locked = this.gate.locked(ctx, gateForTestSetKind(r.ts.kind), { contentIsFree: r.ts.isFree });
@@ -105,7 +107,7 @@ export class CatalogController {
         is_free: r.ts.isFree,
         locked,
         duration_sec: r.ts.durationSec ?? null,
-        question_count: r.count,
+        question_count: questionCounts[i]!,
         last_score: s?.last !== null && s?.last !== undefined ? Number(s.last) : null,
         best_score: s?.best !== null && s?.best !== undefined ? Number(s.best) : null,
         attempts_count: s?.attempts ?? 0,

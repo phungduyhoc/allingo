@@ -29,10 +29,12 @@ const SHOWN_QUOTAS = ['mini_test', 'part_drill', 'ai_explain', 'full_test'] as c
 export function DashboardPage() {
   const href = useProgramHref();
   const t = useTranslations('dashboard');
+  const tp = useTranslations('programs');
+  const program = useProgram();
   return (
     <div className="space-y-8">
       <PageHeader
-        title={t('title')}
+        title={t('title', { program: tp(program) })}
         description={<Greeting />}
         actions={
           <>

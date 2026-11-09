@@ -69,13 +69,14 @@ export const IELTS_DEMO_KEYS: readonly string[] = ITEMS.map((i) => i.key);
 export const IELTS_DEMO_SET: MockTestSet = {
   id: uid(999, '7770'),
   code: IELTS_DEMO_CODE,
-  title: { vi: 'IELTS – Làm quen các dạng câu Reading & Listening (18 câu)', en: 'IELTS – Reading & Listening question types (18 items)' },
+  title: { vi: 'IELTS – Làm quen các dạng câu Reading & Listening (14 dạng câu)', en: 'IELTS – Reading & Listening question types (14 types)' },
   kind: 'mini',
   level: null,
   is_free: true,
   locked: false,
   duration_sec: 40 * 60,
-  question_count: IELTS_DEMO_QUESTIONS.length,
+  // C3: đếm theo mục như API (markCount) – tiêu đề "18 câu" là số câu catalog của đề làm quen
+  question_count: ITEMS.reduce((sum, it) => sum + markCount(it.content), 0),
   sections: [
     { code: 'listening_p1', skill: 'listening', name: { vi: 'Listening Part 1', en: 'Listening Part 1' }, duration_sec: null, question_count: 7 },
     { code: 'reading_p1', skill: 'reading', name: { vi: 'Reading Passage 1', en: 'Reading Passage 1' }, duration_sec: null, question_count: 11 },
@@ -159,7 +160,8 @@ function fullTestSet(test: IeltsFullTest, prefix: string): MockTestSet {
     is_free: true,
     locked: false,
     duration_sec: test.duration_sec,
-    question_count: questions.length,
+    // C3: IELTS đếm theo mục như API (TestSetSummary.question_count = 40), không theo số câu catalog
+    question_count: sections.reduce((sum, x) => sum + x.question_count, 0),
     sections,
     questions,
   };
