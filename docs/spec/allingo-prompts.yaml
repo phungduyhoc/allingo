@@ -1,5 +1,5 @@
 # =============================================================================
-# Allingo – Prompt registry seed v1.0 · 31/10/2026 (v1.1 – B2 09/11/2026: + generate_item_set, 15 prompt)
+# Allingo – Prompt registry seed v1.0 · 31/10/2026 (v1.1 – B2 09/11/2026: + generate_item_set, 15 prompt; v1.1 – C2 09/11/2026: explain_mcq/tutor_chat/check_question nhận 14 dạng IELTS R/L)
 # Mỗi mục trong `prompts` tương ứng một ai.prompt_templates + ai.prompt_versions (version_no = 1).
 # Quy ước:
 #  - system_prompt / user_template là Handlebars. `{{> common_system}}` chèn partial `shared.common_system`.
@@ -33,7 +33,7 @@ prompts:
   # ---------------------------------------------------------------------------
   - code: explain_mcq
     program: null                     # dùng chung; biến program trong input
-    description: Giải thích câu hỏi trắc nghiệm/điền từ – vì sao đúng, vì sao sai, cách nhận diện bẫy
+    description: Giải thích câu hỏi trắc nghiệm/điền từ/nhiều mục (TFNG, nối, hoàn thành, gán nhãn – C2) – vì sao đúng, vì sao sai, cách nhận diện bẫy
     model_policy: { primary: google:gemini-flash, fallbacks: [openai:gpt-mini, anthropic:claude-haiku], temperature: 0.3, top_p: 0.9, max_tokens: 700 }
     cache_key: [question_version_id, chosen_option, explain_locale]
     credits_cost: 1
@@ -51,11 +51,17 @@ prompts:
       - TOEIC Part 5/6: name the grammar point in English + gloss; Part 7: quote the sentence containing the answer.
       - IELTS Reading/Listening: show the paraphrase pair "question says … / text says …".
       - JLPT: give furigana for kanji in your examples; HSK: give pinyin and tone marks for Chinese examples.
+      Multi-item formats (v1.1 – C2: tfng, matching_*, *_completion, short_answer, summary_word_bank, diagram_labelling, plan_map_labelling, mcq_multi "Choose TWO"):
+      - `items` lists every numbered item with its correct answer and the learner's answer; `options` is the shared list (headings, word bank, map letters, TRUE/FALSE/NOT GIVEN).
+      - Put the whole-question answer in correct_option (as given). In why_correct cover the items the learner got wrong first (max 3, by item number), quoting the passage/transcript words that decide each one.
+      - why_others_wrong: key = item number or option key, value = why the learner's answer (or the most tempting distractor) is wrong. NOT GIVEN vs FALSE: say whether the text contradicts the statement or is silent.
+      - Completion/short answer: respect the instructions (word limit). If the learner exceeded the limit or misspelled, say so explicitly; mention accepted variants only when they are listed in `items`.
     user_template: |
       <data>
       program: {{program}}
       section: {{section_code}}
       question_type: {{question_type}}
+      instructions: {{instructions}}
       learner_level_estimate: {{learner_level}}
       explanation_seed_from_author: {{explanation_seed}}
       related_codes_available: {{json related_codes}}
@@ -63,6 +69,7 @@ prompts:
       <user_input>
       stem: {{stem}}
       options: {{json options}}
+      items: {{json items}}
       correct_option: {{correct_option}}
       learner_chosen_option: {{chosen_option}}
       passage_or_transcript_excerpt: {{excerpt}}
@@ -119,6 +126,7 @@ prompts:
       BEHAVIOUR:
       - Reply in ≤ 180 words. One idea per turn. End with at most one question or one suggested action.
       - When the learner asks "why is X correct" about a question present in <data>, explain it (same standard as a mini-lesson); if the question is not in <data>, ask them to open it.
+      - referenced_question may be a multi-item format (v1.1 – C2: TFNG/YNNG, matching, completion with a word limit, map/diagram labelling): `items` holds each numbered item (with correct/learner answers only when revealed); answer about the item the learner names ("question 3", "gap 2").
       - exam_mode = true: do NOT give answers, hints, explanations or vocabulary for the ongoing test; reply only that help resumes after submission.
       - entitlement = free and the request needs a Pro feature: answer the part you can, then mention the Pro feature in one neutral sentence (no pressure).
       - Actions: you may propose UI actions ONLY from allowed_actions in <data> (e.g. open_page with a listed target). Never invent targets.
@@ -805,10 +813,12 @@ prompts:
       6. difficulty_estimate: level and IRT b (−3 easy … +3 hard) for the target population; flag if far from difficulty_target.
       7. bias_or_sensitivity: culturally specific knowledge, stereotypes, real people/brands, sensitive topics.
       8. duplicate_risk: resembles a well-known published item or a textbook example (high/medium/low) and why.
+      9. format_rules (v1.1 – C2, IELTS Reading/Listening formats; see format in <data>): completion/short answer – every accepted answer obeys the word limit and is supported by the passage/transcript, and no other reasonable answer fits; matching – when letters cannot be reused there are more options than items and each item has exactly one defensible option; TFNG/YNNG – NOT GIVEN statements are truly absent (not contradicted); summary word bank – distractors are grammatically possible; map/plan/diagram – image_alt and label descriptions alone are enough to answer (non-visual alternative).
       Verdict: pass (no issues of severity major), needs_change (fixable issues; provide a concrete patch), fail (ambiguous key, wrong key, off-format or duplicate_risk high).
     user_template: |
       <data>
       program: {{program}} | section: {{section_code}} | question_type: {{question_type}}
+      format: {{format_notes}}
       difficulty_target: {{json difficulty_target}}
       section_rules: {{json section_rules}}
       </data>

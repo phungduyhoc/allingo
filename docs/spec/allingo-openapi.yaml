@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Allingo API
-  version: 1.1.0-b2
+  version: 1.1.0-c2
   summary: API nền tảng luyện thi AI Allingo (TOEIC · IELTS · JLPT · HSK)
   description: |
     Đặc tả REST API v1 cho web/PWA, mobile và Payload CMS.
@@ -226,7 +226,8 @@ paths:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
     patch:
       tags: [Me]
-      summary: Cập nhật hồ sơ (tên, ảnh, ngôn ngữ, múi giờ)
+      summary: Cập nhật hồ sơ (tên, ảnh, ngôn ngữ, múi giờ, chương trình đang học)
+      description: 'v1.1 – C1: `active_program` lưu vào `iam.users.active_program` (chương trình đang học – bộ chọn chương trình ở header/onboarding) và tạo enrollment nếu chưa có (mục tiêu/ngày thi giữ nguyên). Chương trình "sắp ra mắt" vẫn chọn được (trang sắp ra mắt + danh sách chờ).'
       requestBody:
         content:
           application/json:
@@ -687,7 +688,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [question_version_id], properties: { question_version_id: { type: string, format: uuid }, chosen_option: { type: string }, attempt_id: { type: string, format: uuid } } }
+            schema: { type: object, required: [question_version_id], properties: { question_version_id: { type: string, format: uuid }, chosen_option: { type: string, maxLength: 32, description: 'Trắc nghiệm một đáp án: mã lựa chọn' }, attempt_id: { type: string, format: uuid }, answer: { type: object, additionalProperties: true, description: 'v1.1 – C2: câu trả lời của người học cho dạng nhiều mục (mcq_multi, TFNG, nối, điền từ, gán nhãn) theo AnswerInput – chỉ dùng cá nhân hoá lời giải thích (không chấm điểm); khoá cache = mã băm câu trả lời đã chuẩn hoá thay cho chosen_option' } } }
       responses:
         '200':
           description: Giải thích (JSON khi cache hit, SSE khi sinh mới)
@@ -2579,7 +2580,7 @@ components:
         timezone: { type: string }
         is_guest: { type: boolean }
         roles: { type: array, items: { type: string } }
-        active_program: { type: string, nullable: true }
+        active_program: { type: string, nullable: true, description: 'v1.1 – C1: iam.users.active_program; chưa chọn → enrollment active cập nhật gần nhất (hành vi cũ)' }
         created_at: { type: string, format: date-time }
     UserUpdate:
       type: object
@@ -2589,7 +2590,7 @@ components:
         ui_locale: { type: string, enum: [vi, en, ja, ko, th] }
         explain_locale: { type: string, enum: [vi, en, ja, ko, th] }
         timezone: { type: string }
-        active_program: { type: string }
+        active_program: { type: string, enum: [toeic, ielts, jlpt, hsk], description: 'v1.1 – C1: đổi chương trình đang học' }
     Session:
       type: object
       properties:
@@ -2612,6 +2613,12 @@ components:
         name: { $ref: '#/components/schemas/I18nText' }
         score_scale: { type: object }
         languages: { type: array, items: { type: string } }
+        status: { type: string, enum: [available, coming_soon], description: 'v1.1 – C1: available = cờ ra mắt `ff.catalog.program.<code>` bật (TOEIC không có cờ) VÀ có ≥ 1 đề đã phát hành; còn lại coming_soon (web hiện trang "sắp ra mắt" + danh sách chờ, không 404)' }
+        phase: { type: integer, minimum: 1, maximum: 3, description: 'v1.1 – C1: giai đoạn roadmap (1 TOEIC, 2 IELTS, 3 JLPT/HSK)' }
+        sort_order: { type: integer }
+        skills: { type: array, items: { type: string }, description: 'v1.1 – C1: mã kỹ năng theo thứ tự (registry chương trình)' }
+        published_test_sets: { type: integer, minimum: 0, description: 'v1.1 – C1' }
+        question_types: { type: array, items: { type: string }, description: 'v1.1 – C1/C2: dạng câu hỗ trợ trong chương trình' }
     Section:
       type: object
       properties:
@@ -2646,6 +2653,8 @@ components:
         days_to_exam: { type: integer, nullable: true }
         diagnostic_attempt_id: { type: string, format: uuid, nullable: true }
         started_at: { type: string, format: date-time }
+        is_active: { type: boolean, description: 'v1.1 – C1: còn trong danh sách chương trình của người học' }
+        is_current: { type: boolean, description: 'v1.1 – C1: chương trình đang học (iam.users.active_program)' }
     TestSetSummary:
       type: object
       properties:
@@ -2675,7 +2684,7 @@ components:
             in_progress_attempt_id: { type: string, format: uuid, nullable: true }
     QuestionPublic:
       type: object
-      description: Nội dung câu hỏi không chứa đáp án; `content` theo discriminated union của question_type (Zod ở packages/schemas)
+      description: 'Nội dung câu hỏi không chứa đáp án; `content` theo discriminated union của question_type (Zod ở packages/schemas – 26 dạng; v1.1 – C2: 14 dạng IELTS Reading/Listening matching_headings | matching_information | matching_features | matching_sentence_endings | sentence_completion | summary_completion | note_completion | table_completion | flow_chart_completion | form_completion | short_answer | diagram_labelling | summary_word_bank | plan_map_labelling; mcq_multi.select_count – "Choose TWO letters"). Đáp án luôn nằm trong `answer_key` (bị bỏ); fill_blank không còn trả `blanks[].accepted` (S163)'
       properties:
         question_id: { type: string, format: uuid }
         question_version_id: { type: string, format: uuid }
@@ -2711,7 +2720,7 @@ components:
         server_time: { type: string, format: date-time }
         expires_at: { type: [string, 'null'], format: date-time, description: 'Hạn nộp (server) – exam/timed_drill' }
         ui_state: { $ref: '#/components/schemas/AttemptUiState' }
-        feedback: { type: object, additionalProperties: { type: object, properties: { is_correct: { type: [boolean, 'null'] }, correct_answer: {}, explanation: { type: [object, 'null'] }, transcript: { oneOf: [ { $ref: '#/components/schemas/TranscriptHighlight' }, { type: 'null' } ], description: 'v1.1 – Sprint 4: transcript audio của câu; nhóm Part 3/4 chỉ khi mọi câu trong nhóm đã trả lời' } } }, description: 'Chỉ mode practice/drill – đáp án của câu đã trả lời (v1.1). Không có ở exam/timed_drill/diagnostic' }
+        feedback: { type: object, additionalProperties: { type: object, properties: { is_correct: { type: [boolean, 'null'] }, correct_answer: {}, explanation: { type: [object, 'null'] }, transcript: { oneOf: [ { $ref: '#/components/schemas/TranscriptHighlight' }, { type: 'null' } ], description: 'v1.1 – Sprint 4: transcript audio của câu; nhóm Part 3/4 chỉ khi mọi câu trong nhóm đã trả lời' }, details: { type: [object, 'null'], additionalProperties: { type: boolean }, description: 'v1.1 – C2: đúng/sai từng mục của câu nhiều mục (chỗ trống, mệnh đề TFNG, cặp nối)' } } }, description: 'Chỉ mode practice/drill – đáp án của câu đã trả lời (v1.1). Không có ở exam/timed_drill/diagnostic' }
         audio_plays: { type: object, additionalProperties: { type: integer }, description: 'Số lần bắt đầu phát audio theo question_id (sự kiện audio_started) – giữ quy tắc "nghe một lần" khi tải lại (v1.1 – Sprint 4)' }
     AttemptAnswerInput:
       type: object
@@ -2728,7 +2737,7 @@ components:
         raw_score: { type: number }
         scaled_score: { type: number }
         scale: { type: object }
-        by_section: { type: object, additionalProperties: { type: object, properties: { correct: { type: integer }, total: { type: integer }, avg_time_ms: { type: integer } } } }
+        by_section: { type: object, additionalProperties: { type: object, properties: { correct: { type: integer }, total: { type: integer }, avg_time_ms: { type: integer }, score: { type: [number, 'null'] }, marks: { type: integer, description: 'v1.1 – C1: số câu hỏi đúng theo mục đánh số (IELTS: câu TFNG 5 mệnh đề = 5)' }, max_marks: { type: integer, description: 'v1.1 – C1' } } } }
         by_question_type: { type: object }
         by_subskill: { type: object }
         compared_to_previous: { type: object, nullable: true }
@@ -2759,6 +2768,8 @@ components:
       properties:
         correct: { type: integer }
         total: { type: integer }
+        marks: { type: integer, description: 'v1.1 – C1: điểm thô theo mục đánh số (IELTS) – TOEIC bằng correct' }
+        max_marks: { type: integer, description: 'v1.1 – C1' }
         scaled: { type: [number, 'null'] }
         range: { oneOf: [ { $ref: '#/components/schemas/ScoreRange' }, { type: 'null' } ] }
         avg_time_ms: { type: [integer, 'null'] }

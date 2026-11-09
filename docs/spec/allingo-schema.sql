@@ -50,7 +50,8 @@ CREATE TABLE iam.users (
   updated_at      timestamptz NOT NULL DEFAULT now(),
   deleted_at      timestamptz,
   referral_code   text UNIQUE,                         -- v1.1 – Sprint 8: mã giới thiệu của người dùng (cấp lười khi GET /me/referral)
-  attribution     jsonb                                -- v1.1 – Sprint 10: UTM/referrer lần chạm đầu khi đăng ký {utm_source, utm_medium, utm_campaign, utm_term, utm_content, referrer_host, landing_path, captured_at}
+  attribution     jsonb,                               -- v1.1 – Sprint 10: UTM/referrer lần chạm đầu khi đăng ký {utm_source, utm_medium, utm_campaign, utm_term, utm_content, referrer_host, landing_path, captured_at}
+  active_program  text                                 -- v1.1 – C1 (migration 0012): chương trình đang học (bộ chọn chương trình); NULL = enrollment active cập nhật gần nhất. FK sau khi tạo catalog.programs
 );
 CREATE TRIGGER trg_users_updated BEFORE UPDATE ON iam.users FOR EACH ROW EXECUTE FUNCTION ops.set_updated_at();
 
@@ -206,6 +207,8 @@ CREATE TABLE catalog.programs (
   is_active    boolean NOT NULL DEFAULT true,
   sort_order   smallint NOT NULL DEFAULT 0
 );
+-- v1.1 – C1 (migration 0012): chương trình đang học của người dùng (cột tạo cùng iam.users, khoá ngoại sau khi có catalog.programs)
+ALTER TABLE iam.users ADD CONSTRAINT fk_users_active_program FOREIGN KEY (active_program) REFERENCES catalog.programs(code);
 
 CREATE TABLE catalog.skills (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -231,7 +234,7 @@ CREATE TABLE catalog.sections (
 );
 
 CREATE TABLE catalog.question_types (
-  code           text PRIMARY KEY,                      -- mcq_single, mcq_multi, fill_blank, matching, drag_drop, map_label, tfng, ordering, dictation, essay, speaking, handwriting
+  code           text PRIMARY KEY,                      -- mcq_single, mcq_multi, fill_blank, matching, drag_drop, map_label, tfng, ordering, dictation, essay, speaking, handwriting; v1.1 – C2 (seed core): matching_headings, matching_information, matching_features, matching_sentence_endings, sentence_completion, summary_completion, note_completion, table_completion, flow_chart_completion, form_completion, short_answer, diagram_labelling, summary_word_bank, plan_map_labelling
   name           jsonb NOT NULL,
   content_schema jsonb NOT NULL,                        -- JSON Schema của content (bản Zod ở packages/schemas là nguồn)
   auto_gradable  boolean NOT NULL DEFAULT true
