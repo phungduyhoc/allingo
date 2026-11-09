@@ -71,6 +71,8 @@ export interface PublishTestSetRequest {
   code: string;
   title: LocalizedText;
   kind: 'full' | 'mini' | 'part_drill' | 'diagnostic' | 'topic_pack';
+  /** C3 – catalog.test_sets.level (IELTS: academic | general_training) */
+  level?: string;
   is_free: boolean;
   duration_sec: number | null;
   sections: Array<{ section_code: string; duration_sec: number | null }>;

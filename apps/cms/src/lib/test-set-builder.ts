@@ -1,4 +1,4 @@
-import { checkBlueprintCounts, TOEIC_MINI_BLUEPRINT_60, type BlueprintCountRow } from '@allingo/schemas';
+import { IELTS_CBT, PROGRAM_REGISTRY, TOEIC_MINI_BLUEPRINT_60, isProgramCode, markCount, questionContentSchema, type BlueprintCountRow } from '@allingo/schemas';
 import { TOEIC_FULL_COUNTS, TOEIC_SECTIONS } from './reference';
 
 /**
@@ -35,6 +35,32 @@ export interface BankQuestion {
   status: string;
   difficulty: string | null;
   passageId: string | null;
+  /** C3 – số câu hỏi (mục đánh số) của câu: IELTS câu TFNG 5 mệnh đề = 5 (markCount); content lỗi/thiếu → 1 */
+  marks?: number;
+}
+
+/** C3 – chương trình đếm theo mục đánh số (registry `marking = per_item` – IELTS/JLPT/HSK) */
+export function countsByMarks(program: string | null | undefined): boolean {
+  return isProgramCode(program) && PROGRAM_REGISTRY[program].marking === 'per_item';
+}
+
+/** C3 – số mục của content câu CMS (JSON chưa chắc hợp lệ khi đang soạn) */
+export function marksOfContent(content: unknown): number {
+  const parsed = questionContentSchema.safeParse(content);
+  return parsed.success ? markCount(parsed.data) : 1;
+}
+
+/** Thứ tự Part chuẩn: TOEIC theo Part 1–7, chương trình khác theo registry (IELTS listening_p1…p4, reading_p1…p3…) */
+const SECTION_ORDER: readonly string[] = [...TOEIC_SECTIONS.map((s) => s.code), ...Object.values(PROGRAM_REGISTRY).flatMap((p) => p.sections.map((s) => s.code))];
+const sectionRank = (code: string) => {
+  const i = SECTION_ORDER.indexOf(code);
+  return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+};
+
+/** Part tự chấm của chương trình cho bộ lọc ngân hàng câu (TOEIC: Part 1–7 như trước) */
+export function builderSectionCodes(program: string | null | undefined): string[] {
+  if (!isProgramCode(program) || program === 'toeic') return TOEIC_SECTIONS.map((s) => s.code);
+  return PROGRAM_REGISTRY[program].sections.filter((s) => s.auto).map((s) => s.code);
 }
 
 /** Khối kéo thả của một Part theo thứ tự hiện tại */
@@ -96,8 +122,8 @@ export function addQuestions(state: BuilderState, questions: BankQuestion[]): { 
   for (const q of questions) {
     if (next.items.some((i) => i.question === q.id)) continue;
     if (!next.sections.some((s) => s.sectionCode === q.sectionCode)) {
-      const order = TOEIC_SECTIONS.map((s) => s.code);
-      const sections = [...next.sections, { sectionCode: q.sectionCode, durationSec: null }].sort((a, b) => (order.indexOf(a.sectionCode) + 1 || 99) - (order.indexOf(b.sectionCode) + 1 || 99));
+      // Part mới chèn theo thứ tự chuẩn của chương trình (sort ổn định: Part lạ giữ thứ tự thêm, đứng cuối)
+      const sections = [...next.sections, { sectionCode: q.sectionCode, durationSec: null }].sort((a, b) => sectionRank(a.sectionCode) - sectionRank(b.sectionCode));
       next = { ...next, sections };
     }
     const list = next.items.filter((i) => i.sectionCode === q.sectionCode);
@@ -138,24 +164,49 @@ function relId(v: unknown): string | null {
   return null;
 }
 
-/** Blueprint mẫu cho nút "Áp blueprint" của trình dựng */
-export const BUILDER_BLUEPRINTS: Record<string, { label: string; sections: Array<{ sectionCode: string; count: number }> }> = {
-  toeic_full_200: { label: 'TOEIC L&R đầy đủ (200 câu)', sections: TOEIC_SECTIONS.map((s) => ({ sectionCode: s.code, count: TOEIC_FULL_COUNTS[s.code] ?? s.count })) },
-  toeic_mini_60: { label: 'TOEIC mini 60 câu', sections: TOEIC_MINI_BLUEPRINT_60.sections.map((s) => ({ sectionCode: s.section_code, count: s.count })) },
+/**
+ * Blueprint mẫu cho nút "Áp blueprint" của trình dựng (lọc theo chương trình của bộ đề). IELTS (C3): `count` là số CÂU HỎI (mục đánh
+ * số) mỗi part/passage – Reading 13/13/14, Listening 10 × 4 = 40.
+ */
+export const BUILDER_BLUEPRINTS: Record<string, { label: string; program: string; sections: Array<{ sectionCode: string; count: number }> }> = {
+  toeic_full_200: { label: 'TOEIC L&R đầy đủ (200 câu)', program: 'toeic', sections: TOEIC_SECTIONS.map((s) => ({ sectionCode: s.code, count: TOEIC_FULL_COUNTS[s.code] ?? s.count })) },
+  toeic_mini_60: { label: 'TOEIC mini 60 câu', program: 'toeic', sections: TOEIC_MINI_BLUEPRINT_60.sections.map((s) => ({ sectionCode: s.section_code, count: s.count })) },
+  ielts_reading_full: { label: 'IELTS Reading đầy đủ (3 passage · 40 câu hỏi)', program: 'ielts', sections: IELTS_CBT.reading_sections.map((code, i) => ({ sectionCode: code, count: i === 2 ? 14 : 13 })) },
+  ielts_listening_full: { label: 'IELTS Listening đầy đủ (4 part · 40 câu hỏi)', program: 'ielts', sections: IELTS_CBT.listening_sections.map((code) => ({ sectionCode: code, count: 10 })) },
 };
 
-/** Kiểm tra blueprint (đủ số câu mỗi Part) – chặn xuất bản khi lệch */
-export function blueprintReport(blueprint: ReadonlyArray<{ sectionCode: string; count: number }>, state: { items: ReadonlyArray<{ sectionCode: string }> }): { ok: boolean; rows: BlueprintCountRow[]; extra_sections: string[] } {
-  return checkBlueprintCounts(
-    blueprint.map((b) => ({ section_code: b.sectionCode, count: b.count })),
-    state.items.map((i) => ({ section_code: i.sectionCode })),
-  );
+/** Blueprint mẫu áp được cho chương trình */
+export function blueprintsFor(program: string | null | undefined): Array<[string, (typeof BUILDER_BLUEPRINTS)[string]]> {
+  return Object.entries(BUILDER_BLUEPRINTS).filter(([, v]) => v.program === (program ?? 'toeic'));
 }
 
+/**
+ * Kiểm tra blueprint (đủ số câu mỗi Part) – chặn xuất bản khi lệch. `marksOf` (C3 – chương trình đếm theo mục): mỗi câu đóng góp số mục
+ * của nó thay vì 1.
+ */
+export function blueprintReport(
+  blueprint: ReadonlyArray<{ sectionCode: string; count: number }>,
+  state: { items: ReadonlyArray<{ sectionCode: string; question?: string }> },
+  marksOf?: (questionId: string) => number,
+): { ok: boolean; rows: BlueprintCountRow[]; extra_sections: string[] } {
+  const actual = new Map<string, number>();
+  for (const it of state.items) actual.set(it.sectionCode, (actual.get(it.sectionCode) ?? 0) + (marksOf && it.question ? Math.max(0, marksOf(it.question)) : 1));
+  const rows = blueprint.map((b) => {
+    const a = actual.get(b.sectionCode) ?? 0;
+    return { section_code: b.sectionCode, required: b.count, actual: a, diff: a - b.count };
+  });
+  const known = new Set(blueprint.map((b) => b.sectionCode));
+  const extra = [...actual.keys()].filter((k) => !known.has(k));
+  return { ok: rows.every((r) => r.diff === 0) && extra.length === 0, rows, extra_sections: extra };
+}
+
+/** Đơn vị đếm hiển thị cho biên tập viên: IELTS đếm câu hỏi (mục đánh số), TOEIC đếm câu */
+export const countUnitLabel = (program: string | null | undefined) => (countsByMarks(program) ? 'câu hỏi (mục)' : 'câu');
+
 /** Thông điệp lỗi blueprint (tiếng Việt – hiển thị cho biên tập viên) */
-export function blueprintErrors(report: ReturnType<typeof blueprintReport>): string[] {
+export function blueprintErrors(report: ReturnType<typeof blueprintReport>, unit = 'câu'): string[] {
   return [
-    ...report.rows.filter((r) => r.diff !== 0).map((r) => `${r.section_code}: cần ${r.required} câu, hiện có ${r.actual}${r.diff < 0 ? ` (thiếu ${-r.diff})` : ` (thừa ${r.diff})`}.`),
+    ...report.rows.filter((r) => r.diff !== 0).map((r) => `${r.section_code}: cần ${r.required} ${unit}, hiện có ${r.actual}${r.diff < 0 ? ` (thiếu ${-r.diff})` : ` (thừa ${r.diff})`}.`),
     ...report.extra_sections.map((c) => `${c}: không có trong blueprint.`),
   ];
 }

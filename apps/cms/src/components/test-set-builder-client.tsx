@@ -4,9 +4,13 @@ import { Button, toast } from '@payloadcms/ui';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   addQuestions,
-  BUILDER_BLUEPRINTS,
   blueprintErrors,
   blueprintReport,
+  blueprintsFor,
+  builderSectionCodes,
+  countsByMarks,
+  countUnitLabel,
+  marksOfContent,
   fromCollection,
   moveSection,
   moveUnit,
@@ -18,7 +22,7 @@ import {
   type BuilderState,
 } from '../lib/test-set-builder';
 import { validateTestSetStructure, type TestSetKind } from '../lib/validate';
-import { DIFFICULTY_CODES, TOEIC_SECTIONS } from '../lib/reference';
+import { DIFFICULTY_CODES } from '../lib/reference';
 
 interface LoadedTestSet {
   doc: TestSetDoc;
@@ -44,6 +48,7 @@ interface QuestionDoc {
   status?: string | null;
   difficulty?: string | null;
   passage?: unknown;
+  content?: unknown;
 }
 interface StructureReport {
   ok: boolean;
@@ -57,6 +62,7 @@ const toBank = (q: QuestionDoc): BankQuestion => ({
   status: q.status ?? 'draft',
   difficulty: q.difficulty ?? null,
   passageId: q.passage && typeof q.passage === 'object' && 'id' in q.passage ? String(q.passage.id) : typeof q.passage === 'string' ? q.passage : null,
+  marks: marksOfContent(q.content),
 });
 
 /** Thông điệp lỗi Payload (ValidationError → errors[].data.errors[].message) */
@@ -155,6 +161,7 @@ export const TestSetBuilderClient: React.FC<{ apiBase: string; adminRoute: strin
     setDoc(x.doc);
     setState(x.state);
     setBlueprint((x.doc.blueprint ?? []).filter((b) => b.sectionCode && b.count).map((b) => ({ sectionCode: b.sectionCode!, count: b.count! })));
+    setBankFilter((f) => (builderSectionCodes(x.doc.program).includes(f.section) ? f : { ...f, section: builderSectionCodes(x.doc.program)[0] ?? '' }));
     setKnown(new Map(x.questions.map((q) => [q.id, q])));
     setDirty(false);
   }, []);
@@ -203,8 +210,13 @@ export const TestSetBuilderClient: React.FC<{ apiBase: string; adminRoute: strin
 
   const shapeItems = toCollectionData(state).items;
   const localIssues = doc ? validateTestSetStructure({ program: doc.program, kind: doc.kind, sections: state.sections, items: shapeItems.map((i) => ({ question: i.question, sectionCode: i.sectionCode, sortOrder: i.sortOrder, groupKey: i.groupKey })) }) : [];
-  const bp = blueprint.length ? blueprintReport(blueprint, state) : null;
-  const bpErrors = bp ? blueprintErrors(bp) : [];
+  // C3: IELTS đếm theo câu hỏi (mục đánh số – markCount) thay vì câu catalog
+  const perItem = countsByMarks(doc?.program);
+  const unit = countUnitLabel(doc?.program);
+  const marksOf = (qid: string) => known.get(qid)?.marks ?? 1;
+  const countOf = (items: ReadonlyArray<{ question: string }>) => (perItem ? items.reduce((n, it) => n + marksOf(it.question), 0) : items.length);
+  const bp = blueprint.length ? blueprintReport(blueprint, state, perItem ? marksOf : undefined) : null;
+  const bpErrors = bp ? blueprintErrors(bp, unit) : [];
   const unpublished = state.items.filter((i) => (known.get(i.question)?.status ?? 'published') !== 'published');
 
   const checkApi = async () => {
@@ -276,7 +288,7 @@ export const TestSetBuilderClient: React.FC<{ apiBase: string; adminRoute: strin
   }
   if (!doc) return <p className="allingo-muted">Đang tải bộ đề…</p>;
 
-  const sectionCodes = TOEIC_SECTIONS.map((s) => s.code);
+  const sectionCodes = builderSectionCodes(doc.program);
   return (
     <div className="allingo-builder" data-testid="test-set-builder" data-dirty={dirty}>
       <div className="allingo-card">
@@ -284,7 +296,7 @@ export const TestSetBuilderClient: React.FC<{ apiBase: string; adminRoute: strin
           {doc.code} <span className={`allingo-badge ${doc.status === 'published' ? 'allingo-badge--pass' : 'allingo-badge--warn'}`}>{doc.status}</span>
         </h3>
         <p className="allingo-muted">
-          {doc.program.toUpperCase()} · {doc.kind} · {state.items.length} câu · {state.sections.length} Part {dirty ? '· có thay đổi chưa lưu' : ''}
+          {doc.program.toUpperCase()} · {doc.kind} · {state.items.length} câu{perItem ? ` · ${countOf(state.items)} câu hỏi (mục)` : ''} · {state.sections.length} Part {dirty ? '· có thay đổi chưa lưu' : ''}
         </p>
         <div className="allingo-actions">
           <Button buttonStyle="secondary" disabled={busy} onClick={() => void checkApi()}>
@@ -338,7 +350,9 @@ export const TestSetBuilderClient: React.FC<{ apiBase: string; adminRoute: strin
                     ⋮⋮
                   </span>
                   <strong>{s.sectionCode}</strong>
-                  <span className="allingo-muted">{state.items.filter((it) => it.sectionCode === s.sectionCode).length} câu</span>
+                  <span className="allingo-muted">
+                    {countOf(state.items.filter((it) => it.sectionCode === s.sectionCode))} {unit}
+                  </span>
                   <span className="allingo-dnd-buttons">
                     <button type="button" aria-label={`Đưa ${s.sectionCode} lên`} disabled={i === 0} onClick={() => update(moveSection(state, i, i - 1))}>
                       ↑
@@ -358,7 +372,7 @@ export const TestSetBuilderClient: React.FC<{ apiBase: string; adminRoute: strin
             return (
               <div key={s.sectionCode} className="allingo-card" data-testid={`builder-units-${s.sectionCode}`}>
                 <h3>
-                  {s.sectionCode} <span className="allingo-muted">({units.reduce((n, u) => n + u.items.length, 0)} câu)</span>
+                  {s.sectionCode} <span className="allingo-muted">({countOf(units.flatMap((u) => u.items))} {unit})</span>
                 </h3>
                 <ol className="allingo-dnd-list" aria-label={`Câu của ${s.sectionCode}`}>
                   {units.map((u, i) => (
@@ -367,10 +381,11 @@ export const TestSetBuilderClient: React.FC<{ apiBase: string; adminRoute: strin
                         ⋮⋮
                       </span>
                       <div className="allingo-dnd-body">
-                        {u.groupKey ? <span className="allingo-badge">Nhóm passage · {u.items.length} câu</span> : null}
+                        {u.groupKey ? <span className="allingo-badge">Nhóm passage · {countOf(u.items)} {unit}</span> : null}
                         {u.items.map((it) => (
                           <div key={it.question} className="allingo-dnd-question" data-testid="builder-question" data-question={it.question}>
                             <span>{known.get(it.question)?.title ?? it.question}</span>
+                            {perItem && marksOf(it.question) > 1 ? <span className="allingo-badge">{marksOf(it.question)} câu hỏi</span> : null}
                             {(known.get(it.question)?.status ?? 'published') !== 'published' ? <span className="allingo-badge allingo-badge--warn">{known.get(it.question)?.status}</span> : null}
                             <button type="button" className="allingo-link-button" aria-label={`Bớt câu ${known.get(it.question)?.title ?? it.question}`} onClick={() => update(removeQuestion(state, it.question))} data-testid="builder-remove">
                               Bớt
@@ -397,9 +412,9 @@ export const TestSetBuilderClient: React.FC<{ apiBase: string; adminRoute: strin
         <div>
           {/* Blueprint */}
           <div className="allingo-card" data-testid="builder-blueprint">
-            <h3>Blueprint (số câu mỗi Part)</h3>
+            <h3>Blueprint ({perItem ? 'số câu hỏi mỗi part/passage' : 'số câu mỗi Part'})</h3>
             <div className="allingo-actions">
-              {Object.entries(BUILDER_BLUEPRINTS).map(([k, v]) => (
+              {blueprintsFor(doc.program).map(([k, v]) => (
                 <Button
                   key={k}
                   buttonStyle="secondary"
@@ -444,7 +459,7 @@ export const TestSetBuilderClient: React.FC<{ apiBase: string; adminRoute: strin
                             min={1}
                             max={200}
                             className="allingo-input"
-                            aria-label={`Số câu cần cho ${b.sectionCode}`}
+                            aria-label={`Số ${unit} cần cho ${b.sectionCode}`}
                             value={b.count}
                             onChange={(e) => {
                               const next = [...blueprint];
@@ -529,7 +544,7 @@ export const TestSetBuilderClient: React.FC<{ apiBase: string; adminRoute: strin
                 return (
                   <li key={q.id} data-testid="bank-result" data-question={q.id}>
                     <span>
-                      <strong>{q.sectionCode}</strong> {q.title} <span className="allingo-muted">({q.status}{q.difficulty ? ` · ${q.difficulty}` : ''})</span>
+                      <strong>{q.sectionCode}</strong> {q.title} <span className="allingo-muted">({q.status}{q.difficulty ? ` · ${q.difficulty}` : ''}{perItem ? ` · ${q.marks ?? 1} câu hỏi` : ''})</span>
                     </span>
                     <button type="button" className="allingo-link-button" disabled={inSet} onClick={() => add([q])} data-testid="bank-add">
                       {inSet ? 'Đã có' : 'Thêm'}
