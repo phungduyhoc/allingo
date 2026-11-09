@@ -4,11 +4,13 @@ import type { JSONFieldClientProps } from 'payload';
 import { QUESTION_FIXTURES, type QuestionTypeCode, QUESTION_TYPE_CODES } from '@allingo/schemas';
 import { Button, FieldDescription, FieldError, FieldLabel, useField, useFormFields } from '@payloadcms/ui';
 import React, { useCallback, useMemo, useState } from 'react';
+import { buildContentPreview } from '../lib/preview';
 
 /**
  * Field tuỳ biến cho `questions.content`:
  * - mcq_single/mcq_multi: form có cấu trúc (đề bài, lựa chọn A–H, đáp án đúng, giải thích vi/en, evidence) → sinh JSON.
- * - Dạng khác: nhập JSON thô, nút "Chèn mẫu" lấy từ QUESTION_FIXTURES[type].content (packages/schemas).
+ * - Dạng khác: nhập JSON thô, nút "Chèn mẫu" lấy từ QUESTION_FIXTURES[type].content (packages/schemas); C2: khối "Xem trước"
+ *   kiểm tra Zod + tham chiếu đáp án và liệt kê từng mục kèm đáp án (14 dạng IELTS Reading/Listening).
  * Validate thật diễn ra ở server (Zod trong collection); đây chỉ là UI nhập liệu.
  */
 
@@ -212,6 +214,52 @@ const RawJsonEditor: React.FC<{ value: Json | null; readOnly: boolean; onChange:
   );
 };
 
+/** C2 – xem trước nội dung (dạng nhập JSON): lỗi Zod/tham chiếu hoặc bản mô tả đề + từng mục kèm đáp án */
+const ContentPreviewBox: React.FC<{ questionType: QuestionTypeCode; value: Json | null }> = ({ questionType, value }) => {
+  const p = useMemo(() => buildContentPreview(questionType, value), [questionType, value]);
+  if (!p.ok)
+    return (
+      <div className="allingo-card" style={{ marginTop: 12 }} data-testid="cms-content-preview" data-ok="false">
+        <strong>Xem trước</strong>
+        <ul className="allingo-error" style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+          {p.issues.map((i) => (
+            <li key={i}>{i}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  const d = p.description;
+  return (
+    <div className="allingo-card" style={{ marginTop: 12 }} data-testid="cms-content-preview" data-ok="true">
+      <strong>Xem trước</strong> <span className="allingo-muted">({p.marks} câu hỏi đánh số)</span>
+      {d.instructions ? <p className="allingo-badge" style={{ display: 'inline-block', marginLeft: 8 }}>{d.instructions}</p> : null}
+      {d.stem ? <p style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>{d.stem}</p> : null}
+      {d.options.length ? (
+        <ul style={{ marginTop: 8, paddingLeft: 18 }}>
+          {d.options.map((o) => (
+            <li key={o.key}>
+              <strong>{o.key}</strong> {o.text}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {d.items.length ? (
+        <ol style={{ marginTop: 8, paddingLeft: 18 }} data-testid="cms-preview-items">
+          {d.items.map((i) => (
+            <li key={i.key}>
+              {i.text} → <strong style={{ color: 'var(--theme-success-500, #1a7f37)' }}>{i.correct}</strong>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p style={{ marginTop: 8 }}>
+          Đáp án: <strong>{d.correct_text || '—'}</strong>
+        </p>
+      )}
+    </div>
+  );
+};
+
 export const QuestionContentField: React.FC<JSONFieldClientProps> = (props) => {
   const { field, path: pathFromProps, readOnly = false } = props;
   const { value, setValue, showError, errorMessage, path } = useField<Json | null>({ path: pathFromProps });
@@ -236,7 +284,10 @@ export const QuestionContentField: React.FC<JSONFieldClientProps> = (props) => {
       {isMcq ? (
         <McqEditor value={value} type={questionType} readOnly={readOnly} onChange={onChange} />
       ) : (
-        <RawJsonEditor value={value} readOnly={readOnly} onChange={onChange} />
+        <>
+          <RawJsonEditor value={value} readOnly={readOnly} onChange={onChange} />
+          <ContentPreviewBox questionType={questionType} value={value} />
+        </>
       )}
       {showError && errorMessage ? <FieldError path={path} message={errorMessage} showError /> : null}
       <FieldDescription path={path} description={field.admin?.description} />

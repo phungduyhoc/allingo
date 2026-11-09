@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { findUnpublishedItems, validateMcqAnswerKeys, validateQuestionContent, validateTestSetStructure } from '../src/lib/validate';
 
 describe('validateQuestionContent', () => {
-  it('chấp nhận fixture của cả 12 dạng câu và trả về giá trị đã chuẩn hoá', () => {
+  it('chấp nhận fixture của cả 26 dạng câu (C2: +14 dạng IELTS) và trả về giá trị đã chuẩn hoá', () => {
     for (const type of QUESTION_TYPE_CODES) {
       const res = validateQuestionContent(type, QUESTION_FIXTURES[type].content);
       expect(res.ok, type).toBe(true);

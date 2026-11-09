@@ -1,4 +1,4 @@
-import { PROGRAM_CODES, QUESTION_TYPE_CODES, pickLocalized, type LocalizedText, type ProgramCode, type QuestionTypeCode } from '@allingo/schemas';
+import { PROGRAM_CODES, PROGRAM_REGISTRY, QUESTION_TYPE_CODES, pickLocalized, type LocalizedText, type ProgramCode, type QuestionTypeCode } from '@allingo/schemas';
 
 /**
  * Danh mục tham chiếu tĩnh (fallback khi API nội bộ `GET /internal/content/reference` chưa chạy).
@@ -60,6 +60,21 @@ export const QUESTION_TYPE_LABELS: Record<QuestionTypeCode, { vi: string; en: st
   essay: { vi: 'Viết luận', en: 'Essay' },
   speaking: { vi: 'Nói', en: 'Speaking' },
   handwriting: { vi: 'Viết chữ Hán/Kanji', en: 'Handwriting' },
+  // C2 – IELTS Reading/Listening
+  matching_headings: { vi: 'Nối tiêu đề với đoạn văn', en: 'Matching headings' },
+  matching_information: { vi: 'Nối thông tin với đoạn văn', en: 'Matching information' },
+  matching_features: { vi: 'Nối đặc điểm', en: 'Matching features' },
+  matching_sentence_endings: { vi: 'Nối đuôi câu', en: 'Matching sentence endings' },
+  sentence_completion: { vi: 'Hoàn thành câu', en: 'Sentence completion' },
+  summary_completion: { vi: 'Hoàn thành tóm tắt', en: 'Summary completion' },
+  note_completion: { vi: 'Hoàn thành ghi chú', en: 'Note completion' },
+  table_completion: { vi: 'Hoàn thành bảng', en: 'Table completion' },
+  flow_chart_completion: { vi: 'Hoàn thành sơ đồ quy trình', en: 'Flow-chart completion' },
+  form_completion: { vi: 'Hoàn thành biểu mẫu', en: 'Form completion' },
+  short_answer: { vi: 'Trả lời ngắn', en: 'Short-answer questions' },
+  diagram_labelling: { vi: 'Gán nhãn sơ đồ (điền từ)', en: 'Diagram labelling' },
+  summary_word_bank: { vi: 'Tóm tắt – chọn từ ngân hàng', en: 'Summary completion (word bank)' },
+  plan_map_labelling: { vi: 'Gán nhãn bản đồ/mặt bằng', en: 'Plan/map labelling' },
 };
 
 export const QUESTION_TYPE_OPTIONS = QUESTION_TYPE_CODES.map((code) => ({
@@ -104,22 +119,23 @@ export const TOEIC_SECTIONS: ReadonlyArray<{ code: string; name: string; count: 
 
 export const TOEIC_FULL_COUNTS: Readonly<Record<string, number>> = Object.fromEntries(TOEIC_SECTIONS.map((s) => [s.code, s.count]));
 
-const IELTS_SECTIONS = ['listening', 'reading', 'writing', 'speaking'].map((code) => ({
+/** C1: mã section IELTS theo seed core/registry (listening_p1…speaking_part3) */
+const IELTS_SECTIONS = PROGRAM_REGISTRY.ielts.sections.map((s) => ({
   program: 'ielts',
-  code,
-  name: code.charAt(0).toUpperCase() + code.slice(1),
+  code: s.code,
+  name: s.code.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
   level: null,
 }));
-const JLPT_SECTIONS = ['vocabulary', 'grammar', 'reading', 'listening'].map((code) => ({
+const JLPT_SECTIONS = PROGRAM_REGISTRY.jlpt.sections.map((s) => ({
   program: 'jlpt',
-  code,
-  name: code.charAt(0).toUpperCase() + code.slice(1),
+  code: s.code,
+  name: s.code.charAt(0).toUpperCase() + s.code.slice(1),
   level: null,
 }));
-const HSK_SECTIONS = ['listening', 'reading', 'writing'].map((code) => ({
+const HSK_SECTIONS = PROGRAM_REGISTRY.hsk.sections.map((s) => ({
   program: 'hsk',
-  code,
-  name: code.charAt(0).toUpperCase() + code.slice(1),
+  code: s.code,
+  name: s.code.charAt(0).toUpperCase() + s.code.slice(1),
   level: null,
 }));
 

@@ -289,7 +289,21 @@ export interface Question {
     | 'dictation'
     | 'essay'
     | 'speaking'
-    | 'handwriting';
+    | 'handwriting'
+    | 'matching_headings'
+    | 'matching_information'
+    | 'matching_features'
+    | 'matching_sentence_endings'
+    | 'sentence_completion'
+    | 'summary_completion'
+    | 'note_completion'
+    | 'table_completion'
+    | 'flow_chart_completion'
+    | 'form_completion'
+    | 'short_answer'
+    | 'diagram_labelling'
+    | 'summary_word_bank'
+    | 'plan_map_labelling';
   difficulty?:
     | (
         | 'A1'
