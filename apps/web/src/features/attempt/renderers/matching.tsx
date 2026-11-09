@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { Badge, cn, NativeSelect } from '@allingo/ui';
 import type { PublicQuestionContent } from '@/lib/types';
 import type { RendererProps } from './types';
+import { useNumberBase } from './number-base';
 
 /**
  * C2 – nối (matching headings / information / features / sentence endings + `matching` chung): mỗi mục một `<select>` gốc chọn
@@ -27,6 +28,9 @@ export function Matching({ content, answer, onChange, disabled, review, question
   const options = content.type === 'matching' ? content.right : content.options;
   const example = content.type === 'matching_headings' ? content.example : undefined;
   const pairs = answer?.pairs ?? {};
+  const base = useNumberBase();
+  // C3: số câu của từng mục (dòng ví dụ của matching headings không đánh số)
+  const numberOf = new Map(items.filter((i) => i.key !== example?.item).map((i, k) => [i.key, base + k]));
   const correct = (review?.correctAnswer ?? null) as Record<string, string> | null;
   const locked = disabled || !!review;
   const [dragOver, setDragOver] = React.useState<string | null>(null);
@@ -112,10 +116,13 @@ export function Matching({ content, answer, onChange, disabled, review, question
                 review && !isExample && ok === false && 'border-destructive',
               )}
               data-testid={`pair-row-${it.key}`}
+              data-sub={it.key}
               data-state={review && !isExample ? (ok ? 'correct' : 'wrong') : undefined}
             >
               <label htmlFor={selectId} className="min-w-0 text-base">
-                <span className="mr-2 font-semibold tabular">{it.key}.</span>
+                {numberOf.has(it.key) ? <span className="tabular mr-2 rounded bg-muted px-1.5 text-xs font-bold text-muted-foreground" data-testid={`pair-number-${it.key}`}>{numberOf.get(it.key)}</span> : null}
+                {/* Khoá dạng số (mục 1, 2, 3…) trùng nghĩa với số câu → chỉ hiện số câu */}
+                {numberOf.has(it.key) && /^\d+$/.test(it.key) ? null : <span className="mr-2 font-semibold tabular">{it.key}.</span>}
                 {it.text}
                 {isExample ? (
                   <Badge variant="muted" className="ml-2">

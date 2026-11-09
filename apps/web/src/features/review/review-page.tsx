@@ -197,7 +197,8 @@ export function ReviewPage({ attemptId }: { attemptId: string }) {
                 >
                   <ReviewItemCard
                     item={item}
-                    number={item.question.order_no}
+                    number={item.question.number_start ?? item.question.order_no}
+                    markCount={item.question.mark_count ?? 1}
                     attemptId={attemptId}
                     media={media}
                     examLocked={examLocked}

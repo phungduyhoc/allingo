@@ -439,7 +439,17 @@
       "describeImage": "Text description of the image",
       "imageUnavailable": "Image not ready yet – use the text description below.",
       "flowChart": "Flow chart"
-    }
+    },
+    "questionsOf": "Questions {from}–{to}/{total}",
+    "sectionLocked": "Time is up for this section",
+    "sectionTimeUp": "Time is up for this section. Your answers have been saved; moving to the next section.",
+    "ieltsListeningDone": "Listening has ended. Your test is being submitted.",
+    "ieltsNowReview": "Check your answers",
+    "ieltsNowPreread": "{part} – read questions {from}–{to}",
+    "ieltsNowPart": "Now playing {part} · questions {from}–{to}",
+    "ieltsPrereadTime": "{seconds, plural, =1 {Audio starts in 1 second} other {Audio starts in # seconds}}",
+    "ieltsReviewTime": "Review time left: {time}",
+    "ieltsPrereadBadge": "Read the questions"
   },
   "result": {
     "title": "Result",
@@ -553,7 +563,18 @@
     "aiDiagnosisRetry": "Try again",
     "aiDiagnosisLoadError": "Could not load the saved AI analysis.",
     "backToToday": "Back to Today",
-    "backToPlan": "Back to plan"
+    "backToPlan": "Back to plan",
+    "ielts": {
+      "title": "IELTS band",
+      "module": {
+        "academic": "Academic Reading",
+        "general_training": "General Training Reading"
+      },
+      "correctOf": "{correct}/{total} correct",
+      "overall": "Overall band: {band}",
+      "overallPartial": "The overall band is only calculated when all four skills (Listening, Reading, Writing, Speaking) are taken.",
+      "note": "Bands are Allingo estimates from the number of correct answers, not official IELTS results."
+    }
   },
   "review": {
     "title": "Review",
@@ -626,7 +647,8 @@
     "feedbackNotePlaceholder": "What was wrong or unclear?",
     "feedbackNoteSubmit": "Send note",
     "feedbackNoteSaved": "Note sent. Thank you!",
-    "feedbackGroup": "Rate this explanation"
+    "feedbackGroup": "Rate this explanation",
+    "seekTo": "{time} – play from here"
   },
   "settings": {
     "title": "Settings",

@@ -38,6 +38,11 @@ export interface DraftQueueOptions {
    * báo `onClosed` một lần. Mặc định: không lỗi nào là đóng.
    */
   isClosedError?: (err: unknown) => boolean;
+  /**
+   * C3 – lỗi chỉ từ chối MỘT PHẦN lô (409 `section_locked`: section đã hết giờ ở đề có đồng hồ theo section) → trả question_id cần bỏ
+   * (đáp án của section đã khoá không bao giờ được nhận); hàng đợi bỏ các mục đó rồi gửi phần còn lại. null → xử lý như lỗi thường.
+   */
+  rejectedEntries?: (err: unknown, batch: readonly DraftEntry[]) => string[] | null;
 }
 
 /** Khoá localStorage của bản cũ (chỉ để chuyển dữ liệu) */
@@ -78,6 +83,11 @@ export class DraftQueue {
   get hasPending(): boolean {
     return this.entries.size > 0 || this.dirtyMeta;
   }
+  /** C3: đặt/đổi hàm nhận diện lỗi từ chối một phần lô (`rejectedEntries`) sau khi tạo hàng đợi */
+  setRejectedEntries(fn: DraftQueueOptions['rejectedEntries']): void {
+    this.opts.rejectedEntries = fn;
+  }
+
   /** Server đã từ chối nhận nháp vĩnh viễn (409) – không gửi nữa */
   get closed(): boolean {
     return this._closed;
@@ -158,6 +168,18 @@ export class DraftQueue {
       }
       this.setStatus(this.hasPending ? 'offline' : 'saved');
     } catch (err) {
+      const rejected = this.opts.rejectedEntries?.(err, batch) ?? null;
+      if (rejected) {
+        for (const id of rejected) this.entries.delete(id);
+        this.persist();
+        // Không bỏ được mục nào (server trả lỗi không khớp lô) → dừng để không gửi lặp vô hạn
+        if (rejected.length > 0 && this.hasPending && this.opts.isOnline()) {
+          await this.send();
+          return;
+        }
+        this.setStatus(this.hasPending ? 'error' : 'saved', err);
+        return;
+      }
       if (this.opts.isClosedError?.(err) && !this._closed) {
         this._closed = true;
         this.setStatus('error', err);
