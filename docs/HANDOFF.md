@@ -6,7 +6,7 @@ Mọi kiểm tra dưới đây chạy trong phiên cloud: Postgres 16 + pgvector
 
 ## 0. Chuyển máy – đọc trước khi mở phiên mới (09/11/2026)
 
-**Trạng thái.** Nhánh `main` trên GitHub `phungduyhoc/allingo` chứa toàn bộ việc đến C2. Backlog đã xong: B6, B7, B5, B2, C1, C2 (bảng "Backlog tính năng" ở mục 1). **C3 (IELTS Reading & Listening) làm trên máy mới (WSL2 Ubuntu) ở nhánh `feat/test-engine-ielts-rl`** – ADR-0039, A258–A267, S171–S173; chưa push → push + mở PR, xem CI rồi merge. Tiếp theo: C4.
+**Trạng thái.** Nhánh `main` trên GitHub `phungduyhoc/allingo` chứa toàn bộ việc đã làm. Backlog đã xong: B6, B7, B5, B2, C1, C2, **C3** (bảng "Backlog tính năng" ở mục 1). C3 (IELTS Reading & Listening – ADR-0039, A258–A267, S171–S173) làm trên máy mới (WSL2 Ubuntu), merge qua PR #1 (rebase) ngày 09/11/2026: CI xanh mọi job trừ Docker build (lỗi có sẵn từ trước – đã sửa ở PR kế tiếp: `pnpm install --prefer-offline` thay `--offline` trong 3 Dockerfile vì cache mount không nằm trong cache layer GHA). Tiếp theo: C4.
 
 **Máy dev Windows (09/11/2026).** Mã nguồn ở `~/allingo` trong Ubuntu (đĩa WSL đã chuyển sang `E:\WSL\Ubuntu`). Docker Desktop không cài được (component store Windows hỏng, lỗi 14098) → dùng **Docker Engine + compose plugin cài trong Ubuntu** (`pnpm docker:up` như cũ; container không tự khởi động lại khi WSL khởi động lại → chạy lại `pnpm docker:up`). Ổ C: gần đầy: chạy nhiều build/test/E2E song song làm `C:\pagefile.sys` phình ~7 GB → C: hết chỗ → WSL sập; chạy kiểm thử tuần tự (`--concurrency=1`) và chuyển pagefile sang ổ khác.
 
