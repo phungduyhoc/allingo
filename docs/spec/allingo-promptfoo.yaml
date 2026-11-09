@@ -149,6 +149,28 @@ tests:
         value: "The explanation is factually correct for this question, names the grammar/vocabulary point precisely, cites the deciding words, is in Vietnamese with English examples kept in English, and could be read in under a minute. Score 1–5; pass if ≥ 4."
         metric: teacher_proxy_rating
 
+  # S169/C3: IELTS R/L nhiều mục (TFNG/YNNG, nối, hoàn thành, gán nhãn, Choose TWO…) – tệp riêng vì nhiều dạng không có `options`;
+  # dựng offline bằng `pnpm eval:build` (fixture tự biên soạn, mỗi câu × không trả lời / trả lời sai / đúng một phần). Không so khớp
+  # chặt correct_option kiểu MCQ: kiểm tóm tắt đáp án được nhắc lại (chuẩn hoá khoảng trắng/hoa thường) và các mục người học làm sai
+  # (tối đa 3 mục đầu – prompt yêu cầu) được giải thích theo số mục.
+  - description: explain_mcq – IELTS nhiều mục (S169)
+    vars: file://eval/data/explain_mcq_ielts_v1.jsonl
+    prompts: [explain_mcq]
+    providers: [gemini-flash]
+    assert:
+      - type: is-json
+        value: file://eval/schemas/explain_mcq.json
+      - type: javascript
+        value: "String(output.correct_option).toLowerCase().replace(/\\s+/g, ' ').trim() === String(context.vars.correct_option).toLowerCase().replace(/\\s+/g, ' ').trim()"
+        metric: correct_answer_echo
+      - type: javascript
+        value: "(() => { const wrong = (context.vars.items || []).filter((i) => i.chosen !== null && i.chosen !== i.correct).slice(0, 3); const text = String(output.why_correct) + ' ' + Object.keys(output.why_others_wrong || {}).join(' ') + ' ' + Object.values(output.why_others_wrong || {}).join(' '); return wrong.every((i) => text.includes(String(i.key))); })()"
+        metric: covers_wrong_items
+      - type: llm-rubric
+        provider: anthropic:messages:${CLAUDE_SONNET_MODEL}
+        value: "The explanation is factually correct for every numbered item, quotes the passage/transcript words that decide each answer, distinguishes FALSE (text contradicts) from NOT GIVEN (text is silent) when relevant, respects the stated word limit for completion items, is in Vietnamese with English examples kept in English, and could be read in under a minute. Score 1–5; pass if ≥ 4."
+        metric: teacher_proxy_rating
+
   # ---------------------------------------------------------------- Kiểm tra đề
   - description: check_question – đồng thuận với giáo viên
     vars: file://eval/data/check_question_v1.jsonl

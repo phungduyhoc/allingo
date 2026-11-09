@@ -3,6 +3,8 @@
  * vào eval/prompts/*.txt và eval/schemas/*.json theo docs/spec/allingo-promptfoo.yaml;
  * (2) S5: dựng eval/data/explain_mcq_v1.jsonl (≥ 100 câu) từ ngân hàng published demo trong DB (bỏ qua với --no-data hoặc khi
  * DB không sẵn sàng – giữ tệp cũ). Dòng JSONL: {key, vars, gold:{correct_option}, meta} – `vars` khớp biến template explain_mcq.
+ * (3) S169/C3: dựng eval/data/explain_mcq_ielts_v1.jsonl OFFLINE (không cần DB, chạy cả với --no-data) từ fixture IELTS tự biên soạn –
+ * mọi dạng R/L nhiều mục × (không trả lời | trả lời sai | đúng một phần); `gold` = đáp án tóm tắt + từng mục.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,6 +27,16 @@ for (const p of spec.prompts) {
   fs.writeFileSync(path.join(schemasDir, `${p.code}.json`), JSON.stringify(p.output_schema, null, 2));
 }
 process.stdout.write(`✔ eval:build: ${spec.prompts.length} prompt → eval/prompts, eval/schemas\n`);
+
+{
+  process.env.LOG_LEVEL = process.env.LOG_LEVEL ?? 'error';
+  const { buildIeltsExplainDataset } = await import('./lib/explain-dataset.js');
+  const lines = buildIeltsExplainDataset();
+  fs.writeFileSync(path.join(dataDir, 'explain_mcq_ielts_v1.jsonl'), `${lines.map((l) => JSON.stringify(l)).join('\n')}\n`);
+  const byType = lines.reduce<Record<string, number>>((m, l) => ({ ...m, [l.vars.question_type]: (m[l.vars.question_type] ?? 0) + 1 }), {});
+  process.stdout.write(`✔ eval:build: ${lines.length} dòng IELTS → eval/data/explain_mcq_ielts_v1.jsonl ${JSON.stringify(byType)}\n`);
+  if (lines.length < 50) process.stderr.write('⚠ explain_mcq_ielts_v1 < 50 dòng (S169)\n');
+}
 
 if (!process.argv.includes('--no-data')) {
   process.env.AI_PROVIDER = process.env.AI_PROVIDER ?? 'mock';
