@@ -18,4 +18,6 @@ regexes = [
   '''env\.[A-Z0-9_]+(\s*\|\|\s*undefined)?''',
   '''(?i)(storage|memory|cache)_?key\s*=\s*['"][a-z0-9_.:-]+['"]''',
   '''\b[A-Z0-9_]*KEY\s*=\s*['"]allingo[a-z0-9_.:-]*['"]''',
+  # C3: khoá định danh nội dung đề tự biên soạn (key/group_key của câu, nhóm, passage IELTS) – không phải secret
+  '''\b(group_)?key:\s*['"]ielts-[a-z0-9-]+['"]''',
 ]
