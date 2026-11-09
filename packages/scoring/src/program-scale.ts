@@ -1,11 +1,11 @@
-import { ieltsLrBand, ieltsRoundOverall, SCALE_INFO, toeicLrEstimate, type ScoreRange, type ToeicLrEstimate } from './index.js';
+import { ieltsListeningBand, ieltsReadingBand, ieltsRoundOverall, SCALE_INFO, toeicLrEstimate, type IeltsModule, type ScoreRange, type ToeicLrEstimate } from './index.js';
 import { suggestToeicTarget, type TargetSuggestion } from './adaptive-diagnostic.js';
 
 /**
  * C1 – quy đổi điểm theo chương trình (ADR-0038): test engine/thống kê gọi một hàm chung thay cho nhánh `program === 'toeic'`.
  * Mọi thang là ƯỚC TÍNH của Allingo (không phải bảng chính thức ETS/IELTS/JLPT/HSK) – giao diện luôn ghi "ước tính".
  *  - toeic_lr: Part → Listening/Reading, mỗi kỹ năng 5–495, tổng 10–990 khi đủ hai kỹ năng (giữ nguyên hành vi S4).
- *  - band (IELTS – sẵn cho C3): band Listening/Reading từ số câu đúng quy về /40 (`ieltsLrBand`), overall = trung bình band các kỹ
+ *  - band (IELTS – sẵn cho C3): band Listening/Reading từ số câu đúng quy về /40 (`ieltsListeningBand`/`ieltsReadingBand` – Reading tách Academic/GT), overall (C3: chỉ khi đủ 4 kỹ năng) = trung bình band các kỹ
  *    năng có mặt làm tròn theo quy tắc .25/.75 (`ieltsRoundOverall`); thiếu kỹ năng → `partial: true`.
  *  - points (JLPT/HSK – GĐ3): chỉ khai báo thang, chưa quy đổi (`value = null`).
  */
@@ -25,6 +25,8 @@ export interface ProgramScoreInput {
   bySection: Readonly<Record<string, SectionMarks>>;
   /** Phần thi → kỹ năng (registry chương trình; null → bỏ qua khi quy đổi) */
   skillOf: (sectionCode: string) => string | null;
+  /** C3 – IELTS: hình thức Reading (catalog.test_sets.level); thiếu → academic */
+  module?: IeltsModule | null;
 }
 
 export interface SkillScore {
@@ -90,10 +92,11 @@ export function scoreByProgram(input: ProgramScoreInput): ProgramScore {
   if (input.kind === 'band') {
     const bands: Record<string, number> = {};
     const skills: Record<string, SkillScore> = {};
+    const module: IeltsModule = input.module === 'general_training' ? 'general_training' : 'academic';
     for (const skill of ['listening', 'reading'] as const) {
       const a = agg.get(skill);
       if (!a || a.max_marks <= 0) continue;
-      bands[skill] = ieltsLrBand(a.marks, a.max_marks);
+      bands[skill] = skill === 'reading' ? ieltsReadingBand(a.marks, a.max_marks, module) : ieltsListeningBand(a.marks, a.max_marks);
       skills[skill] = { scaled: bands[skill], range: null };
     }
     for (const code of Object.keys(input.bySection)) {
@@ -101,11 +104,14 @@ export function scoreByProgram(input: ProgramScoreInput): ProgramScore {
       if (skill && bands[skill] !== undefined) sections[code] = bands[skill]!;
     }
     const present = Object.values(bands);
-    const overall = present.length ? Math.min(9, Math.max(0, ieltsRoundOverall(present.reduce((x, y) => x + y, 0) / present.length))) : null;
+    // C3: overall chỉ tính khi đủ 4 kỹ năng; bài một kỹ năng → band kỹ năng đó; bài 2–3 kỹ năng → không có điểm tổng (null)
+    const complete = IELTS_SKILLS.every((s) => bands[s] !== undefined);
+    const overall = complete ? Math.min(9, Math.max(0, ieltsRoundOverall(present.reduce((x, y) => x + y, 0) / present.length))) : null;
+    const value = complete ? overall : present.length === 1 ? present[0]! : null;
     const raw = Object.fromEntries([...agg.entries()].map(([k, v]) => [k, { correct: v.marks, total: v.max_marks }]));
     return {
-      value: overall,
-      scale: { ...SCALE_INFO.ielts, band: overall, bands, raw, partial: IELTS_SKILLS.some((s) => bands[s] === undefined) },
+      value,
+      scale: { ...SCALE_INFO.ielts, band: overall, bands, raw, module: bands.reading !== undefined ? module : null, partial: !complete },
       toeic: null,
       skills,
       sections,

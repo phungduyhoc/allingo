@@ -218,3 +218,17 @@ export function clampTarget(program: string, value: number): number {
   const stepped = Math.round(value / t.step) * t.step;
   return Math.min(t.max, Math.max(t.min, Math.round(stepped * 100) / 100));
 }
+
+/**
+ * C3 – định dạng IELTS Reading/Listening trên máy tính (hằng dùng chung API/web/CMS/seed):
+ * Reading 3 passage / 40 câu / 60 phút (Academic | General Training); Listening 4 part / 40 câu / ~30 phút audio, đọc trước mỗi part
+ * `preread_sec`, hết part 4 có `review_sec` xem lại (thi máy tính: 2 phút, không có 10 phút chép đáp án như thi giấy).
+ */
+export const IELTS_CBT = {
+  total_marks: 40,
+  reading_sections: ['reading_p1', 'reading_p2', 'reading_p3'],
+  listening_sections: ['listening_p1', 'listening_p2', 'listening_p3', 'listening_p4'],
+  reading_duration_sec: 3600,
+  preread_sec: 30,
+  review_sec: 120,
+} as const;

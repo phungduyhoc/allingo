@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ieltsLrBand, ieltsOverall, ieltsRoundOverall, paToIeltsBand, toeicLr, toeicLrEstimate, toeicRange, toeicScaled, toeicSwScaled } from '../src/index.js';
+import { ieltsListeningBand, ieltsLrBand, ieltsReadingBand, isIeltsModule, ieltsOverall, ieltsRoundOverall, paToIeltsBand, toeicLr, toeicLrEstimate, toeicRange, toeicScaled, toeicSwScaled } from '../src/index.js';
 
 describe('TOEIC L&R', () => {
   it('biên', () => {
@@ -53,6 +53,25 @@ describe('IELTS', () => {
     expect(ieltsLrBand(40)).toBe(9);
     expect(ieltsLrBand(30)).toBe(7);
     expect(ieltsLrBand(0)).toBe(0);
+  });
+});
+
+describe('C3 – bảng band IELTS Listening / Reading Academic / Reading GT: mốc biên', () => {
+  // [số câu đúng, band] ở hai phía mỗi mốc
+  const listening: Array<[number, number]> = [[40, 9], [39, 9], [38, 8.5], [37, 8.5], [36, 8], [35, 8], [34, 7.5], [32, 7.5], [31, 7], [30, 7], [29, 6.5], [26, 6.5], [25, 6], [23, 6], [22, 5.5], [18, 5.5], [17, 5], [16, 5], [15, 4.5], [13, 4.5], [12, 4], [10, 4], [9, 3.5], [8, 3.5], [7, 3], [6, 3], [5, 2.5], [4, 2.5], [3, 2], [1, 1], [0, 0]];
+  const academic: Array<[number, number]> = [[40, 9], [39, 9], [38, 8.5], [37, 8.5], [36, 8], [35, 8], [34, 7.5], [33, 7.5], [32, 7], [30, 7], [29, 6.5], [27, 6.5], [26, 6], [23, 6], [22, 5.5], [19, 5.5], [18, 5], [15, 5], [14, 4.5], [13, 4.5], [12, 4], [10, 4], [9, 3.5], [8, 3.5], [7, 3], [6, 3], [5, 2.5], [4, 2.5], [3, 2], [1, 1], [0, 0]];
+  const gt: Array<[number, number]> = [[40, 9], [39, 8.5], [38, 8], [37, 8], [36, 7.5], [35, 7], [34, 7], [33, 6.5], [32, 6.5], [31, 6], [30, 6], [29, 5.5], [27, 5.5], [26, 5], [23, 5], [22, 4.5], [19, 4.5], [18, 4], [15, 4], [14, 3.5], [12, 3.5], [11, 3], [9, 3], [8, 2.5], [6, 2.5], [5, 2], [4, 2], [3, 1], [1, 1], [0, 0]];
+  it.each(listening)('Listening %i/40 → %f', (c, band) => expect(ieltsListeningBand(c)).toBe(band));
+  it.each(academic)('Reading Academic %i/40 → %f', (c, band) => expect(ieltsReadingBand(c, 40, 'academic')).toBe(band));
+  it.each(gt)('Reading GT %i/40 → %f', (c, band) => expect(ieltsReadingBand(c, 40, 'general_training')).toBe(band));
+  it('mặc định Reading là Academic; đề ngắn quy về /40; số âm/vượt tổng bị kẹp; tổng 0 → 0', () => {
+    expect(ieltsReadingBand(30)).toBe(7);
+    expect(ieltsReadingBand(15, 20, 'general_training')).toBe(6); // 30/40
+    expect(ieltsListeningBand(50, 40)).toBe(9);
+    expect(ieltsListeningBand(-3, 40)).toBe(0);
+    expect(ieltsListeningBand(5, 0)).toBe(0);
+    expect(isIeltsModule('general_training')).toBe(true);
+    expect(isIeltsModule('gt')).toBe(false);
   });
 });
 

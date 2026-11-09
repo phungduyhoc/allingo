@@ -121,6 +121,12 @@ export const questionPublicSchema = z.object({
   section_code: z.string(),
   group_key: z.string().nullable(),
   order_no: z.number().int(),
+  /**
+   * v1.1 – C3/S167: đánh số câu hỏi liên tục trong đề ("Questions 1–40"): số đầu tiên và số mục của câu catalog (IELTS = markCount;
+   * TOEIC luôn 1 nên `number_start = order_no`). Thiếu (server cũ) → client dùng `order_no`, mỗi câu một số.
+   */
+  number_start: z.number().int().optional(),
+  mark_count: z.number().int().optional(),
   /** PublicQuestionContent (không answer_key) */
   content: z.record(z.string(), z.unknown()),
   /**
@@ -165,6 +171,8 @@ export const transcriptHighlightSchema = z
     evidence: z.string().nullable(),
     source: z.enum(['passage', 'media', 'evidence']),
     asset_id: uuidSchema.nullable().optional(),
+    /** v1.1 – C3: chỉ số `segments` chứa trích đoạn đáp án (server so khớp `evidence` với từng segment) – để tô và tua tới mốc thời gian */
+    evidence_segments: z.array(z.number().int()).optional(),
   })
   .loose();
 export type TranscriptHighlight = z.infer<typeof transcriptHighlightSchema>;
@@ -174,13 +182,55 @@ export const attemptMediaItemSchema = z.object({ id: uuidSchema, kind: z.string(
 export const attemptMediaListSchema = z.object({ data: z.array(attemptMediaItemSchema) });
 export type AttemptMediaList = z.infer<typeof attemptMediaListSchema>;
 
+/**
+ * C3 – định dạng thi IELTS trên máy tính (computer-delivered):
+ * - `module`: hình thức Reading (catalog.test_sets.level) – academic | general_training; đề Listening = null.
+ * - Listening phát LIÊN TỤC theo part (S170): mỗi part một audio (passage audio_script của part), trước mỗi part có `preread_sec`
+ *   giây đọc trước câu hỏi, trả lời trong lúc nghe; hết part 4 còn `review_sec` giây xem lại/sửa đáp án rồi tự nộp.
+ * - Exam Mode: audio mỗi part phát MỘT lần (không tua/dừng) – server chỉ cấp lại URL trong cửa sổ phát
+ *   (`audio_started` của asset + thời lượng + dung sai); `listening_parts[].played` cho biết part đã nghe xong.
+ */
+export const examFormatSchema = z.object({
+  kind: z.literal('ielts_cbt'),
+  module: z.enum(['academic', 'general_training']).nullable(),
+  preread_sec: z.number().int(),
+  review_sec: z.number().int(),
+  listening_parts: z
+    .array(
+      z.object({
+        section_code: z.string(),
+        /** passage audio của part (khớp QuestionPublic.passage.media_asset_id) */
+        media_asset_id: uuidSchema.nullable(),
+        duration_ms: z.number().int().nullable(),
+        /** Exam Mode: đã bắt đầu phát (server ghi lúc nhận sự kiện audio_started) */
+        started_at: z.string().nullable(),
+        /** Exam Mode: hết cửa sổ phát – không cấp lại URL nữa */
+        played: z.boolean(),
+      }),
+    )
+    .default([]),
+});
+export type ExamFormat = z.infer<typeof examFormatSchema>;
+
 export const attemptSchema = z.object({
   id: uuidSchema,
   program: programCodeSchema,
   mode: attemptModeSchema,
   status: attemptStatusSchema,
   test_set: z.record(z.string(), z.unknown()).nullable(),
-  sections: z.array(z.object({ section_code: z.string(), duration_sec: z.number().int().nullable(), elapsed_sec: z.number().int(), locked: z.boolean() })),
+  sections: z.array(
+    z.object({
+      section_code: z.string(),
+      duration_sec: z.number().int().nullable(),
+      elapsed_sec: z.number().int(),
+      /** C3: Exam Mode đề định dạng máy tính – section (kỹ năng) đã hết giờ: server từ chối lưu đáp án của section này (409 section_locked) */
+      locked: z.boolean(),
+      /** v1.1 – C3: kỹ năng của section (registry) */
+      skill: z.string().optional(),
+      /** v1.1 – C3: hạn của kỹ năng chứa section (đồng hồ theo section) – null khi đề chỉ có một đồng hồ chung (`expires_at`) */
+      ends_at: z.string().nullable().optional(),
+    }),
+  ),
   questions: z.array(questionPublicSchema),
   draft_answers: z.array(attemptAnswerInputSchema),
   started_at: z.string(),
@@ -196,6 +246,8 @@ export const attemptSchema = z.object({
     .optional(),
   /** Số lần đã bắt đầu phát audio theo question_id (từ sự kiện audio_started) – client dùng để giữ quy tắc "nghe một lần" khi tải lại (v1.1) */
   audio_plays: z.record(z.string(), z.number().int()).optional(),
+  /** v1.1 – C3: định dạng thi trên máy tính (IELTS) – null/thiếu = luồng TOEIC như trước */
+  exam_format: examFormatSchema.nullable().optional(),
 });
 export type Attempt = z.infer<typeof attemptSchema>;
 
@@ -236,7 +288,8 @@ export type SkillBreakdown = z.infer<typeof skillBreakdownSchema>;
 export const scoreBreakdownSchema = z.object({
   /** `community_avg_time_ms` (v1.1): trung bình catalog.questions.avg_time_ms của các câu trong Part (so cộng đồng) */
   by_section: z.record(z.string(), z.object({ correct: z.number().int(), total: z.number().int(), avg_time_ms: z.number().int().nullable(), score: z.number().nullable(), community_avg_time_ms: z.number().int().nullable().optional(), marks: z.number().int().optional(), max_marks: z.number().int().optional() })),
-  by_question_type: z.record(z.string(), z.object({ correct: z.number().int(), total: z.number().int() })),
+  /** `marks/max_marks` (v1.1 – C3): số mục đánh số đúng/tổng của dạng câu (IELTS) */
+  by_question_type: z.record(z.string(), z.object({ correct: z.number().int(), total: z.number().int(), marks: z.number().int().optional(), max_marks: z.number().int().optional() })),
   by_subskill: z.record(z.string(), z.object({ correct: z.number().int(), total: z.number().int() })),
   by_topic: z.record(z.string(), z.object({ correct: z.number().int(), total: z.number().int() })).default({}),
   unanswered: z.number().int(),

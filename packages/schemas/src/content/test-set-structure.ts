@@ -5,6 +5,8 @@
  * - part_drill: đúng một section.
  * - mini/diagnostic/topic_pack: ≥ 1 câu, không vượt số câu chuẩn của section.
  * - Mọi kiểu: không trùng câu; câu cùng nhóm (passage/group_key) phải liền nhau trong cùng section; sort_order tăng dần không trùng.
+ * - C3: chương trình đếm theo mục (`marking = per_item` – IELTS) so `question_count` với tổng `marks` của item (markCount; thiếu → 1)
+ *   thay cho số câu catalog – một câu TFNG 5 mệnh đề = 5 câu hỏi. `by_section`/`total` khi đó cũng là số mục.
  */
 
 export interface SectionSpec {
@@ -19,6 +21,13 @@ export interface TestSetItemSpec {
   section_code: string;
   sort_order: number;
   group_key?: string | null;
+  /** C3 – số mục đánh số của câu (markCount); chỉ dùng khi `marking = per_item` */
+  marks?: number;
+}
+
+export interface StructureOptions {
+  /** registry `marking` của chương trình – mặc định per_question (đếm câu catalog như trước C3) */
+  marking?: 'per_question' | 'per_item';
 }
 
 export type TestSetKind = 'full' | 'mini' | 'part_drill' | 'diagnostic' | 'topic_pack';
@@ -38,7 +47,9 @@ export interface StructureReport {
   issues: StructureIssue[];
 }
 
-export function validateTestSetStructure(kind: TestSetKind, sections: readonly SectionSpec[], items: readonly TestSetItemSpec[]): StructureReport {
+export function validateTestSetStructure(kind: TestSetKind, sections: readonly SectionSpec[], items: readonly TestSetItemSpec[], options: StructureOptions = {}): StructureReport {
+  const perItem = options.marking === 'per_item';
+  const weight = (it: TestSetItemSpec) => (perItem ? Math.max(1, it.marks ?? 1) : 1);
   const issues: StructureIssue[] = [];
   const specByCode = new Map(sections.map((s) => [s.code, s]));
   const bySection: Record<string, number> = {};
@@ -49,7 +60,7 @@ export function validateTestSetStructure(kind: TestSetKind, sections: readonly S
 
   for (const it of items) {
     if (!specByCode.has(it.section_code)) issues.push({ code: 'unknown_section', section: it.section_code, message: `Section "${it.section_code}" không thuộc chương trình.` });
-    bySection[it.section_code] = (bySection[it.section_code] ?? 0) + 1;
+    bySection[it.section_code] = (bySection[it.section_code] ?? 0) + weight(it);
     if (seenRefs.has(it.question_ref)) issues.push({ code: 'duplicate_question', section: it.section_code, message: `Câu ${it.question_ref} xuất hiện nhiều lần.` });
     seenRefs.add(it.question_ref);
     if (seenOrder.has(it.sort_order)) issues.push({ code: 'duplicate_sort_order', section: it.section_code, message: `Thứ tự ${it.sort_order} bị trùng.` });
@@ -89,5 +100,5 @@ export function validateTestSetStructure(kind: TestSetKind, sections: readonly S
     }
   }
 
-  return { ok: issues.length === 0, total: items.length, by_section: bySection, issues };
+  return { ok: issues.length === 0, total: items.reduce((s, it) => s + weight(it), 0), by_section: bySection, issues };
 }

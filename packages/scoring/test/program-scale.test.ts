@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ieltsLrBand, scoreByProgram, suggestTargetFor, targetBucketFor, toeicLrEstimate } from '../src/index.js';
+import { ieltsListeningBand, ieltsReadingBand, scoreByProgram, suggestTargetFor, targetBucketFor, toeicLrEstimate } from '../src/index.js';
 
 const toeicSkill = (code: string) => (/^part[1-4]$/.test(code) ? 'listening' : /^part[5-7]$/.test(code) ? 'reading' : null);
 const ieltsSkill = (code: string) => (code.startsWith('listening_') ? 'listening' : code.startsWith('reading_') ? 'reading' : null);
@@ -31,24 +31,36 @@ describe('scoreByProgram – TOEIC (không đổi so với toeicLrEstimate)', ()
 });
 
 describe('scoreByProgram – IELTS band', () => {
-  it('đủ Listening + Reading: band từng kỹ năng theo /40, overall làm tròn .25/.75, không partial về L/R', () => {
+  it('Listening + Reading: band từng kỹ năng theo bảng riêng; C3 – thiếu Writing/Speaking → không có overall (value/band null)', () => {
     const r = scoreByProgram({
       program: 'ielts',
       kind: 'band',
       bySection: { listening_p1: { marks: 10, max_marks: 10 }, listening_p2: { marks: 20, max_marks: 30 }, reading_p1: { marks: 26, max_marks: 40 } },
       skillOf: ieltsSkill,
     });
-    expect(r.skills.listening?.scaled).toBe(ieltsLrBand(30, 40));
-    expect(r.skills.reading?.scaled).toBe(ieltsLrBand(26, 40));
-    expect(r.value).toBe(7); // (7 + 6.5)/2 = 6.75 → 7
-    expect(r.sections).toEqual({ listening_p1: 7, listening_p2: 7, reading_p1: 6.5 });
-    expect(r.scale).toMatchObject({ program: 'ielts', unit: 'band', band: 7, bands: { listening: 7, reading: 6.5 }, raw: { listening: { correct: 30, total: 40 } }, partial: true });
+    expect(r.skills.listening?.scaled).toBe(ieltsListeningBand(30, 40));
+    expect(r.skills.reading?.scaled).toBe(ieltsReadingBand(26, 40, 'academic'));
+    expect(r.value).toBeNull();
+    expect(r.sections).toEqual({ listening_p1: 7, listening_p2: 7, reading_p1: 6 });
+    expect(r.scale).toMatchObject({ program: 'ielts', unit: 'band', band: null, bands: { listening: 7, reading: 6 }, raw: { listening: { correct: 30, total: 40 } }, module: 'academic', partial: true });
     expect(r.toeic).toBeNull();
   });
-  it('đề ngắn (18 mục): quy về /40; một kỹ năng → overall = band kỹ năng đó', () => {
+  it('đề ngắn (18 mục): quy về /40; một kỹ năng → value = band kỹ năng đó', () => {
     const r = scoreByProgram({ program: 'ielts', kind: 'band', bySection: { reading_p1: { marks: 11, max_marks: 22 } }, skillOf: ieltsSkill });
-    expect(r.value).toBe(ieltsLrBand(20, 40));
+    expect(r.value).toBe(ieltsReadingBand(20, 40));
     expect(r.skills.listening).toBeUndefined();
+  });
+  it('C3: Reading General Training dùng bảng GT – cùng số câu đúng cho band thấp hơn Academic', () => {
+    const bySection = { reading_p1: { marks: 13, max_marks: 13 }, reading_p2: { marks: 10, max_marks: 13 }, reading_p3: { marks: 7, max_marks: 14 } };
+    const ac = scoreByProgram({ program: 'ielts', kind: 'band', bySection, skillOf: ieltsSkill, module: 'academic' });
+    const gt = scoreByProgram({ program: 'ielts', kind: 'band', bySection, skillOf: ieltsSkill, module: 'general_training' });
+    expect(ac.value).toBe(7); // 30/40
+    expect(gt.value).toBe(6); // 30/40 GT
+    expect(gt.scale).toMatchObject({ module: 'general_training', bands: { reading: 6 } });
+  });
+  it('C3: đề Listening không ghi module (module null)', () => {
+    const r = scoreByProgram({ program: 'ielts', kind: 'band', bySection: { listening_p1: { marks: 9, max_marks: 10 } }, skillOf: ieltsSkill, module: 'general_training' });
+    expect(r.scale).toMatchObject({ module: null, bands: { listening: ieltsListeningBand(36, 40) } });
   });
   it('không có mục tự chấm → value null', () => {
     expect(scoreByProgram({ program: 'ielts', kind: 'band', bySection: {}, skillOf: ieltsSkill }).value).toBeNull();

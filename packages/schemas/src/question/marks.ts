@@ -64,3 +64,24 @@ export function marksOf(c: QuestionContent, g: Pick<GradeResult, 'score' | 'is_c
   const earned = g.score === null ? 0 : Math.min(max, Math.round(g.score * max));
   return { earned, max };
 }
+
+export interface MarkNumber {
+  /** Số câu hỏi đầu tiên của câu catalog trong đề ("Questions 1–40" – S167) */
+  number_start: number;
+  /** Số câu hỏi (mục đánh số) câu catalog chiếm: TOEIC luôn 1, IELTS = markCount */
+  mark_count: number;
+}
+
+/**
+ * C3/S167 – đánh số câu hỏi liên tục trong đề theo thứ tự làm bài: câu catalog thứ i bắt đầu từ 1 + tổng mục của các câu trước.
+ * Cần đáp án (markCount đọc `answer_key` với nối/mcq_multi) → server tính rồi trả `number_start/mark_count` cho client.
+ */
+export function numberMarks(contents: readonly QuestionContent[], marking: 'per_question' | 'per_item'): MarkNumber[] {
+  let next = 1;
+  return contents.map((c) => {
+    const mark_count = marking === 'per_item' ? markCount(c) : 1;
+    const n = { number_start: next, mark_count };
+    next += mark_count;
+    return n;
+  });
+}

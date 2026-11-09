@@ -191,28 +191,46 @@ export const SCALE_INFO: Record<'toeic' | 'ielts' | 'jlpt' | 'hsk', ScaleInfo> =
   hsk: { program: 'hsk', unit: 'points', min: 0, max: 300, estimated: true, note: { vi: 'Điểm ước tính.', en: 'Estimated score.' } },
 };
 
-/** Ước tính band IELTS Listening/Reading (Academic) từ số câu đúng /40 – bảng xấp xỉ công khai phổ biến */
-export function ieltsLrBand(correct: number, total = 40): number {
-  const c = Math.round((correct / total) * 40);
-  const table: ReadonlyArray<readonly [number, number]> = [
-    [39, 9],
-    [37, 8.5],
-    [35, 8],
-    [32, 7.5],
-    [30, 7],
-    [26, 6.5],
-    [23, 6],
-    [18, 5.5],
-    [16, 5],
-    [13, 4.5],
-    [10, 4],
-    [8, 3.5],
-    [6, 3],
-    [4, 2.5],
-    [0, 0],
-  ];
+/** C3 – hình thức IELTS Reading: Academic và General Training có bảng quy đổi khác nhau (Listening dùng chung) */
+export type IeltsModule = 'academic' | 'general_training';
+export const IELTS_MODULES: readonly IeltsModule[] = ['academic', 'general_training'];
+export const isIeltsModule = (v: unknown): v is IeltsModule => v === 'academic' || v === 'general_training';
+
+/** Bảng [số câu đúng tối thiểu /40, band] giảm dần – ƯỚC TÍNH Allingo theo bảng xấp xỉ công khai phổ biến, không phải bảng chính thức */
+type BandTable = ReadonlyArray<readonly [number, number]>;
+
+export const IELTS_LISTENING_TABLE: BandTable = [
+  [39, 9], [37, 8.5], [35, 8], [32, 7.5], [30, 7], [26, 6.5], [23, 6], [18, 5.5], [16, 5], [13, 4.5], [10, 4], [8, 3.5], [6, 3], [4, 2.5], [3, 2], [1, 1], [0, 0],
+];
+export const IELTS_READING_ACADEMIC_TABLE: BandTable = [
+  [39, 9], [37, 8.5], [35, 8], [33, 7.5], [30, 7], [27, 6.5], [23, 6], [19, 5.5], [15, 5], [13, 4.5], [10, 4], [8, 3.5], [6, 3], [4, 2.5], [3, 2], [1, 1], [0, 0],
+];
+/** GT: văn bản dễ hơn nên cần nhiều câu đúng hơn cho cùng band */
+export const IELTS_READING_GT_TABLE: BandTable = [
+  [40, 9], [39, 8.5], [37, 8], [36, 7.5], [34, 7], [32, 6.5], [30, 6], [27, 5.5], [23, 5], [19, 4.5], [15, 4], [12, 3.5], [9, 3], [6, 2.5], [4, 2], [1, 1], [0, 0],
+];
+
+function bandFrom(table: BandTable, correct: number, total: number): number {
+  if (!(total > 0)) return 0;
+  // Đề không đủ 40 câu (mini/drill) quy về /40 trước khi tra bảng
+  const c = Math.round((Math.max(0, Math.min(correct, total)) / total) * 40);
   for (const [min, band] of table) if (c >= min) return band;
   return 0;
+}
+
+export function ieltsListeningBand(correct: number, total = 40): number {
+  return bandFrom(IELTS_LISTENING_TABLE, correct, total);
+}
+
+export function ieltsReadingBand(correct: number, total = 40, module: IeltsModule = 'academic'): number {
+  return bandFrom(module === 'general_training' ? IELTS_READING_GT_TABLE : IELTS_READING_ACADEMIC_TABLE, correct, total);
+}
+
+/**
+ * @deprecated C3 – dùng `ieltsListeningBand`/`ieltsReadingBand`. Giữ cho mã gọi cũ: bảng Listening (trước C3 dùng chung cho cả Reading).
+ */
+export function ieltsLrBand(correct: number, total = 40): number {
+  return ieltsListeningBand(correct, total);
 }
 export * from './diagnosis.js';
 export * from './adaptive-diagnostic.js';
