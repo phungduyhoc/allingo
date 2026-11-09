@@ -134,6 +134,11 @@
         ]
       }
     },
+    "select_count": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 5
+    },
     "answer_key": {
       "type": "object",
       "properties": {

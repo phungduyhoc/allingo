@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://allingo.vn/schemas/question/form_completion.json",
+  "title": "Allingo question content: Form Completion",
+  "description": "Nội dung câu hỏi dạng \"form_completion\" lưu trong catalog.question_versions.content (JSONB). Sinh tự động từ packages/schemas/src/question/content.ts – không sửa tay.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "form_completion"
+    },
+    "stem": {
+      "default": "",
+      "type": "string",
+      "maxLength": 8000
+    },
+    "stem_i18n": {
+      "type": "object",
+      "properties": {
+        "vi": {
+          "type": "string"
+        },
+        "en": {
+          "type": "string"
+        },
+        "ja": {
+          "type": "string"
+        },
+        "ko": {
+          "type": "string"
+        },
+        "th": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "media": {
+      "type": "object",
+      "properties": {
+        "audio_asset_id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "image_asset_id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "listen_policy": {
+          "default": "free",
+          "type": "string",
+          "enum": [
+            "once",
+            "free"
+          ]
+        },
+        "pause_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        }
+      }
+    },
+    "explanation": {
+      "type": "object",
+      "properties": {
+        "vi": {
+          "type": "string"
+        },
+        "en": {
+          "type": "string"
+        },
+        "ja": {
+          "type": "string"
+        },
+        "ko": {
+          "type": "string"
+        },
+        "th": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "evidence": {
+      "type": "string",
+      "maxLength": 4000
+    },
+    "tags": {
+      "default": [],
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 64
+      }
+    },
+    "word_limit": {
+      "type": "object",
+      "properties": {
+        "max_words": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6
+        },
+        "allow_number": {
+          "type": "boolean"
+        },
+        "number_only": {
+          "type": "boolean"
+        }
+      }
+    },
+    "gaps": {
+      "default": [],
+      "maxItems": 30,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "word_limit": {
+            "type": "object",
+            "properties": {
+              "max_words": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 6
+              },
+              "allow_number": {
+                "type": "boolean"
+              },
+              "number_only": {
+                "type": "boolean"
+              }
+            }
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "answer_key": {
+      "type": "object",
+      "properties": {
+        "gaps": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "accepted": {
+                "minItems": 1,
+                "maxItems": 12,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              },
+              "case_sensitive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "accepted"
+            ]
+          }
+        },
+        "spelling_variants": {
+          "type": "boolean"
+        },
+        "scoring": {
+          "type": "string",
+          "enum": [
+            "partial",
+            "all_or_nothing"
+          ]
+        }
+      },
+      "required": [
+        "gaps"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "fields": {
+      "minItems": 1,
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 400
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ]
+      }
+    }
+  },
+  "required": [
+    "type",
+    "answer_key",
+    "fields"
+  ]
+}

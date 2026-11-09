@@ -4,3 +4,4 @@ export * from './api/index.js';
 export * from './ai/index.js';
 export * from './product/index.js';
 export * from './content/index.js';
+export * from './program/index.js';

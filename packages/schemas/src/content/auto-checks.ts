@@ -1,4 +1,6 @@
-import { questionContentSchema, type QuestionContent } from '../question/content.js';
+import { gapIdsOf, isTypedGapContent, questionContentSchema, type QuestionContent } from '../question/content.js';
+import { expandAccepted, withinWordLimit } from '../question/normalize.js';
+import { isSpokenSection } from '../program/registry.js';
 
 /**
  * B2 – kiểm tra tự động (tất định, không gọi AI) cho câu chờ duyệt: chạy ở API khi trả hàng chờ duyệt, ở nhập Excel (dry-run) và
@@ -19,6 +21,11 @@ export const AUTO_CHECK_CODES = [
   'audio_missing',
   'image_missing',
   'explanation_missing',
+  // C2 – dạng IELTS Reading/Listening
+  'word_limit_missing',
+  'accepted_exceeds_word_limit',
+  'too_few_options',
+  'select_count_mismatch',
 ] as const;
 export type AutoCheckCode = (typeof AUTO_CHECK_CODES)[number];
 
@@ -67,7 +74,7 @@ export function runAutoChecks(input: AutoCheckInput): AutoCheckResult[] {
   if (c.type !== input.question_type) out.push({ code: 'type_mismatch', level: 'error', params: { expected: input.question_type, actual: c.type } });
   const rules = input.section_rules ?? null;
   const needsAudio = sectionNeedsAudio(rules);
-  const spoken = input.program === 'toeic' && (input.section_code === 'part1' || input.section_code === 'part2');
+  const spoken = isSpokenSection(input.program, input.section_code);
   // Part 1/2: đề bài được đọc trong audio – không bắt buộc stem chữ
   if (!spoken && (!('stem' in c) || !c.stem || !String(c.stem).trim())) out.push({ code: 'stem_missing', level: 'error' });
 
@@ -82,6 +89,21 @@ export function runAutoChecks(input: AutoCheckInput): AutoCheckResult[] {
     if (new Set(nonEmpty).size !== nonEmpty.length) out.push({ code: 'duplicate_options', level: 'error' });
     const expected = EXPECTED_OPTION_COUNT[input.program]?.[input.section_code];
     if (expected !== undefined && c.options.length !== expected) out.push({ code: 'option_count', level: 'warning', params: { expected, actual: c.options.length } });
+  }
+  if (c.type === 'mcq_multi' && c.select_count !== undefined && c.select_count !== c.answer_key.correct.length) out.push({ code: 'select_count_mismatch', level: 'error', params: { expected: c.select_count, actual: c.answer_key.correct.length } });
+  // C2: dạng gõ đáp án – IELTS luôn ghi giới hạn từ; đáp án chấp nhận vượt giới hạn thì không ai làm đúng được
+  if (isTypedGapContent(c)) {
+    const meta = new Map(c.gaps.map((g) => [g.id, g.word_limit]));
+    const ids = gapIdsOf(c);
+    if (!c.word_limit && ids.some((id) => !meta.get(id))) out.push({ code: 'word_limit_missing', level: 'warning' });
+    const over = ids.filter((id) => (c.answer_key.gaps[id]?.accepted ?? []).some((acc) => expandAccepted(acc).every((v) => !withinWordLimit(v, meta.get(id) ?? c.word_limit))));
+    if (over.length) out.push({ code: 'accepted_exceeds_word_limit', level: 'error', params: { gaps: over.join(',') } });
+  }
+  // Nối không dùng lại lựa chọn: cần nhiều lựa chọn hơn số mục (có lựa chọn nhiễu)
+  if ((c.type === 'matching_headings' || c.type === 'matching_sentence_endings' || c.type === 'summary_word_bank') && !c.allow_reuse) {
+    const needed = c.type === 'summary_word_bank' ? gapIdsOf(c).length : c.items.length;
+    const have = c.type === 'summary_word_bank' ? c.bank.length : c.options.length;
+    if (have <= needed) out.push({ code: 'too_few_options', level: 'warning', params: { items: needed, options: have } });
   }
   if (sectionNeedsPassage(rules) && !input.has_passage) out.push({ code: 'passage_missing', level: 'error' });
   if (needsAudio && !c.media?.audio_asset_id && !input.passage_has_audio) out.push({ code: 'audio_missing', level: 'warning' });

@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://allingo.vn/schemas/question/matching_information.json",
+  "title": "Allingo question content: Matching Information",
+  "description": "Nội dung câu hỏi dạng \"matching_information\" lưu trong catalog.question_versions.content (JSONB). Sinh tự động từ packages/schemas/src/question/content.ts – không sửa tay.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "matching_information"
+    },
+    "stem": {
+      "default": "",
+      "type": "string",
+      "maxLength": 8000
+    },
+    "stem_i18n": {
+      "type": "object",
+      "properties": {
+        "vi": {
+          "type": "string"
+        },
+        "en": {
+          "type": "string"
+        },
+        "ja": {
+          "type": "string"
+        },
+        "ko": {
+          "type": "string"
+        },
+        "th": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "media": {
+      "type": "object",
+      "properties": {
+        "audio_asset_id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "image_asset_id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "listen_policy": {
+          "default": "free",
+          "type": "string",
+          "enum": [
+            "once",
+            "free"
+          ]
+        },
+        "pause_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        }
+      }
+    },
+    "explanation": {
+      "type": "object",
+      "properties": {
+        "vi": {
+          "type": "string"
+        },
+        "en": {
+          "type": "string"
+        },
+        "ja": {
+          "type": "string"
+        },
+        "ko": {
+          "type": "string"
+        },
+        "th": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "evidence": {
+      "type": "string",
+      "maxLength": 4000
+    },
+    "tags": {
+      "default": [],
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 64
+      }
+    },
+    "items": {
+      "minItems": 1,
+      "maxItems": 15,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "image_asset_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "key",
+          "text"
+        ]
+      }
+    },
+    "options": {
+      "minItems": 2,
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "image_asset_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "key",
+          "text"
+        ]
+      }
+    },
+    "options_title": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "allow_reuse": {
+      "default": true,
+      "type": "boolean"
+    },
+    "answer_key": {
+      "type": "object",
+      "properties": {
+        "pairs": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          }
+        },
+        "scoring": {
+          "type": "string",
+          "enum": [
+            "partial",
+            "all_or_nothing"
+          ]
+        }
+      },
+      "required": [
+        "pairs"
+      ]
+    }
+  },
+  "required": [
+    "type",
+    "items",
+    "options",
+    "answer_key"
+  ]
+}

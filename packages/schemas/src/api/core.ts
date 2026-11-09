@@ -182,16 +182,36 @@ export const enrollmentSchema = z.object({
   days_to_exam: z.number().int().nullable(),
   diagnostic_attempt_id: uuidSchema.nullable(),
   started_at: z.string(),
+  /** v1.1 – C1: chương trình còn trong danh sách học của người dùng (bổ sung – client cũ bỏ qua) */
+  is_active: z.boolean().optional(),
+  /** v1.1 – C1: là "chương trình đang học" (`iam.users.active_program`) */
+  is_current: z.boolean().optional(),
 });
 export type Enrollment = z.infer<typeof enrollmentSchema>;
 
 // ----------------------------------------------------------------------------- Catalog
+/** v1.1 – C1: available = cờ ra mắt bật + có đề đã phát hành; coming_soon = hiện trang "sắp ra mắt" + danh sách chờ */
+export const PROGRAM_STATUSES = ['available', 'coming_soon'] as const;
+export type ProgramStatus = (typeof PROGRAM_STATUSES)[number];
+
 export const programSchema = z.object({
   code: programCodeSchema,
   name: localizedTextSchema,
   score_scale: z.record(z.string(), z.unknown()),
   languages: z.array(z.string()),
+  /** v1.1 – C1 (bổ sung, client cũ bỏ qua) */
+  status: z.enum(PROGRAM_STATUSES).optional(),
+  /** Giai đoạn roadmap (1 TOEIC, 2 IELTS, 3 JLPT/HSK) */
+  phase: z.number().int().min(1).max(3).optional(),
+  sort_order: z.number().int().optional(),
+  /** Kỹ năng theo thứ tự (mã – nhãn qua i18n `programs.skills.*`) */
+  skills: z.array(z.string()).optional(),
+  /** Số đề đã phát hành */
+  published_test_sets: z.number().int().min(0).optional(),
+  /** Dạng câu hỗ trợ (registry) */
+  question_types: z.array(z.string()).optional(),
 });
+export type Program = z.infer<typeof programSchema>;
 export const sectionSchema = z.object({
   id: uuidSchema,
   code: z.string(),
@@ -234,6 +254,8 @@ export const explainInputSchema = z.object({
   question_version_id: uuidSchema,
   chosen_option: z.string().max(32).optional(),
   attempt_id: uuidSchema.optional(),
+  /** v1.1 – C2: câu trả lời dạng nhiều mục (TFNG, nối, điền từ, gán nhãn…) – chỉ cá nhân hoá lời giải thích, khoá cache = mã băm */
+  answer: answerInputSchema.optional(),
 });
 export type ExplainInput = z.infer<typeof explainInputSchema>;
 

@@ -192,7 +192,7 @@ export const attemptSchema = z.object({
    * `transcript` (v1.1 – Sprint 4): transcript audio của câu; với nhóm Part 3/4 chỉ có khi MỌI câu trong nhóm đã trả lời.
    */
   feedback: z
-    .record(z.string(), z.object({ is_correct: z.boolean().nullable(), correct_answer: z.unknown(), explanation: z.record(z.string(), z.string()).nullable(), transcript: transcriptHighlightSchema.nullable().optional() }))
+    .record(z.string(), z.object({ is_correct: z.boolean().nullable(), correct_answer: z.unknown(), explanation: z.record(z.string(), z.string()).nullable(), transcript: transcriptHighlightSchema.nullable().optional(), /** v1.1 – C2: đúng/sai từng mục (chỗ trống, mệnh đề, cặp nối) */ details: z.record(z.string(), z.boolean()).nullable().optional() }))
     .optional(),
   /** Số lần đã bắt đầu phát audio theo question_id (từ sự kiện audio_started) – client dùng để giữ quy tắc "nghe một lần" khi tải lại (v1.1) */
   audio_plays: z.record(z.string(), z.number().int()).optional(),
@@ -221,6 +221,9 @@ const countSchema = z.object({ correct: z.number().int(), total: z.number().int(
 export const skillBreakdownSchema = z.object({
   correct: z.number().int(),
   total: z.number().int(),
+  /** v1.1 – C1: điểm thô theo mục đánh số (IELTS: câu TFNG 5 mệnh đề = 5) – TOEIC bằng correct/total */
+  marks: z.number().int().optional(),
+  max_marks: z.number().int().optional(),
   scaled: z.number().nullable(),
   range: scoreRangeSchema.nullable(),
   avg_time_ms: z.number().int().nullable(),
@@ -232,7 +235,7 @@ export type SkillBreakdown = z.infer<typeof skillBreakdownSchema>;
 
 export const scoreBreakdownSchema = z.object({
   /** `community_avg_time_ms` (v1.1): trung bình catalog.questions.avg_time_ms của các câu trong Part (so cộng đồng) */
-  by_section: z.record(z.string(), z.object({ correct: z.number().int(), total: z.number().int(), avg_time_ms: z.number().int().nullable(), score: z.number().nullable(), community_avg_time_ms: z.number().int().nullable().optional() })),
+  by_section: z.record(z.string(), z.object({ correct: z.number().int(), total: z.number().int(), avg_time_ms: z.number().int().nullable(), score: z.number().nullable(), community_avg_time_ms: z.number().int().nullable().optional(), marks: z.number().int().optional(), max_marks: z.number().int().optional() })),
   by_question_type: z.record(z.string(), z.object({ correct: z.number().int(), total: z.number().int() })),
   by_subskill: z.record(z.string(), z.object({ correct: z.number().int(), total: z.number().int() })),
   by_topic: z.record(z.string(), z.object({ correct: z.number().int(), total: z.number().int() })).default({}),

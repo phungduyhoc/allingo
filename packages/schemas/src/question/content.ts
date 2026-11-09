@@ -1,9 +1,41 @@
 import { z } from 'zod';
 import { localizedTextSchema, uuidSchema } from '../common.js';
+import {
+  diagramLabellingContentSchema,
+  flowChartCompletionContentSchema,
+  formCompletionContentSchema,
+  gapTokens,
+  matchingFeaturesContentSchema,
+  matchingHeadingsContentSchema,
+  matchingInformationContentSchema,
+  matchingSentenceEndingsContentSchema,
+  noteCompletionContentSchema,
+  planMapLabellingContentSchema,
+  RL_QUESTION_TYPE_CODES,
+  sentenceCompletionContentSchema,
+  shortAnswerContentSchema,
+  summaryCompletionContentSchema,
+  summaryWordBankContentSchema,
+  tableCompletionContentSchema,
+} from './rl-types.js';
+import {
+  baseFields,
+  DEFAULT_PARTIAL_SCORING,
+  itemSchema,
+  keySchema,
+  optionSchema,
+  PARTIAL_SCORING_MODES,
+  partialScoringSchema,
+  questionMediaSchema,
+  type PartialScoringMode,
+  type QuestionMedia,
+  type QuestionOption,
+} from './base.js';
+
 
 /**
  * Nội dung câu hỏi lưu trong catalog.question_versions.content (JSONB).
- * Discriminated union theo `type` = catalog.question_types.code (12 dạng).
+ * Discriminated union theo `type` = catalog.question_types.code (12 dạng chung + 14 dạng IELTS Reading/Listening – C2, rl-types.ts).
  * `answer_key` KHÔNG BAO GIỜ trả cho client – xem toPublicContent().
  */
 
@@ -20,6 +52,21 @@ export const QUESTION_TYPE_CODES = [
   'essay',
   'speaking',
   'handwriting',
+  // C2 – IELTS Reading/Listening (rl-types.ts)
+  'matching_headings',
+  'matching_information',
+  'matching_features',
+  'matching_sentence_endings',
+  'sentence_completion',
+  'summary_completion',
+  'note_completion',
+  'table_completion',
+  'flow_chart_completion',
+  'form_completion',
+  'short_answer',
+  'diagram_labelling',
+  'summary_word_bank',
+  'plan_map_labelling',
 ] as const;
 export type QuestionTypeCode = (typeof QUESTION_TYPE_CODES)[number];
 export const questionTypeCodeSchema = z.enum(QUESTION_TYPE_CODES);
@@ -35,55 +82,10 @@ export const AUTO_GRADABLE_TYPES: ReadonlySet<QuestionTypeCode> = new Set([
   'tfng',
   'ordering',
   'dictation',
+  ...RL_QUESTION_TYPE_CODES,
 ]);
 
-const keySchema = z.string().min(1).max(32);
-
-/**
- * Chính sách điểm cho dạng nhiều phần (blank/pair/slot/label/statement):
- * - partial (mặc định khi bỏ trống): score = tỷ lệ phần đúng, is_correct chỉ khi đúng toàn bộ
- * - all_or_nothing: score = 1 khi đúng toàn bộ, ngược lại 0
- * Để optional (không .default) nhằm giữ tương thích kiểu với content đã viết tay ở apps/*; grade() coi undefined = partial.
- */
-export const PARTIAL_SCORING_MODES = ['partial', 'all_or_nothing'] as const;
-export type PartialScoringMode = (typeof PARTIAL_SCORING_MODES)[number];
-export const DEFAULT_PARTIAL_SCORING: PartialScoringMode = 'partial';
-const partialScoringSchema = z.enum(PARTIAL_SCORING_MODES).optional();
-
-/** Tham chiếu media đính kèm câu hỏi (audio Listening, ảnh Part 1, biểu đồ...) */
-export const questionMediaSchema = z.object({
-  audio_asset_id: uuidSchema.optional(),
-  image_asset_id: uuidSchema.optional(),
-  /** Exam Mode: 'once' = phát một lần, không tua; Practice luôn 'free' */
-  listen_policy: z.enum(['once', 'free']).default('free'),
-  /** Khoảng dừng sau audio để trả lời (ms) – Listening Part 1–4 */
-  pause_ms: z.number().int().min(0).max(60_000).optional(),
-});
-export type QuestionMedia = z.infer<typeof questionMediaSchema>;
-
-const optionSchema = z.object({
-  key: keySchema,
-  text: z.string().max(2000),
-  /** Lựa chọn dạng ảnh/audio (Part 1 có thể chỉ có audio, text rỗng) */
-  image_asset_id: uuidSchema.optional(),
-  audio_asset_id: uuidSchema.optional(),
-});
-export type QuestionOption = z.infer<typeof optionSchema>;
-
-/** Phần chung cho mọi dạng câu */
-const baseFields = {
-  /** Đề bài (markdown nhẹ). Listening Part 1/2 có thể rỗng. */
-  stem: z.string().max(8000).default(''),
-  stem_i18n: localizedTextSchema.optional(),
-  media: questionMediaSchema.optional(),
-  /** Giải thích do tác giả viết (hạt giống cho explain_mcq) – không trả client trước khi nộp */
-  explanation: localizedTextSchema.optional(),
-  /** Trích đoạn transcript/passage quyết định đáp án (dùng cho Review/giải thích) */
-  evidence: z.string().max(4000).optional(),
-  tags: z.array(z.string().max(64)).max(20).default([]),
-};
-
-const itemSchema = z.object({ key: keySchema, text: z.string().max(1000), image_asset_id: uuidSchema.optional() });
+export { DEFAULT_PARTIAL_SCORING, PARTIAL_SCORING_MODES, questionMediaSchema, type PartialScoringMode, type QuestionMedia, type QuestionOption };
 
 // ---------------------------------------------------------------------------
 export const mcqSingleContentSchema = z.object({
@@ -97,6 +99,8 @@ export const mcqMultiContentSchema = z.object({
   type: z.literal('mcq_multi'),
   ...baseFields,
   options: z.array(optionSchema).min(2).max(10),
+  /** C2 – IELTS "Choose TWO letters": số lựa chọn người học phải chọn (giao diện chặn chọn thêm); mỗi lựa chọn đúng = 1 câu hỏi */
+  select_count: z.number().int().min(2).max(5).optional(),
   answer_key: z.object({
     correct: z.array(keySchema).min(1),
     /** all_or_nothing: đúng hết mới được điểm; partial: điểm theo tỷ lệ lựa chọn đúng */
@@ -250,6 +254,20 @@ export const questionContentSchema = z.discriminatedUnion('type', [
   essayContentSchema,
   speakingContentSchema,
   handwritingContentSchema,
+  matchingHeadingsContentSchema,
+  matchingInformationContentSchema,
+  matchingFeaturesContentSchema,
+  matchingSentenceEndingsContentSchema,
+  sentenceCompletionContentSchema,
+  summaryCompletionContentSchema,
+  noteCompletionContentSchema,
+  tableCompletionContentSchema,
+  flowChartCompletionContentSchema,
+  formCompletionContentSchema,
+  shortAnswerContentSchema,
+  diagramLabellingContentSchema,
+  summaryWordBankContentSchema,
+  planMapLabellingContentSchema,
 ]);
 export type QuestionContent = z.infer<typeof questionContentSchema>;
 /** Dạng đầu vào (trước khi áp default) – dùng khi soạn JSON ở CMS/seed/fixture */
@@ -269,4 +287,54 @@ export const questionContentSchemasByType = {
   essay: essayContentSchema,
   speaking: speakingContentSchema,
   handwriting: handwritingContentSchema,
+  matching_headings: matchingHeadingsContentSchema,
+  matching_information: matchingInformationContentSchema,
+  matching_features: matchingFeaturesContentSchema,
+  matching_sentence_endings: matchingSentenceEndingsContentSchema,
+  sentence_completion: sentenceCompletionContentSchema,
+  summary_completion: summaryCompletionContentSchema,
+  note_completion: noteCompletionContentSchema,
+  table_completion: tableCompletionContentSchema,
+  flow_chart_completion: flowChartCompletionContentSchema,
+  form_completion: formCompletionContentSchema,
+  short_answer: shortAnswerContentSchema,
+  diagram_labelling: diagramLabellingContentSchema,
+  summary_word_bank: summaryWordBankContentSchema,
+  plan_map_labelling: planMapLabellingContentSchema,
 } as const satisfies Record<QuestionTypeCode, z.ZodTypeAny>;
+
+/** Dạng gõ đáp án (C2): id chỗ trống theo thứ tự xuất hiện = thứ tự câu hỏi IELTS trong câu */
+export type TypedGapContent = QuestionContentOf<'sentence_completion' | 'summary_completion' | 'note_completion' | 'table_completion' | 'flow_chart_completion' | 'form_completion' | 'short_answer' | 'diagram_labelling'>;
+
+export function isTypedGapContent(c: { type: string }): c is TypedGapContent {
+  return (TYPED_GAP_TYPE_SET as ReadonlySet<string>).has(c.type);
+}
+const TYPED_GAP_TYPE_SET: ReadonlySet<QuestionTypeCode> = new Set(['sentence_completion', 'summary_completion', 'note_completion', 'table_completion', 'flow_chart_completion', 'form_completion', 'short_answer', 'diagram_labelling']);
+
+/** Id chỗ trống của câu gõ đáp án (C2) hoặc câu chọn từ ngân hàng – thứ tự xuất hiện */
+export function gapIdsOf(c: TypedGapContent | QuestionContentOf<'summary_word_bank'>): string[];
+export function gapIdsOf(c: { type: string } & Record<string, unknown>): string[];
+export function gapIdsOf(c: { type: string } & Record<string, unknown>): string[] {
+  const x = c as unknown as QuestionContent;
+  switch (x.type) {
+    case 'sentence_completion':
+      return x.sentences.flatMap((s) => gapTokens(s.text));
+    case 'summary_completion':
+    case 'summary_word_bank':
+      return gapTokens(x.text);
+    case 'note_completion':
+      return x.lines.flatMap((l) => gapTokens(l.text));
+    case 'table_completion':
+      return x.rows.flatMap((r) => r.flatMap(gapTokens));
+    case 'flow_chart_completion':
+      return x.steps.flatMap((s) => gapTokens(s.text));
+    case 'form_completion':
+      return x.fields.flatMap((f) => gapTokens(f.value));
+    case 'short_answer':
+      return x.questions.map((q) => q.id);
+    case 'diagram_labelling':
+      return x.labels.map((l) => l.id);
+    default:
+      return [];
+  }
+}

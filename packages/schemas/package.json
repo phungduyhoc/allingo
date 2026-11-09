@@ -2,7 +2,7 @@
   "name": "@allingo/schemas",
   "version": "0.1.0",
   "private": true,
-  "description": "Zod schema dùng chung: 12 dạng câu hỏi + chấm tự động, DTO API, đầu ra AI (sinh từ allingo-prompts.yaml), hằng số sản phẩm",
+  "description": "Zod schema dùng chung: 26 dạng câu hỏi + chấm tự động, registry chương trình, DTO API, đầu ra AI (sinh từ allingo-prompts.yaml), hằng số sản phẩm",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -36,6 +36,10 @@
     "./content": {
       "types": "./dist/content/index.d.ts",
       "import": "./dist/content/index.js"
+    },
+    "./program": {
+      "types": "./dist/program/index.d.ts",
+      "import": "./dist/program/index.js"
     },
     "./*": {
       "types": "./dist/*.d.ts",

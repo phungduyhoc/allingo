@@ -1,5 +1,7 @@
 import { answerInputSchemasByType, type AnswerInput, type AnswerInputOf } from './answer.js';
-import { AUTO_GRADABLE_TYPES, DEFAULT_PARTIAL_SCORING, type PartialScoringMode, type QuestionContent, type QuestionContentOf } from './content.js';
+import { AUTO_GRADABLE_TYPES, DEFAULT_PARTIAL_SCORING, gapIdsOf, type PartialScoringMode, type QuestionContent, type QuestionContentOf, type TypedGapContent } from './content.js';
+import { matchesAccepted, withinWordLimit } from './normalize.js';
+import type { MatchingFamilyType } from './rl-types.js';
 
 /** Lý do chấm 0 điểm mà không phải do trả lời sai */
 export type GradeError = 'answer_type_mismatch';
@@ -241,6 +243,48 @@ function gradeDictation(c: QuestionContentOf<'dictation'>, a: AnswerInputOf<'dic
   return { is_correct: score >= key.pass_ratio, score, details, correct_answer: key.text };
 }
 
+// --------------------------------------------------------------------------- C2 – IELTS Reading/Listening
+
+/** Đáp án đúng của dạng gõ: id chỗ trống → các cách viết được chấp nhận (Review hiển thị cách đầu + biến thể) */
+const typedGapKey = (c: TypedGapContent) => Object.fromEntries(gapIdsOf(c).map((id) => [id, c.answer_key.gaps[id]?.accepted ?? []]));
+
+/** Dạng gõ đáp án: chuẩn hoá (normalize.ts) + giới hạn từ (ô ghi đè giới hạn chung) + chính tả Anh/Mỹ khi khai báo */
+function gradeTypedGaps(c: TypedGapContent, a: { gaps: Record<string, string> }): Partial9 {
+  const ids = gapIdsOf(c);
+  const meta = new Map(c.gaps.map((g) => [g.id, g]));
+  const details: Record<string, boolean> = {};
+  let correct = 0;
+  for (const id of ids) {
+    const key = c.answer_key.gaps[id];
+    const raw = a.gaps[id] ?? '';
+    const limit = meta.get(id)?.word_limit ?? c.word_limit;
+    const ok = !!key && raw.trim().length > 0 && withinWordLimit(raw, limit) && matchesAccepted(raw, key.accepted, { caseSensitive: key.case_sensitive ?? false, spellingVariants: c.answer_key.spelling_variants ?? false });
+    details[id] = ok;
+    if (ok) correct++;
+  }
+  return { is_correct: correct === ids.length, score: partialScore(correct, ids.length, c.answer_key.scoring ?? DEFAULT_PARTIAL_SCORING), details, correct_answer: typedGapKey(c) };
+}
+
+/** Nối (4 dạng): không cho dùng lại lựa chọn → các mục dùng chung một lựa chọn đều sai; mục ví dụ không tính điểm */
+function gradeMatchingFamily(c: QuestionContentOf<MatchingFamilyType>, a: { pairs: Record<string, string> }): Partial9 {
+  const exampleItem = c.type === 'matching_headings' ? c.example?.item : undefined;
+  const expected = Object.fromEntries(Object.entries(c.answer_key.pairs).filter(([k]) => k !== exampleItem));
+  const given = Object.fromEntries(Object.entries(a.pairs).filter(([k]) => k !== exampleItem));
+  const invalid = c.allow_reuse ? new Set<string>() : duplicatedValues(given);
+  return gradeMap(expected, given, c.answer_key.scoring, invalid);
+}
+
+function gradeWordBank(c: QuestionContentOf<'summary_word_bank'>, a: AnswerInputOf<'summary_word_bank'>): Partial9 {
+  const invalid = c.allow_reuse ? new Set<string>() : duplicatedValues(a.gaps);
+  const expected = Object.fromEntries(gapIdsOf(c).map((id) => [id, c.answer_key.gaps[id]!]));
+  return gradeMap(expected, a.gaps, c.answer_key.scoring, invalid);
+}
+
+function gradePlanMap(c: QuestionContentOf<'plan_map_labelling'>, a: AnswerInputOf<'plan_map_labelling'>): Partial9 {
+  const expected = Object.fromEntries(c.items.map((it) => [it.key, c.answer_key.values[it.key]!]));
+  return gradeMap(expected, a.values, c.answer_key.scoring);
+}
+
 // ---------------------------------------------------------------------------
 
 /**
@@ -287,10 +331,28 @@ export function grade(content: QuestionContent, answer: AnswerInput | null | und
     case 'speaking':
     case 'handwriting':
       return { ...MANUAL, is_correct: null, score: null, correct_answer };
+    case 'matching_headings':
+    case 'matching_information':
+    case 'matching_features':
+    case 'matching_sentence_endings':
+      return { ...AUTO, ...gradeMatchingFamily(content, parsed as { pairs: Record<string, string> }) };
+    case 'sentence_completion':
+    case 'summary_completion':
+    case 'note_completion':
+    case 'table_completion':
+    case 'flow_chart_completion':
+    case 'form_completion':
+    case 'short_answer':
+    case 'diagram_labelling':
+      return { ...AUTO, ...gradeTypedGaps(content, parsed as { gaps: Record<string, string> }) };
+    case 'summary_word_bank':
+      return { ...AUTO, ...gradeWordBank(content, parsed as AnswerInputOf<'summary_word_bank'>) };
+    case 'plan_map_labelling':
+      return { ...AUTO, ...gradePlanMap(content, parsed as AnswerInputOf<'plan_map_labelling'>) };
   }
 }
 
-/** Đáp án đúng (để Review hiển thị) mà không cần câu trả lời – đủ 12 dạng */
+/** Đáp án đúng (để Review hiển thị) mà không cần câu trả lời – đủ 26 dạng */
 export function correctAnswerOf(content: QuestionContent): unknown {
   switch (content.type) {
     case 'mcq_single':
@@ -317,5 +379,23 @@ export function correctAnswerOf(content: QuestionContent): unknown {
       return content.answer_key.model_answer ?? null;
     case 'handwriting':
       return { target: content.target, stroke_count: content.answer_key.stroke_count ?? null };
+    case 'matching_headings':
+    case 'matching_information':
+    case 'matching_features':
+    case 'matching_sentence_endings':
+      return content.answer_key.pairs;
+    case 'sentence_completion':
+    case 'summary_completion':
+    case 'note_completion':
+    case 'table_completion':
+    case 'flow_chart_completion':
+    case 'form_completion':
+    case 'short_answer':
+    case 'diagram_labelling':
+      return typedGapKey(content);
+    case 'summary_word_bank':
+      return content.answer_key.gaps;
+    case 'plan_map_labelling':
+      return content.answer_key.values;
   }
 }

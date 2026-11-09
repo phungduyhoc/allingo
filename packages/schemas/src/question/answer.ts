@@ -23,6 +23,27 @@ export const handwritingAnswerSchema = z.object({
   image_key: z.string().max(300).optional(),
 });
 
+// C2 – IELTS Reading/Listening: dạng gõ đáp án → `gaps` (id chỗ trống → chuỗi); nối → `pairs`; ngân hàng từ → `gaps` (id → mã từ);
+// bản đồ/mặt bằng → `values` (mục → chữ cái vị trí)
+const gapText = z.string().max(200);
+const typedAnswer = <T extends string>(type: T) => z.object({ type: z.literal(type), gaps: z.record(keySchema, gapText) });
+const pairsAnswer = <T extends string>(type: T) => z.object({ type: z.literal(type), pairs: z.record(keySchema, keySchema) });
+
+export const matchingHeadingsAnswerSchema = pairsAnswer('matching_headings');
+export const matchingInformationAnswerSchema = pairsAnswer('matching_information');
+export const matchingFeaturesAnswerSchema = pairsAnswer('matching_features');
+export const matchingSentenceEndingsAnswerSchema = pairsAnswer('matching_sentence_endings');
+export const sentenceCompletionAnswerSchema = typedAnswer('sentence_completion');
+export const summaryCompletionAnswerSchema = typedAnswer('summary_completion');
+export const noteCompletionAnswerSchema = typedAnswer('note_completion');
+export const tableCompletionAnswerSchema = typedAnswer('table_completion');
+export const flowChartCompletionAnswerSchema = typedAnswer('flow_chart_completion');
+export const formCompletionAnswerSchema = typedAnswer('form_completion');
+export const shortAnswerAnswerSchema = typedAnswer('short_answer');
+export const diagramLabellingAnswerSchema = typedAnswer('diagram_labelling');
+export const summaryWordBankAnswerSchema = z.object({ type: z.literal('summary_word_bank'), gaps: z.record(keySchema, keySchema) });
+export const planMapLabellingAnswerSchema = z.object({ type: z.literal('plan_map_labelling'), values: z.record(keySchema, keySchema) });
+
 export const answerInputSchema = z.discriminatedUnion('type', [
   mcqSingleAnswerSchema,
   mcqMultiAnswerSchema,
@@ -36,6 +57,20 @@ export const answerInputSchema = z.discriminatedUnion('type', [
   essayAnswerSchema,
   speakingAnswerSchema,
   handwritingAnswerSchema,
+  matchingHeadingsAnswerSchema,
+  matchingInformationAnswerSchema,
+  matchingFeaturesAnswerSchema,
+  matchingSentenceEndingsAnswerSchema,
+  sentenceCompletionAnswerSchema,
+  summaryCompletionAnswerSchema,
+  noteCompletionAnswerSchema,
+  tableCompletionAnswerSchema,
+  flowChartCompletionAnswerSchema,
+  formCompletionAnswerSchema,
+  shortAnswerAnswerSchema,
+  diagramLabellingAnswerSchema,
+  summaryWordBankAnswerSchema,
+  planMapLabellingAnswerSchema,
 ]);
 export type AnswerInput = z.infer<typeof answerInputSchema>;
 export type AnswerInputOf<T extends AnswerInput['type']> = Extract<AnswerInput, { type: T }>;
@@ -54,6 +89,20 @@ export const answerInputSchemasByType = {
   essay: essayAnswerSchema,
   speaking: speakingAnswerSchema,
   handwriting: handwritingAnswerSchema,
+  matching_headings: matchingHeadingsAnswerSchema,
+  matching_information: matchingInformationAnswerSchema,
+  matching_features: matchingFeaturesAnswerSchema,
+  matching_sentence_endings: matchingSentenceEndingsAnswerSchema,
+  sentence_completion: sentenceCompletionAnswerSchema,
+  summary_completion: summaryCompletionAnswerSchema,
+  note_completion: noteCompletionAnswerSchema,
+  table_completion: tableCompletionAnswerSchema,
+  flow_chart_completion: flowChartCompletionAnswerSchema,
+  form_completion: formCompletionAnswerSchema,
+  short_answer: shortAnswerAnswerSchema,
+  diagram_labelling: diagramLabellingAnswerSchema,
+  summary_word_bank: summaryWordBankAnswerSchema,
+  plan_map_labelling: planMapLabellingAnswerSchema,
 } as const satisfies Record<AnswerInput['type'], z.ZodTypeAny>;
 
 /** Câu trả lời "trống" (chưa làm) – dùng khi auto-submit lúc hết giờ */
@@ -83,6 +132,23 @@ export function emptyAnswer(type: AnswerInput['type']): AnswerInput {
       return { type, recording_id: '00000000-0000-0000-0000-000000000000' };
     case 'handwriting':
       return { type, strokes: [] };
+    case 'matching_headings':
+    case 'matching_information':
+    case 'matching_features':
+    case 'matching_sentence_endings':
+      return { type, pairs: {} };
+    case 'sentence_completion':
+    case 'summary_completion':
+    case 'note_completion':
+    case 'table_completion':
+    case 'flow_chart_completion':
+    case 'form_completion':
+    case 'short_answer':
+    case 'diagram_labelling':
+    case 'summary_word_bank':
+      return { type, gaps: {} };
+    case 'plan_map_labelling':
+      return { type, values: {} };
   }
 }
 
@@ -113,5 +179,22 @@ export function isAnswered(a: AnswerInput | null | undefined): boolean {
       return a.recording_id !== '00000000-0000-0000-0000-000000000000';
     case 'handwriting':
       return a.strokes.length > 0;
+    case 'matching_headings':
+    case 'matching_information':
+    case 'matching_features':
+    case 'matching_sentence_endings':
+      return Object.values(a.pairs).some(Boolean);
+    case 'sentence_completion':
+    case 'summary_completion':
+    case 'note_completion':
+    case 'table_completion':
+    case 'flow_chart_completion':
+    case 'form_completion':
+    case 'short_answer':
+    case 'diagram_labelling':
+    case 'summary_word_bank':
+      return Object.values(a.gaps).some((v) => v.trim().length > 0);
+    case 'plan_map_labelling':
+      return Object.values(a.values).some(Boolean);
   }
 }

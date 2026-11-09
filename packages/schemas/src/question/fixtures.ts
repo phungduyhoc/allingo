@@ -1,9 +1,12 @@
 import type { ProgramCode } from '../common.js';
 import type { AnswerInput } from './answer.js';
 import { QUESTION_TYPE_CODES, questionContentSchema, type QuestionContent, type QuestionContentInput, type QuestionTypeCode } from './content.js';
+import { RL_MCQ_MULTI_CHOOSE_TWO, RL_RAW } from './fixtures-rl.js';
+import type { RL_QUESTION_TYPE_CODES } from './rl-types.js';
 
 /**
- * Fixture tự biên soạn (source = 'human') cho 12 dạng câu – dùng trong test, seed demo, CMS preview.
+ * Fixture tự biên soạn (source = 'human') cho 26 dạng câu (14 dạng IELTS R/L ở fixtures-rl.ts – C2) – dùng trong test, seed demo,
+ * CMS "Chèn mẫu"/xem trước, web mock.
  * Nội dung ngắn, bối cảnh văn phòng/đời sống; KHÔNG sao chép đề thi thật (CLAUDE.md §10).
  *
  * `expected` là điểm (0–1) mà grade() phải trả cho từng câu trả lời; null với dạng chấm thủ công.
@@ -27,7 +30,7 @@ type RawFixture = Omit<QuestionFixture, 'id' | 'content'> & { content: QuestionC
 /** UUID giả ổn định cho asset/recording trong fixture */
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
-const RAW: Record<QuestionTypeCode, RawFixture[]> = {
+const BASE_RAW: Record<Exclude<QuestionTypeCode, (typeof RL_QUESTION_TYPE_CODES)[number]>, RawFixture[]> = {
   // -------------------------------------------------------------------------
   mcq_single: [
     {
@@ -818,6 +821,8 @@ const RAW: Record<QuestionTypeCode, RawFixture[]> = {
     },
   ],
 };
+
+const RAW: Record<QuestionTypeCode, RawFixture[]> = { ...BASE_RAW, mcq_multi: [...BASE_RAW.mcq_multi, RL_MCQ_MULTI_CHOOSE_TWO], ...RL_RAW };
 
 /** Toàn bộ fixture, đã parse qua questionContentSchema (default được áp), ≥ 3 fixture/dạng */
 export const QUESTION_FIXTURES_ALL: Record<QuestionTypeCode, QuestionFixture[]> = Object.fromEntries(
