@@ -1,7 +1,9 @@
 import { questionContentSchema, type QuestionContent, type QuestionTypeCode } from '@allingo/schemas/question/content';
 import { QUESTION_FIXTURES, QUESTION_FIXTURES_ALL } from '@allingo/schemas/question/fixtures';
 import { RL_DEMO_DIAGRAM_SVG, RL_DEMO_EXTRA, RL_DEMO_LISTENING, RL_DEMO_MAP_SVG, RL_DEMO_READING } from '@allingo/schemas/question/fixtures-rl';
-import type { MockQuestion, MockTestSet } from './fixtures';
+import { markCount } from '@allingo/schemas/question/marks';
+import { IELTS_LISTENING_01, IELTS_READING_ACADEMIC_01, type IeltsFullTest } from '@allingo/schemas/content/ielts-full/index';
+import type { MockQuestion, MockSegment, MockTestSet } from './fixtures';
 
 /**
  * C2 – đề mẫu IELTS "các dạng câu Reading/Listening" cho web mock: cùng nội dung tự biên soạn với seed demo
@@ -81,4 +83,89 @@ export const IELTS_DEMO_SET: MockTestSet = {
   questions: IELTS_DEMO_QUESTIONS,
 };
 
-export const MOCK_IELTS_TEST_SETS: MockTestSet[] = [IELTS_DEMO_SET];
+// --------------------------------------------------------------------------- C3: hai đề IELTS đầy đủ
+
+/**
+ * C3 – đề IELTS đầy đủ cho web mock, cùng nội dung với seed demo (`db/seed/demo/ielts-full.seed.ts`, module
+ * `packages/schemas/src/content/ielts-full/`) và cùng mã đề → E2E dùng chung mock/API thật.
+ * - Audio mỗi part Listening: tệp MP3 im lặng 12 s (`public/demo-audio/ielts/`) – đủ để chạy luồng phát liên tục/nghe một lần;
+ *   mốc thời gian lời thoại chia theo số từ trong 12 s (API thật: mốc từ seed:media).
+ * - Ảnh sơ đồ/bản đồ: SVG data URI, id media = id giả trong nội dung (`placeholder_id`).
+ * - `sections[].question_count` = số câu hỏi theo mục (13/13/14, 10 × 4) – như "Questions 1–40".
+ */
+
+/** Độ dài tệp audio mock của mỗi part (ms) – mock-fetch dùng cho `exam_format.listening_parts[].duration_ms` */
+export const IELTS_MOCK_PART_AUDIO_MS = 12_000;
+
+function mockSegments(segments: ReadonlyArray<{ name: string; text: string }>, totalMs: number): MockSegment[] {
+  const words = segments.map((s) => s.text.split(/\s+/).length);
+  const sum = words.reduce((a, b) => a + b, 0);
+  let at = 0;
+  return segments.map((s, i) => {
+    const len = Math.round((words[i]! / sum) * totalMs);
+    const seg = { start_ms: at, end_ms: i === segments.length - 1 ? totalMs : at + len, speaker: s.name, text: s.text };
+    at += len;
+    return seg;
+  });
+}
+
+/** prefix: 4 ký tự hex riêng cho mỗi đề; trong đề tách dải số: câu 1–99, phiên bản 101–199, passage 900+, audio 950+, đề 998 */
+function fullTestSet(test: IeltsFullTest, prefix: string): MockTestSet {
+  const images = new Map(test.images.map((im) => [im.placeholder_id, im]));
+  const questions: MockQuestion[] = [];
+  const sections: MockTestSet['sections'] = [];
+  test.sections.forEach((s, si) => {
+    const p = s.passage;
+    const passageId = uid(900 + si, prefix);
+    const passage: MockQuestion['passage'] =
+      p.kind === 'audio_script'
+        ? {
+            id: passageId,
+            kind: 'audio_script',
+            title: p.title,
+            body: p.segments.map((x) => `${x.name}: ${x.text}`).join('\n'),
+            media_url: `/demo-audio/ielts/l01-p${si + 1}.mp3`,
+            media_asset_id: uid(950 + si, prefix),
+            segments: mockSegments(p.segments, IELTS_MOCK_PART_AUDIO_MS),
+          }
+        : { id: passageId, kind: 'reading_passage', title: p.title, body: p.body, media_url: null };
+    let marks = 0;
+    for (const q of s.questions) {
+      const content = questionContentSchema.parse(q.content);
+      marks += markCount(content);
+      const image = 'image_asset_id' in content && content.image_asset_id ? images.get(content.image_asset_id) : undefined;
+      const n = questions.length + 1;
+      questions.push({
+        question_id: uid(n, prefix),
+        question_version_id: uid(100 + n, prefix),
+        section_code: s.section_code,
+        group_key: s.group_key,
+        order_no: n,
+        content,
+        media: image ? [{ id: image.placeholder_id, kind: 'image', url: svgUrl(image.svg), duration_ms: null }] : [],
+        passage: { ...passage },
+        community_correct_rate: 50,
+      });
+    }
+    const label = s.section_code.startsWith('listening_') ? `Listening Part ${s.section_code.slice(-1)}` : `Reading Passage ${s.section_code.slice(-1)}`;
+    sections.push({ code: s.section_code, skill: test.skill, name: { vi: label, en: label }, duration_sec: null, question_count: marks });
+  });
+  return {
+    id: uid(998, prefix),
+    code: test.code,
+    title: test.title,
+    kind: 'full',
+    level: test.level,
+    is_free: true,
+    locked: false,
+    duration_sec: test.duration_sec,
+    question_count: questions.length,
+    sections,
+    questions,
+  };
+}
+
+export const IELTS_READING_ACADEMIC_01_SET: MockTestSet = fullTestSet(IELTS_READING_ACADEMIC_01, '7781');
+export const IELTS_LISTENING_01_SET: MockTestSet = fullTestSet(IELTS_LISTENING_01, '7782');
+
+export const MOCK_IELTS_TEST_SETS: MockTestSet[] = [IELTS_LISTENING_01_SET, IELTS_READING_ACADEMIC_01_SET, IELTS_DEMO_SET];

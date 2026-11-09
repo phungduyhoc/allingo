@@ -36,6 +36,7 @@ import { seedGeneratedMinis, seedListeningFull01, seedLrFull01 } from './listeni
 import { seedReadingFull01 } from './reading-01.seed.js';
 import { seedDiagnostic01 } from './diagnostic-01.seed.js';
 import { seedIeltsTypesDemo } from './ielts-types-demo.seed.js';
+import { seedIeltsFull } from './ielts-full.seed.js';
 
 // nosemgrep: ajinabraham.njsscan.generic.hardcoded_secrets.node_password – mật khẩu tài khoản demo cục bộ (công khai trong README), seed demo chặn chạy ở production
 export const DEMO_PASSWORD = 'Allingo@2026';
@@ -393,6 +394,8 @@ export async function seedDemo(db: Db, opts: { webPublicUrl?: string } = {}): Pr
   await seedDiagnostic01(db, { adminId, sectionId, subskillId, topicId }, listening, reading);
   // ---------------------------------------------------------------- C2: đề mẫu IELTS – mỗi dạng câu Reading/Listening một câu
   await seedIeltsTypesDemo(db, adminId);
+  // ---------------------------------------------------------------- C3: đề IELTS Reading Academic + Listening đầy đủ, bật cờ IELTS (demo)
+  await seedIeltsFull(db, adminId);
 
   // ---------------------------------------------------------------- Từ vựng
   const vocabIds: string[] = [];

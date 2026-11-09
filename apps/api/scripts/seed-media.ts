@@ -1,7 +1,7 @@
 /**
  * Sinh tệp media cho nội dung seed demo (ADR-0025): `pnpm --filter @allingo/api seed:media [--force]`.
  * Chạy SAU `pnpm db:seed --set demo`. Asset seed (`catalog.media_assets.checksum = 'seed:<key>'`, status `uploading`)
- * được sinh từ nguồn trong `@allingo/db/seed` (listeningMediaSources + ieltsDemoMediaSources – C2):
+ * được sinh từ nguồn trong `@allingo/db/seed` (listeningMediaSources + ieltsDemoMediaSources – C2 + ieltsFullMediaSources – C3):
  * - TTS: mỗi segment một giọng theo người nói + accent (SpeechProvider: Azure khi có khoá, mock = MP3 im lặng đúng thời lượng),
  *   ghép bằng ffmpeg với khoảng lặng, transcript có mốc thời gian `[{start_ms,end_ms,speaker,text}]`.
  * - Ảnh SVG Part 1: lưu nguyên SVG (image/svg+xml, bucket media; chỉ nội dung biên soạn, không nhận SVG từ người học).
@@ -14,7 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { and, eq, like, ne } from 'drizzle-orm';
 import { schema } from '@allingo/db';
-import { ieltsDemoMediaSources, listeningMediaSources, type ScriptSegment, type SeedMediaSource } from '@allingo/db/seed';
+import { ieltsDemoMediaSources, ieltsFullMediaSources, listeningMediaSources, type ScriptSegment, type SeedMediaSource } from '@allingo/db/seed';
 import { loadEnv, resetEnvCache } from '../src/config/env.js';
 import { DbService } from '../src/shared/db/db.module.js';
 import { StorageService } from '../src/shared/storage/storage.module.js';
@@ -94,8 +94,8 @@ if (!ffmpeg.ffmpegAvailable(cfg)) {
   process.exit(1);
 }
 
-// C2: + ảnh bản đồ/sơ đồ SVG và TTS lời thoại của đề mẫu IELTS các dạng câu
-const sources = new Map<string, SeedMediaSource>([...listeningMediaSources(), ...ieltsDemoMediaSources()]);
+// C2: + ảnh bản đồ/sơ đồ SVG và TTS lời thoại của đề mẫu IELTS các dạng câu; C3: + audio 4 part + ảnh của hai đề IELTS đầy đủ
+const sources = new Map<string, SeedMediaSource>([...listeningMediaSources(), ...ieltsDemoMediaSources(), ...ieltsFullMediaSources()]);
 const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'allingo-seed-media-'));
 
 async function buildTts(
