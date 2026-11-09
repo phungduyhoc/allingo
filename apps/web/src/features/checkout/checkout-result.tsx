@@ -16,6 +16,7 @@ import { ErrorState } from '@/components/states';
 import { useRealtimeEvent } from '@/features/realtime/realtime-provider';
 import { growthKeys } from '@/lib/growth-api';
 import { clearCheckoutKeys } from './checkout-session';
+import { DEFAULT_PROGRAM } from '@allingo/schemas/program/registry';
 
 /**
  * `/checkout/result?order_id=&status=&provider=` – trang cổng chuyển về. CHỈ hiển thị: trạng thái thật đọc từ GET /orders/{id}
@@ -51,7 +52,7 @@ export function CheckoutResult() {
   });
 
   const status = order.data?.status ?? null;
-  const program = order.data?.plan.programs[0] ?? 'toeic';
+  const program = order.data?.plan.programs[0] ?? DEFAULT_PROGRAM;
   const ent = useEntitlements(program, { enabled: status === 'paid' });
 
   // Đã thanh toán → làm mới quyền, credit, gói, lịch sử, thông báo (một lần)
@@ -150,7 +151,7 @@ export function CheckoutResult() {
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
             {o.status === 'paid' ? (
               <>
-                <Link href="/toeic/dashboard" className={buttonVariants({ variant: 'navy' })} data-testid="result-start">
+                <Link href={`/${program}/dashboard`} className={buttonVariants({ variant: 'navy' })} data-testid="result-start">
                   {t('result.start')}
                 </Link>
                 <Link href={`/account/orders/${o.id}`} className={buttonVariants({ variant: 'outline' })} data-testid="result-order-link">

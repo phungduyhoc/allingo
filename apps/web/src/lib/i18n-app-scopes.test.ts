@@ -16,12 +16,12 @@ describe('thông điệp theo trang khu vực học (S11)', () => {
     for (const locale of ['vi', 'en'] as const) {
       const all = messages[locale] as never;
       for (const path of [...APP_LAYOUT_MESSAGES, ...Object.values(APP_PAGE_MESSAGES).flat()]) expect(JSON.stringify(pickMessages(all, [path])), `${locale}:${path}`).not.toBe('{}');
-      const dashboard = JSON.stringify(pickMessages(all, [...APP_LAYOUT_MESSAGES, ...APP_PAGE_MESSAGES['(shell)/toeic/dashboard']])).length;
+      const dashboard = JSON.stringify(pickMessages(all, [...APP_LAYOUT_MESSAGES, ...APP_PAGE_MESSAGES['(shell)/[program]/dashboard']])).length;
       expect(dashboard).toBeLessThan(JSON.stringify(all).length / 2);
     }
   });
 
   it('mỗi trang (app) đều có mục (trang mới phải bọc <PageIntl>)', () => {
-    expect(Object.keys(APP_PAGE_MESSAGES)).toEqual(expect.arrayContaining(['(shell)/toeic/dashboard', '(exam)/attempts/[id]', '(shell)/attempts/[id]/review']));
+    expect(Object.keys(APP_PAGE_MESSAGES)).toEqual(expect.arrayContaining(['(shell)/[program]/dashboard', '(exam)/attempts/[id]', '(shell)/attempts/[id]/review']));
   });
 });

@@ -13,7 +13,7 @@ export function LogoMark({ className }: { className?: string }) {
   );
 }
 
-export function Logo({ href = '/', className, withTagline = false }: { href?: '/' | '/toeic/dashboard'; className?: string; withTagline?: boolean }) {
+export function Logo({ href = '/', className, withTagline = false }: { href?: string; className?: string; withTagline?: boolean }) {
   const t = useTranslations('common');
   return (
     // S12 (axe label-content-name-mismatch): tên truy cập = chữ hiển thị (tên + khẩu hiệu), không ghi đè bằng aria-label

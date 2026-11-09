@@ -1,6 +1,7 @@
 import type { AttemptMode } from '@allingo/schemas/api/attempt';
 import type { PlanTask } from '@allingo/schemas/api/learning-plan';
 import type { ProgramCode } from '@allingo/schemas/common';
+import { DEFAULT_PROGRAM } from '@allingo/schemas/program/registry';
 
 /**
  * Ánh xạ `PlanTask.launch` → hành động mở nội dung (thuần, có test). Server quyết định `launch`; web chỉ chọn màn:
@@ -24,7 +25,7 @@ export type LaunchAction =
 
 const ATTEMPT_MODES: ReadonlySet<string> = new Set(['exam', 'practice', 'drill', 'timed_drill']);
 
-export function launchAction(task: Pick<PlanTask, 'id' | 'status' | 'task_type' | 'launch'>, program: ProgramCode = 'toeic'): LaunchAction {
+export function launchAction(task: Pick<PlanTask, 'id' | 'status' | 'task_type' | 'launch'>, program: ProgramCode = DEFAULT_PROGRAM): LaunchAction {
   const l = task.launch;
   const pending = task.status === 'pending';
   const taskQuery = pending ? `?task=${encodeURIComponent(task.id)}` : '';
@@ -37,7 +38,7 @@ export function launchAction(task: Pick<PlanTask, 'id' | 'status' | 'task_type' 
     case 'vocab_list': {
       if (!l.vocab_list_id) return { kind: 'self' };
       const list = encodeURIComponent(l.vocab_list_id);
-      return { kind: 'route', href: pending ? `/toeic/vocab/review?list=${list}&task=${encodeURIComponent(task.id)}` : `/toeic/vocab/${list}` };
+      return { kind: 'route', href: pending ? `/${program}/vocab/review?list=${list}&task=${encodeURIComponent(task.id)}` : `/${program}/vocab/${list}` };
     }
     case 'review_errors':
       return pending ? { kind: 'errors_drill', program, plan_task_id: task.id } : { kind: 'self' };

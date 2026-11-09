@@ -7,8 +7,9 @@ import { Link } from '@/i18n/navigation';
 import { PageHeader } from '@/components/page-header';
 import { CardSkeleton, ErrorState } from '@/components/states';
 import { useStats } from '@/lib/queries';
-import { PROGRAM } from '@/features/plan/queries';
+
 import { AccuracyCard, CommunityCard, ForecastCard, KpiGrid, MinutesCard, ScoreCard, WeekSummaryCard } from './stats-cards';
+import { useProgram, useProgramHref } from '@/features/program/program-context';
 
 /**
  * Thống kê chi tiết `/toeic/stats` (S10): KPI, điểm theo thời gian, độ chính xác theo Part + kỹ năng con (30 ngày vs trước),
@@ -16,10 +17,12 @@ import { AccuracyCard, CommunityCard, ForecastCard, KpiGrid, MinutesCard, ScoreC
  * (xoá khi có bài chấm/ôn thẻ/sửa sổ lỗi) – hiện thời điểm tính.
  */
 export function StatsPage() {
+  const program = useProgram();
+  const href = useProgramHref();
   const t = useTranslations('stats');
   const te = useTranslations('errorLog');
   const fmt = useFormatter();
-  const stats = useStats(PROGRAM);
+  const stats = useStats(program);
 
   return (
     <div className="space-y-8" data-testid="stats-page">
@@ -27,7 +30,7 @@ export function StatsPage() {
         title={t('title')}
         description={stats.data?.generated_at ? t('generatedAt', { at: fmt.dateTime(new Date(stats.data.generated_at), { dateStyle: 'medium', timeStyle: 'short' }) }) : t('desc')}
         actions={
-          <Link href="/toeic/dashboard" className={buttonVariants({ variant: 'ghost' })}>
+          <Link href={href('dashboard')} className={buttonVariants({ variant: 'ghost' })}>
             <ArrowLeft aria-hidden />
             {t('backDashboard')}
           </Link>
@@ -86,7 +89,7 @@ export function StatsPage() {
                   ) : (
                     <p className="text-sm text-muted-foreground">{te('none')}</p>
                   )}
-                  <Link href="/toeic/errors" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+                  <Link href={href('errors')} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
                     {t('errorsCta')}
                   </Link>
                 </CardContent>

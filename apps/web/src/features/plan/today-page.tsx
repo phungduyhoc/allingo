@@ -14,17 +14,20 @@ import { getErrorCode } from '@/lib/errors';
 import { useStats } from '@/lib/queries';
 import { CheckinDialog } from './checkin-dialog';
 import { pct } from './progress';
-import { PROGRAM, usePatchTask, useToday } from './queries';
+import { usePatchTask, useToday } from './queries';
 import { sortDayTasks } from './reschedule';
 import { TaskRow } from './task-ui';
 import { useLaunchTask } from './use-launch-task';
+import { useProgram, useProgramHref } from '@/features/program/program-context';
 
 /** Trang "Hôm nay học gì" `/toeic/today` (S9): trọng tâm, task hôm nay + quá hạn, gợi ý 15 phút, streak, check-in tuần */
 export function TodayPage() {
+  const program = useProgram();
+  const href = useProgramHref();
   const t = useTranslations('today');
   const fmt = useFormatter();
-  const today = useToday(PROGRAM);
-  const stats = useStats(PROGRAM);
+  const today = useToday(program);
+  const stats = useStats(program);
   // Realtime `plan.updated` → RealtimeProvider làm mới lộ trình/hôm nay/thống kê
   const [checkinOpen, setCheckinOpen] = React.useState(false);
 
@@ -47,7 +50,7 @@ export function TodayPage() {
         description={dateLabel}
         actions={
           d.plan_id ? (
-            <Link href="/toeic/plan" className={buttonVariants({ variant: 'outline' })}>
+            <Link href={href('plan')} className={buttonVariants({ variant: 'outline' })}>
               <Route aria-hidden />
               {t('viewPlan')}
             </Link>
@@ -151,12 +154,14 @@ export function StreakCard({ today, className }: { today: Pick<PlanToday, 'strea
 }
 
 function TodayTasks({ today, onCheckin }: { today: PlanToday; onCheckin: () => void }) {
+  const program = useProgram();
+  const href = useProgramHref();
   const t = useTranslations('today');
   const tp = useTranslations('plan');
   const te = useTranslations('errors');
   const ts = useTranslations('sections');
-  const patch = usePatchTask(PROGRAM);
-  const { launch, busyId, error, errorTaskId } = useLaunchTask({ returnTo: '/toeic/today', onCheckin });
+  const patch = usePatchTask(program);
+  const { launch, busyId, error, errorTaskId } = useLaunchTask({ returnTo: href('today'), onCheckin });
   const all = [...today.tasks, ...today.overdue];
   const byId = new Map(all.map((x) => [x.id, x]));
   const quick = today.quick.items.map((i) => ({ ...i, task: byId.get(i.task_id) })).filter((i): i is typeof i & { task: PlanTask } => !!i.task);

@@ -17,6 +17,7 @@ import { cardStatus, formatIpa, itemMeaning } from './card-view';
 import { useEnrollList, useVocabLists, vocabKeys } from './queries';
 import { ListProgress } from './vocab-lists-page';
 import { speak } from './speak';
+import { useProgramHref } from '@/features/program/program-context';
 
 const STATUS_VARIANT = { none: 'muted', new: 'outline', learning: 'secondary', review: 'default', mastered: 'gold' } as const;
 
@@ -25,6 +26,7 @@ const STATUS_VARIANT = { none: 'muted', new: 'outline', learning: 'secondary', r
  * người học, phát âm, "Thêm cả bộ", "Ôn bộ này" (giữ `?task=` của lộ trình → phiên ôn tự đánh dấu xong task).
  */
 export function VocabListDetailPage({ listId }: { listId: string }) {
+  const href = useProgramHref();
   const t = useTranslations('vocab');
   const locale = useLocale();
   const L = useLocalized();
@@ -39,7 +41,7 @@ export function VocabListDetailPage({ listId }: { listId: string }) {
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor,
   });
-  const reviewHref = `/toeic/vocab/review?list=${encodeURIComponent(listId)}${taskId ? `&task=${encodeURIComponent(taskId)}` : ''}`;
+  const reviewHref = href('vocab/review', `?list=${encodeURIComponent(listId)}${taskId ? `&task=${encodeURIComponent(taskId)}` : ''}`);
   const words = items.data?.pages.flatMap((p) => p.data) ?? [];
 
   return (
@@ -48,7 +50,7 @@ export function VocabListDetailPage({ listId }: { listId: string }) {
         title={list ? L(list.title) : t('listFallbackTitle')}
         description={list ? t('words', { count: list.counts.total }) : undefined}
         actions={
-          <Link href="/toeic/vocab" className={buttonVariants({ variant: 'ghost' })}>
+          <Link href={href('vocab')} className={buttonVariants({ variant: 'ghost' })}>
             <ArrowLeft aria-hidden />
             {t('allLists')}
           </Link>

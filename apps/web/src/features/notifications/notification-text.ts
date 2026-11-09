@@ -3,6 +3,7 @@ import { type NotificationTemplateCode } from '@allingo/schemas/api/growth';
 import { pickLocalized, type LocalizedText } from '@allingo/schemas/common';
 import { formatVnd } from '@/lib/billing';
 import { VN_TIME_ZONE } from '@/lib/quota';
+import { DEFAULT_PROGRAM } from '@allingo/schemas/program/registry';
 
 /**
  * Nội dung hiển thị của thông báo in-app (S8): dịch theo `template_code` (khoá i18n `notifications.templates.<code>.title|body`)
@@ -140,13 +141,14 @@ export function notificationText(item: NotificationItem, t: Translator, locale: 
  * ánh xạ đường dẫn chung của server sang route web (`/practice` → `/toeic/practice`; S9: `/today` → `/toeic/today`, `/plan` →
  * `/toeic/plan` (giữ `?proposal=`), `/badges` giữ nguyên; `/stats` → dashboard). Đường dẫn đã có `/toeic/...` (API mới) giữ nguyên.
  */
-export function resolveNotificationHref(url: string | null | undefined): string | null {
+export function resolveNotificationHref(url: string | null | undefined, program: string = DEFAULT_PROGRAM): string | null {
   const u = str(url);
   if (!u || !u.startsWith('/') || u.startsWith('//') || u.startsWith('/\\')) return null;
   let path = u.replace(/^\/(vi|en)(?=\/|$)/, '') || '/';
   // S12: `/support/tickets/{id}` (support.reply), `/beta?code=` (beta.invite), `/attempts/{id}/review?focus=<qv>` | `/support`
   // (content.report_resolved – B6/S148) là route web có sẵn – giữ nguyên
-  const ALIASES: Record<string, string> = { '/practice': '/toeic/practice', '/today': '/toeic/today', '/plan': '/toeic/plan', '/stats': '/toeic/dashboard', '/dashboard': '/toeic/dashboard', '/support/tickets': '/support' };
+  // C1: đường dẫn chung → khu học của chương trình đang học (`program` – useProgram() của caller)
+  const ALIASES: Record<string, string> = { '/practice': `/${program}/practice`, '/today': `/${program}/today`, '/plan': `/${program}/plan`, '/stats': `/${program}/dashboard`, '/dashboard': `/${program}/dashboard`, '/support/tickets': '/support' };
   const [pathname, rest = ''] = path.split(/(?=[?#])/);
   if (pathname && ALIASES[pathname]) path = ALIASES[pathname] + rest;
   return path;

@@ -19,13 +19,15 @@ import {
 } from '@/lib/plan-api';
 import { ApiError } from '@allingo/api-client';
 import { applyMove, dayStatus, sortDayTasks } from './reschedule';
+import { DEFAULT_PROGRAM } from '@allingo/schemas/program/registry';
 
 /**
  * Hook TanStack Query cho lộ trình (S9). Khoá nằm dưới ['me', …] để mọi `invalidateQueries(['me'])` sẵn có (nộp bài, đăng nhập…)
  * cũng làm mới lộ trình/hôm nay/huy hiệu. Realtime `plan.updated` → `invalidatePlan` (features/realtime/realtime-provider.tsx).
  */
 
-export const PROGRAM: ProgramCode = 'toeic';
+/** Chương trình mặc định của hook khi caller không truyền (C1: component truyền `useProgram()`) */
+export const PROGRAM: ProgramCode = DEFAULT_PROGRAM;
 
 export const planKeys = {
   all: ['me', 'plan'] as const,

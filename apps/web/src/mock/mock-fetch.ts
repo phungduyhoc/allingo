@@ -4,10 +4,13 @@ import { ATTEMPT_GRACE_SECONDS, DEFAULT_QUOTAS, XP_RULES } from '@allingo/schema
 import { answerInputSchema, isAnswered } from '@allingo/schemas/question/answer';
 import { correctAnswerOf, grade } from '@allingo/schemas/question/grade';
 import { isSpokenTextSection, redactSpokenText, toPublicContent } from '@allingo/schemas/question/public';
-import { SCALE_INFO, TOEIC_PART_SKILL, diagnoseAttempt, toeicLr, toeicLrEstimate } from '@allingo/scoring';
+import { SCALE_INFO, TOEIC_PART_SKILL, diagnoseAttempt, scoreByProgram, toeicLr, toeicLrEstimate } from '@allingo/scoring';
 import { env } from '@/env';
 import { FLAG_DEFAULTS, PUBLIC_FLAG_KEYS } from '@/lib/flags';
 import { MOCK_PROGRAMS, MOCK_SUBSKILL_OF_TAG, MOCK_TEST_SETS, type MockQuestion, type MockTestSet } from './fixtures';
+import { MOCK_IELTS_TEST_SETS } from './ielts-fixtures';
+import { marksOf } from '@allingo/schemas/question/marks';
+import { isProgramCode, programDef, skillOfSection } from '@allingo/schemas/program/registry';
 import { loadState, saveState, type MockAttemptRecord, type MockState, type MockUserRecord } from './state';
 import { latestNoteFor, learningToolRoutes } from './learning-tools';
 import { billingRoutes } from './billing';
@@ -169,10 +172,11 @@ export function createMockFetch(): typeof fetch {
   }
   const referral = referralHooks(state, uuid, nowIso);
 
-  const findTestSet = (id: string): MockTestSet | undefined => MOCK_TEST_SETS.find((t) => t.id === id) ?? (id === MOCK_DIAGNOSTIC_SET.id ? MOCK_DIAGNOSTIC_SET : undefined);
+  // C2: đề mẫu IELTS (chương trình khác TOEIC) – không vào ngân hàng luyện tập TOEIC
+  const findTestSet = (id: string): MockTestSet | undefined => MOCK_TEST_SETS.find((t) => t.id === id) ?? MOCK_IELTS_TEST_SETS.find((t) => t.id === id) ?? (id === MOCK_DIAGNOSTIC_SET.id ? MOCK_DIAGNOSTIC_SET : undefined);
   /** Câu luyện tập (đề mock) – S9: ngân hàng chẩn đoán tách riêng, chỉ dùng để tra câu theo id/phiên bản */
   const bankQuestions = (): MockQuestion[] => MOCK_TEST_SETS.flatMap((t) => t.questions);
-  const allQuestions = (): MockQuestion[] => [...bankQuestions(), ...MOCK_DIAGNOSTIC_QUESTIONS];
+  const allQuestions = (): MockQuestion[] => [...bankQuestions(), ...MOCK_IELTS_TEST_SETS.flatMap((t) => t.questions), ...MOCK_DIAGNOSTIC_QUESTIONS];
   const questionsOf = (a: MockAttemptRecord): MockQuestion[] => {
     if (!a.question_ids) return findTestSet(a.test_set_id)?.questions ?? [];
     // Lượt luyện: câu từ nhiều đề → đánh số lại 1..n như snapshot question_order của API
@@ -301,11 +305,45 @@ export function createMockFetch(): typeof fetch {
                 const g = grade(q.content, rec.answer);
                 // Transcript (v1.1): câu đơn ngay khi trả lời; nhóm Part 3/4 chỉ khi mọi câu trong nhóm đã trả lời (như API)
                 const groupDone = !q.group_key || qs.filter((x) => x.group_key === q.group_key).every((x) => a.answers[x.question_id] && isAnswered(a.answers[x.question_id]!.answer));
-                return [[q.question_id, { is_correct: g.is_correct, correct_answer: correctAnswerOf(q.content), explanation: q.content.explanation ? { ...q.content.explanation } : null, transcript: groupDone ? transcriptOf(q) : null }]];
+                return [[q.question_id, { is_correct: g.is_correct, correct_answer: correctAnswerOf(q.content), explanation: q.content.explanation ? { ...q.content.explanation } : null, transcript: groupDone ? transcriptOf(q) : null, details: g.details ?? null }]];
               }),
             ),
           }
         : {}),
+    };
+  };
+
+  /** C1: chương trình khác TOEIC (IELTS band – @allingo/scoring scoreByProgram, như AttemptsService.scale) */
+  const gradeOtherProgram = (a: MockAttemptRecord, qs: MockQuestion[], bySection: AttemptResult['by_section'], byType: AttemptResult['by_question_type'], bySubskill: AttemptResult['by_subskill'], correct: number, unanswered: number): AttemptResult => {
+    const def = programDef(a.program);
+    const skillOf = (code: string) => skillOfSection(a.program, code);
+    const r = scoreByProgram({ program: a.program, kind: def?.scale.kind ?? 'points', bySection: Object.fromEntries(Object.entries(bySection).map(([k, v]) => [k, { marks: v.marks ?? v.correct, max_marks: v.max_marks ?? v.total }])), skillOf });
+    for (const [code, s] of Object.entries(bySection)) s.score = r.sections[code] ?? null;
+    const bySkill: NonNullable<AttemptResult['by_skill']> = {};
+    for (const [code, s] of Object.entries(bySection)) {
+      const skill = skillOf(code);
+      if (!skill) continue;
+      const b = (bySkill[skill] ??= { correct: 0, total: 0, marks: 0, max_marks: 0, scaled: r.skills[skill]?.scaled ?? null, range: null, avg_time_ms: null, community_avg_time_ms: 15_000, by_subskill: {}, by_topic: {} });
+      b.correct += s.correct;
+      b.total += s.total;
+      b.marks = (b.marks ?? 0) + (s.marks ?? 0);
+      b.max_marks = (b.max_marks ?? 0) + (s.max_marks ?? 0);
+    }
+    const xp = XP_RULES.attempt_submitted + correct * XP_RULES.question_correct;
+    state.xp[a.user_id] = (state.xp[a.user_id] ?? 0) + xp;
+    return {
+      attempt_id: a.id,
+      raw_score: Object.values(bySection).reduce((n, s) => n + (s.marks ?? s.correct), 0),
+      scaled_score: r.value,
+      scale: { ...r.scale, total_questions: qs.length, unanswered },
+      by_section: bySection,
+      by_question_type: byType,
+      by_subskill: bySubskill,
+      compared_to_previous: null,
+      diagnosis: null,
+      xp_earned: xp,
+      scaled: null,
+      by_skill: bySkill,
     };
   };
 
@@ -316,15 +354,20 @@ export function createMockFetch(): typeof fetch {
     const bySubskill: AttemptResult['by_subskill'] = {};
     let correct = 0;
     let unanswered = 0;
+    // C1: điểm thô theo registry chương trình (IELTS: theo mục đánh số) như API
+    const marking = programDef(a.program)?.marking ?? 'per_question';
     for (const q of qs) {
       const rec = a.answers[q.question_id];
       const g = grade(q.content, rec?.answer ?? null);
       if (!rec || !isAnswered(rec.answer)) unanswered++;
       const ok = g.is_correct === true;
       if (ok) correct++;
-      const sec = (bySection[q.section_code] ??= { correct: 0, total: 0, avg_time_ms: null, score: null });
+      const mk = marksOf(q.content, g, marking);
+      const sec = (bySection[q.section_code] ??= { correct: 0, total: 0, avg_time_ms: null, score: null, marks: 0, max_marks: 0 });
       sec.total++;
       if (ok) sec.correct++;
+      sec.marks = (sec.marks ?? 0) + mk.earned;
+      sec.max_marks = (sec.max_marks ?? 0) + mk.max;
       const t = (byType[q.content.type] ??= { correct: 0, total: 0 });
       t.total++;
       if (ok) t.correct++;
@@ -336,8 +379,11 @@ export function createMockFetch(): typeof fetch {
     }
     const listening = { correct: 0, total: 0 };
     const reading = { correct: 0, total: 0 };
+    const program = isProgramCode(a.program) ? a.program : 'toeic';
+    const skillOf = (code: string) => skillOfSection(program, code) ?? TOEIC_PART_SKILL[code] ?? null;
+    if (program !== 'toeic') return gradeOtherProgram(a, qs, bySection, byType, bySubskill, correct, unanswered);
     for (const [code, s] of Object.entries(bySection)) {
-      const skill = TOEIC_PART_SKILL[code];
+      const skill = skillOf(code);
       if (skill === 'listening') {
         listening.correct += s.correct;
         listening.total += s.total;
@@ -659,6 +705,12 @@ export function createMockFetch(): typeof fetch {
       if (u instanceof Response) return u;
       const b = body as Partial<MockUserRecord>;
       Object.assign(u, { display_name: b.display_name ?? u.display_name, ui_locale: b.ui_locale ?? u.ui_locale, explain_locale: b.explain_locale ?? u.explain_locale, active_program: b.active_program ?? u.active_program });
+      // C1: chọn chương trình đang học → tạo enrollment nếu chưa có (như API, mục tiêu giữ nguyên)
+      if (b.active_program) {
+        const list = (state.enrollments[u.id] ??= []);
+        if (!list.some((e) => e.program === b.active_program))
+          list.push({ id: uuid(), program: b.active_program, target_score: null, target_level: null, exam_date: null, daily_minutes: 30, current_level: null, days_to_exam: null, diagnostic_attempt_id: null, started_at: nowIso() });
+      }
       persist();
       return json(200, publicUser(u));
     }),
@@ -734,7 +786,7 @@ export function createMockFetch(): typeof fetch {
     }),
     route('GET', '/me/enrollments', () => {
       const u = requireUser();
-      return u instanceof Response ? u : json(200, state.enrollments[u.id] ?? []);
+      return u instanceof Response ? u : json(200, (state.enrollments[u.id] ?? []).map((e) => ({ ...e, is_active: true, is_current: e.program === (u.active_program ?? 'toeic') })));
     }),
     route('POST', '/me/enrollments', ({ body }) => {
       const u = requireUser();
@@ -773,12 +825,12 @@ export function createMockFetch(): typeof fetch {
     }),
 
     // --------------------------------------------------------------------- catalog
-    route('GET', '/programs', () => json(200, MOCK_PROGRAMS)),
     route('GET', '/programs/{program}/test-sets', ({ params, url }) => {
       const u = currentUser();
       const kind = url.searchParams.get('kind');
-      if (params.program !== 'toeic') return json(200, { data: [], next_cursor: null });
-      const data = MOCK_TEST_SETS.filter((t) => !kind || t.kind === kind).map((t) => summarize(t, u?.id ?? null));
+      // C1/C2: IELTS có đề mẫu các dạng câu; JLPT/HSK chưa có nội dung
+      const sets = params.program === 'toeic' ? MOCK_TEST_SETS : params.program === 'ielts' ? MOCK_IELTS_TEST_SETS : [];
+      const data = sets.filter((t) => !kind || t.kind === kind).map((t) => summarize(t, u?.id ?? null));
       return json(200, { data, next_cursor: null });
     }),
     route('GET', '/test-sets/{testSetId}', ({ params }) => {
@@ -1030,13 +1082,15 @@ export function createMockFetch(): typeof fetch {
     route('POST', '/ai/explain', async ({ body, locale }) => {
       const u = requireUser();
       if (u instanceof Response) return u;
-      const b = body as { question_version_id: string; chosen_option?: string; attempt_id?: string };
-      const q = MOCK_TEST_SETS.flatMap((t) => t.questions).find((x) => x.question_version_id === b.question_version_id);
+      const b = body as { question_version_id: string; chosen_option?: string; attempt_id?: string; answer?: { type: string } };
+      const q = allQuestions().find((x) => x.question_version_id === b.question_version_id);
       if (!q) return error(404, 'not_found', 'Question version not found');
       // Exam Mode: đang có bài thi chưa nộp → 403, kể cả cache hit (CLAUDE.md §5.8)
       if (examInProgress(u.id)) return error(403, 'exam_mode_locked', 'Explanations are locked during an exam');
       const lang = u.explain_locale ?? locale;
-      const cacheKey = `${b.question_version_id}:${b.chosen_option ?? ''}:${lang}`;
+      // C2: dạng nhiều mục – khoá theo câu trả lời (API băm câu trả lời; mock dùng JSON)
+      const choice = b.answer && b.answer.type !== 'mcq_single' ? JSON.stringify(b.answer) : (b.chosen_option ?? '');
+      const cacheKey = `${b.question_version_id}:${choice}:${lang}`;
       const cached = state.explanations[cacheKey];
       if (cached) {
         // Như API: mỗi lượt trúng cache ghi một ai_task (cache_hit) → ai_task_id MỚI để đánh giá; không trừ quota
@@ -1173,6 +1227,18 @@ export function createMockFetch(): typeof fetch {
   // ------------------------------------------------------------------- S11: feature flag công khai + kill-switch
   const mockFlagOn = (key: string) => state.flags[key]?.enabled ?? MOCK_FLAG_DEFAULTS[key] ?? false;
   const flagRoutes: Route[] = [
+    // C1: trạng thái chương trình như API – đã ra mắt (cờ ff.catalog.program.*, TOEIC luôn mở) + có đề → available
+    route('GET', '/programs', () =>
+      json(
+        200,
+        MOCK_PROGRAMS.map((p, i) => {
+          const def = programDef(p.code);
+          const sets = p.code === 'toeic' ? MOCK_TEST_SETS.length : p.code === 'ielts' ? MOCK_IELTS_TEST_SETS.length : 0;
+          const launched = !def?.launch_flag || mockFlagOn(def.launch_flag);
+          return { ...p, status: launched && sets > 0 ? 'available' : 'coming_soon', phase: def?.phase ?? 3, sort_order: i + 1, skills: [...(def?.skills ?? [])], published_test_sets: sets, question_types: [...(def?.question_types ?? [])] };
+        }),
+      ),
+    ),
     route('GET', '/flags', () =>
       json(200, { flags: Object.fromEntries(PUBLIC_FLAG_KEYS.map((k) => [k, mockFlagOn(k)])), ttl_sec: 30, evaluated_at: nowIso() }, { 'Cache-Control': 'private, no-cache' }),
     ),

@@ -11,7 +11,9 @@ import { unwrap } from '@allingo/api-client';
 import { getApi } from '@/lib/api';
 import { getErrorCode, isApiError } from '@/lib/errors';
 import type { Attempt } from '@/lib/types';
-import { PRACTICE_SECTIONS as SECTIONS, practicePresetFrom, type PracticeSection as Section } from './practice-preset';
+import { defaultPracticeSection, practicePresetFrom, practiceSectionsFor, type PracticeSection as Section } from './practice-preset';
+import { useProgram } from '@/features/program/program-context';
+import { useSectionLabel } from '@/features/attempt/section-label';
 
 const COUNTS = [5, 10, 20] as const;
 /** Giây mỗi câu cho timed_drill (`per_question_sec` 5–600); 'auto' = mặc định theo Part của API */
@@ -23,13 +25,16 @@ type PerQuestion = (typeof PER_QUESTION)[number];
  */
 export function PracticePage() {
   const t = useTranslations('practice');
-  const ts = useTranslations('sections');
+  const sectionLabel = useSectionLabel();
   const te = useTranslations('errors');
   const tr = useTranslations('result');
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [preset] = React.useState(() => practicePresetFrom(searchParams));
-  const [section, setSection] = React.useState<Section>(preset.section ?? 'part5');
+  // C1: phần thi theo registry của chương trình hiện hành
+  const program = useProgram();
+  const SECTIONS = practiceSectionsFor(program);
+  const [preset] = React.useState(() => practicePresetFrom(searchParams, program));
+  const [section, setSection] = React.useState<Section>(preset.section ?? defaultPracticeSection(program));
   const [focusArea, setFocusArea] = React.useState<{ subskill: string | null; topic: string | null }>({ subskill: preset.subskill, topic: preset.topic });
   const focusCode = focusArea.subskill ?? focusArea.topic;
   const focusKey = focusArea.subskill ? `subskills.${focusArea.subskill}` : focusArea.topic ? `topics.${focusArea.topic}` : null;
@@ -53,7 +58,7 @@ export function PracticePage() {
     setPending(true);
     try {
       const query = {
-        program: 'toeic',
+        program,
         section,
         count,
         timed: timed ? 'true' : 'false',
@@ -99,10 +104,10 @@ export function PracticePage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="practice-section">{t('section')}</Label>
-                <NativeSelect id="practice-section" data-testid="practice-section" value={section} onChange={(e) => setSection(e.target.value as Section)}>
+                <NativeSelect id="practice-section" data-testid="practice-section" value={section} onChange={(e) => setSection(e.target.value)}>
                   {SECTIONS.map((s) => (
                     <option key={s} value={s}>
-                      {ts(s)}
+                      {sectionLabel(s)}
                     </option>
                   ))}
                 </NativeSelect>

@@ -10,9 +10,11 @@ import { Badge, buttonVariants, Card, CardContent, CardHeader, CardTitle, cn, Sk
 import { Link } from '@/i18n/navigation';
 import { CardSkeleton, ErrorState } from '@/components/states';
 import { getErrors, getForecast } from '@/lib/s10-api';
-import { PROGRAM } from '@/features/plan/queries';
+
 import { useSrsCounts } from '@/features/flashcards/queries';
 import { accuracyRows, forecastView, latestSkillScore, percentileValue, scoreSeries, weekSeries, weekSummary } from './stats-model';
+import { useProgram, useProgramHref } from '@/features/program/program-context';
+import { DEFAULT_PROGRAM } from '@allingo/schemas/program/registry';
 
 // Biểu đồ tải lười: recharts không vào JS trang đầu (chunk riêng, chỉ phía client)
 const chartLoading = () => <Skeleton className="h-56 w-full" />;
@@ -22,7 +24,7 @@ const MinutesChart = dynamic(() => import('./charts').then((m) => m.MinutesChart
 
 export const forecastKey = (program: string) => ['me', 'forecast', program] as const;
 
-export function useForecast(program = PROGRAM) {
+export function useForecast(program: string = DEFAULT_PROGRAM) {
   return useQuery<Forecast, Error>({ queryKey: forecastKey(program), queryFn: () => getForecast(program), staleTime: 5 * 60_000 });
 }
 
@@ -242,7 +244,7 @@ export function ForecastCard() {
   const t = useTranslations('stats');
   const tf = useTranslations('forecast');
   const fmt = useFormatter();
-  const f = useForecast();
+  const f = useForecast(useProgram());
   return (
     <Card data-testid="forecast-card">
       <CardHeader className="flex-row items-center justify-between">
@@ -298,17 +300,19 @@ export function ForecastCard() {
 
 /** Lỗi cần ôn: 3 lỗi chưa hiểu cũ nhất + "Làm lại" → sổ lỗi */
 export function ErrorsToReviewCard() {
+  const program = useProgram();
+  const href = useProgramHref();
   const t = useTranslations('stats');
   const te = useTranslations('errorLog');
   const tsec = useTranslations('sections');
-  const q = useQuery({ queryKey: ['me', 'errors', PROGRAM, 'dashboard'], queryFn: () => getErrors({ program: PROGRAM, status: 'open', sort: 'oldest', days: 0, limit: 3 }) });
+  const q = useQuery({ queryKey: ['me', 'errors', program, 'dashboard'], queryFn: () => getErrors({ program: program, status: 'open', sort: 'oldest', days: 0, limit: 3 }) });
   return (
     <section aria-labelledby="errors-due-title" className="space-y-3">
       <div className="flex items-end justify-between gap-3">
         <h2 id="errors-due-title" className="text-lg font-semibold">
           {t('errorsTitle')}
         </h2>
-        <Link href="/toeic/errors" className={buttonVariants({ variant: 'ghost', size: 'sm' })} data-testid="dashboard-errors-link">
+        <Link href={href('errors')} className={buttonVariants({ variant: 'ghost', size: 'sm' })} data-testid="dashboard-errors-link">
           {t('errorsCta')}
           <ArrowRight aria-hidden />
         </Link>
@@ -347,8 +351,10 @@ export function ErrorsToReviewCard() {
 
 /** Từ đến hạn hôm nay + thẻ mới còn trong hạn mức → bắt đầu phiên ôn */
 export function VocabDueCard() {
+  const program = useProgram();
+  const href = useProgramHref();
   const t = useTranslations('stats');
-  const q = useSrsCounts(PROGRAM);
+  const q = useSrsCounts(program);
   const c = q.data?.counts;
   const fresh = c ? Math.min(c.new_remaining ?? c.new_total, c.new_total) : 0;
   return (
@@ -357,7 +363,7 @@ export function VocabDueCard() {
         <h2 id="vocab-due-title" className="text-lg font-semibold">
           {t('vocabTitle')}
         </h2>
-        <Link href="/toeic/vocab" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+        <Link href={href('vocab')} className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
           {t('vocabLists')}
           <ArrowRight aria-hidden />
         </Link>
@@ -377,7 +383,7 @@ export function VocabDueCard() {
               <span className="mx-2 text-muted-foreground">·</span>
               <span className="tabular font-semibold">{fresh}</span> <span className="text-muted-foreground">{t('vocabNew')}</span>
             </p>
-            <Link href={(c?.due_now ?? 0) + fresh > 0 ? '/toeic/vocab/review' : '/toeic/vocab'} className={buttonVariants({ variant: (c?.due_now ?? 0) + fresh > 0 ? 'gold' : 'outline', size: 'sm' })} data-testid="dashboard-vocab-start">
+            <Link href={(c?.due_now ?? 0) + fresh > 0 ? href('vocab/review') : href('vocab')} className={buttonVariants({ variant: (c?.due_now ?? 0) + fresh > 0 ? 'gold' : 'outline', size: 'sm' })} data-testid="dashboard-vocab-start">
               {(c?.due_now ?? 0) + fresh > 0 ? t('vocabStart') : t('vocabAdd')}
             </Link>
           </CardContent>

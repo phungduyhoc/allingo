@@ -13,6 +13,8 @@ import { useFeedDispatch } from '@/features/notifications/use-notifications';
 import { notificationText, resolveNotificationHref } from '@/features/notifications/notification-text';
 import { planKeys } from '@/features/plan/queries';
 import { badgeNameOf } from '@/features/badges/badge-toast';
+import { useProgram } from '@/features/program/program-context';
+import { DEFAULT_PROGRAM } from '@allingo/schemas/program/registry';
 
 /**
  * Kết nối realtime cho vùng (app) sau AuthGate (S7/S8). Sự kiện chung → làm mới dữ liệu (server vẫn là nguồn sự thật):
@@ -21,6 +23,12 @@ import { badgeNameOf } from '@/features/badges/badge-toast';
  * Trang cụ thể (kết quả thanh toán…) đăng ký thêm qua `useRealtimeEvent`.
  */
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
+  // C1: chương trình hiện hành cho liên kết thông báo (ref – handler socket đăng ký một lần)
+  const program = useProgram();
+  const programRef = React.useRef<string>(DEFAULT_PROGRAM);
+  React.useEffect(() => {
+    programRef.current = program;
+  }, [program]);
   const me = useMe();
   const qc = useQueryClient();
   const dispatch = useFeedDispatch();
@@ -67,7 +75,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         const item = parsed.data;
         if (item.channel && item.channel !== 'inapp') return;
         dispatch({ type: 'received', item });
-        const href = resolveNotificationHref(item.url ?? null);
+        const href = resolveNotificationHref(item.url ?? null, programRef.current);
         // S9: huy hiệu mới → toast riêng có tên huy hiệu + làm mới huy hiệu/XP; đề xuất điều chỉnh sẵn sàng → làm mới đề xuất
         if (item.template_code === 'learning.badge_awarded') {
           void qc.invalidateQueries({ queryKey: ['me', 'badges'] });

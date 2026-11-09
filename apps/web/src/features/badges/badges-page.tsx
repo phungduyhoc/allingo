@@ -8,8 +8,9 @@ import { useLocalized } from '@/lib/localized';
 import { useStats } from '@/lib/queries';
 import { PageHeader } from '@/components/page-header';
 import { CardSkeleton, EmptyState, ErrorState } from '@/components/states';
-import { PROGRAM, useBadges } from '@/features/plan/queries';
+import { useBadges } from '@/features/plan/queries';
 import { xpLevelView } from '@/features/plan/progress';
+import { useProgram } from '@/features/program/program-context';
 
 /** Icon theo mã/luật huy hiệu (seed learn.badges: first_attempt, first_full_test, questions_1000, score_up_50, streak_7, streak_30…) */
 export function badgeIcon(b: Pick<BadgeDto, 'code' | 'rule'>): LucideIcon {
@@ -24,11 +25,12 @@ export function badgeIcon(b: Pick<BadgeDto, 'code' | 'rule'>): LucideIcon {
 
 /** Màn huy hiệu `/badges` (S9): lưới đã đạt/chưa + tiến độ, XP và cấp độ */
 export function BadgesPage() {
+  const program = useProgram();
   const t = useTranslations('badges');
   const fmt = useFormatter();
   const L = useLocalized();
-  const badges = useBadges(PROGRAM);
-  const stats = useStats(PROGRAM);
+  const badges = useBadges(program);
+  const stats = useStats(program);
   const xp = stats.data?.xp;
   const lv = xp ? xpLevelView(xp.total, xp.level, xp.next_level_at) : null;
   const list = badges.data?.data ?? [];

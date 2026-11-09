@@ -37,19 +37,21 @@ import { useRealtimeEvent } from '@/features/realtime/realtime-provider';
 import { CheckinDialog } from './checkin-dialog';
 import { ProposalCard } from './proposal-card';
 import { currentWeek, examCountdown, forecastTone, formatDay, formatRange, loadView, pct, todayIn, weekHasFullTest } from './progress';
-import { ACTIVE_PROPOSAL_STATUSES, PROGRAM, moveErrorKey, useApplyProposal, useInstructAdjust, usePatchTask, usePlan, useProposals, useRegeneratePlan, useToday } from './queries';
+import { ACTIVE_PROPOSAL_STATUSES, moveErrorKey, useApplyProposal, useInstructAdjust, usePatchTask, usePlan, useProposals, useRegeneratePlan, useToday } from './queries';
 import { canMoveTask, dayMinutes, moveTargets, sortDayTasks, type MoveContext } from './reschedule';
 import { TaskRow } from './task-ui';
 import { useLaunchTask } from './use-launch-task';
+import { useProgram, useProgramHref } from '@/features/program/program-context';
 
 const TONE_BADGE = { success: 'success', gold: 'gold', destructive: 'destructive', muted: 'muted', primary: 'default' } as const;
 const PHASE_BADGE = { foundation: 'secondary', practice: 'default', simulation: 'gold' } as const;
 
 /** Trang lộ trình `/toeic/plan` (S9) – tuần, ngày + task, kéo thả đổi ngày, đề xuất điều chỉnh, tạo lại */
 export function PlanPage() {
+  const program = useProgram();
   const t = useTranslations('plan');
-  const plan = usePlan(PROGRAM);
-  const today = useToday(PROGRAM);
+  const plan = usePlan(program);
+  const today = useToday(program);
   const search = useSearchParams();
   const highlightProposal = search.get('proposal');
   const [checkinOpen, setCheckinOpen] = React.useState(false);
@@ -85,13 +87,15 @@ export function PlanPage() {
 }
 
 function PlanView({ plan, today, highlightProposal, checkinDue, onCheckin, checkinOpen, setCheckinOpen }: { plan: StudyPlan; today: string; highlightProposal: string | null; checkinDue: boolean; onCheckin: () => void; checkinOpen: boolean; setCheckinOpen: (o: boolean) => void }) {
+  const program = useProgram();
+  const href = useProgramHref();
   const t = useTranslations('plan');
   const fmt = useFormatter();
   const cur = currentWeek(plan, today);
   const [selectedNo, setSelectedNo] = React.useState<number>(cur?.week_no ?? 1);
   const selected = plan.weeks.find((w) => w.week_no === selectedNo) ?? cur ?? plan.weeks[0] ?? null;
   const [regenOpen, setRegenOpen] = React.useState(false);
-  const regenerate = useRegeneratePlan(PROGRAM);
+  const regenerate = useRegeneratePlan(program);
   const [regenPending, setRegenPending] = React.useState(false);
 
   useRealtimeEvent('plan.updated', (data) => {
@@ -112,7 +116,7 @@ function PlanView({ plan, today, highlightProposal, checkinDue, onCheckin, check
         description={subtitle}
         actions={
           <>
-            <Link href="/toeic/today" className={buttonVariants({ variant: 'navy' })}>
+            <Link href={href('today')} className={buttonVariants({ variant: 'navy' })}>
               <CalendarCheck aria-hidden />
               {t('goToday')}
             </Link>
@@ -221,6 +225,7 @@ function PlanView({ plan, today, highlightProposal, checkinDue, onCheckin, check
 }
 
 function PlanSummary({ plan }: { plan: StudyPlan }) {
+  const href = useProgramHref();
   const t = useTranslations('plan');
   const exam = examCountdown(plan.progress);
   const tone = forecastTone(plan.progress.forecast);
@@ -259,7 +264,7 @@ function PlanSummary({ plan }: { plan: StudyPlan }) {
               {plan.baseline.low !== null && plan.baseline.high !== null ? t('baselineRange', { score: plan.baseline.score, low: plan.baseline.low, high: plan.baseline.high }) : t('baseline', { score: plan.baseline.score })}
             </p>
           ) : (
-            <Link href="/toeic/diagnostic" className="text-primary underline-offset-4 hover:underline">
+            <Link href={href('diagnostic')} className="text-primary underline-offset-4 hover:underline">
               {t('takeDiagnostic')}
             </Link>
           )}
@@ -287,12 +292,14 @@ function ProgressRow({ label, value, tone = 'primary', testId }: { label: string
 // ----------------------------------------------------------------------------- tuần
 
 function WeekPanel({ plan, week, today, onCheckin }: { plan: StudyPlan; week: PlanWeek; today: string; onCheckin: () => void }) {
+  const program = useProgram();
+  const href = useProgramHref();
   const t = useTranslations('plan');
   const locale = useLocale();
   const load = loadView(week);
   const ctx: MoveContext = { today, examDate: plan.settings.exam_date };
-  const patch = usePatchTask(PROGRAM);
-  const { launch, busyId, error: launchError, errorTaskId } = useLaunchTask({ returnTo: '/toeic/plan', onCheckin });
+  const patch = usePatchTask(program);
+  const { launch, busyId, error: launchError, errorTaskId } = useLaunchTask({ returnTo: href('plan'), onCheckin });
   const [dragging, setDragging] = React.useState<PlanTask | null>(null);
   const [over, setOver] = React.useState<string | null>(null);
   const targets = dragging ? new Set(moveTargets(dragging, week, ctx)) : null;
@@ -441,11 +448,12 @@ function WeekPanel({ plan, week, today, onCheckin }: { plan: StudyPlan; week: Pl
 // ----------------------------------------------------------------------------- điều chỉnh
 
 function AdjustPanel({ highlight }: { highlight: string | null }) {
+  const program = useProgram();
   const t = useTranslations('plan');
   const te = useTranslations('errors');
-  const proposals = useProposals(PROGRAM);
-  const apply = useApplyProposal(PROGRAM);
-  const instruct = useInstructAdjust(PROGRAM);
+  const proposals = useProposals(program);
+  const apply = useApplyProposal(program);
+  const instruct = useInstructAdjust(program);
   const [text, setText] = React.useState('');
   const [applyingId, setApplyingId] = React.useState<string | null>(null);
   const list = (proposals.data ?? []).filter((p) => ACTIVE_PROPOSAL_STATUSES.has(p.status) || p.proposal_id === highlight || p.proposal_id === instruct.data?.proposal.proposal_id).slice(0, 3);

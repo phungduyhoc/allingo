@@ -10,6 +10,7 @@ import { TestSetCard } from './test-set-card';
 import { StartAttemptDialog } from './start-attempt-dialog';
 import { useStartTestSet } from './use-start-test-set';
 import { QuotaLeft } from '@/features/quota/quota-ui';
+import { useProgram } from '@/features/program/program-context';
 
 const KINDS = ['all', 'mini', 'full', 'part_drill', 'diagnostic', 'topic_pack'] as const;
 type Kind = (typeof KINDS)[number];
@@ -17,7 +18,8 @@ type Kind = (typeof KINDS)[number];
 export function TestSetsPage({ initialKind }: { initialKind?: string }) {
   const t = useTranslations('testSets');
   const [kind, setKind] = React.useState<Kind>(KINDS.includes(initialKind as Kind) ? (initialKind as Kind) : 'all');
-  const query = useTestSets('toeic', kind === 'all' ? undefined : kind);
+  const program = useProgram();
+  const query = useTestSets(program, kind === 'all' ? undefined : kind);
   const ctl = useStartTestSet();
 
   return (

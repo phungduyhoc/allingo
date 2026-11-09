@@ -14,10 +14,10 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
  * Sprint 12 thêm). API chưa có endpoint (404) → thông báo thân thiện "đang mở đăng ký, quay lại sau" thay vì lỗi.
  * TODO(S12): bỏ trạng thái `unavailable` khi endpoint đã có trong OpenAPI. Email chỉ gửi tới API, không lưu ở trình duyệt.
  */
-export function WaitlistForm({ program }: { program: WaitlistInput['program'] }) {
+export function WaitlistForm({ program, defaultEmail = '' }: { program: WaitlistInput['program']; defaultEmail?: string }) {
   const t = useTranslations('marketing.waitlist');
   const locale = useLocale();
-  const [email, setEmail] = React.useState('');
+  const [email, setEmail] = React.useState(defaultEmail);
   const [consent, setConsent] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [state, setState] = React.useState<'idle' | 'sending' | 'accepted' | 'unavailable' | 'failed'>('idle');

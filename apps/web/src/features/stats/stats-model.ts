@@ -1,12 +1,14 @@
 import type { Stats } from '@allingo/schemas/api/core';
 import type { Forecast } from '@allingo/schemas/api/learning-s10';
+import { PROGRAM_LIST } from '@allingo/schemas/program/registry';
 
 /**
  * Mô hình hiển thị thống kê (S10) – thuần, có test. Chuyển `GET /me/stats` (trường S10 tuỳ chọn – API cũ/mock thiếu thì rỗng)
  * thành chuỗi điểm, bảng độ chính xác theo Part (30 ngày vs 30 ngày trước), phút/tuần, KPI, tóm tắt tuần; và trạng thái dự báo.
  */
 
-const PART_ORDER = ['part1', 'part2', 'part3', 'part4', 'part5', 'part6', 'part7'];
+/** C1: thứ tự phần thi theo registry chương trình (TOEIC Part 1–7 trước) */
+const PART_ORDER: readonly string[] = [...new Set(PROGRAM_LIST.flatMap((p) => p.sections.map((s) => s.code)))];
 const partIndex = (k: string) => {
   const i = PART_ORDER.indexOf(k);
   return i < 0 ? 99 : i;

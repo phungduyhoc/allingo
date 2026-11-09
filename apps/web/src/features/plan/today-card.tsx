@@ -7,9 +7,10 @@ import { Link } from '@/i18n/navigation';
 import { useLocalized } from '@/lib/localized';
 import { CardSkeleton } from '@/components/states';
 import { pct } from './progress';
-import { PROGRAM, useToday } from './queries';
+import { useToday } from './queries';
 import { TaskIcon } from './task-ui';
 import { useFlag } from '@/features/flags/flags-provider';
+import { useProgram, useProgramHref } from '@/features/program/program-context';
 
 /** Thẻ "Hôm nay" trên dashboard: streak, tiến độ việc hôm nay, việc kế tiếp; chưa có lộ trình → mời onboarding */
 /** S11: kill-switch ff.learning.study_plan tắt → không hiện thẻ (không gọi /me/plan/today) */
@@ -18,10 +19,12 @@ export function TodayCard() {
 }
 
 function TodayCardInner() {
+  const program = useProgram();
+  const href = useProgramHref();
   const t = useTranslations('today');
   const tc = useTranslations('common');
   const L = useLocalized();
-  const today = useToday(PROGRAM);
+  const today = useToday(program);
   if (today.isPending) return <CardSkeleton lines={3} />;
   if (today.isError) return null;
   const d = today.data;
@@ -79,7 +82,7 @@ function TodayCardInner() {
         ) : (
           <p className="text-sm text-muted-foreground">{counted.length ? t('allDone') : t('restDesc')}</p>
         )}
-        <Link href="/toeic/today" className={buttonVariants({ variant: 'navy', className: 'w-full' })} data-testid="dashboard-today-link">
+        <Link href={href('today')} className={buttonVariants({ variant: 'navy', className: 'w-full' })} data-testid="dashboard-today-link">
           {t('open')}
           <ArrowRight aria-hidden />
         </Link>

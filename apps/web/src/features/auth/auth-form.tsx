@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from '@allingo/ui';
 import { Link, useRouter } from '@/i18n/navigation';
-import { useLogin, useRegister } from '@/lib/queries';
+import { useLogin, useRegister, queryKeys } from '@/lib/queries';
 import { getErrorCode, getFieldErrors, isApiError } from '@/lib/errors';
 import { useErrorMessage } from '@/lib/use-error-message';
 import { PASSWORD_MIN_LENGTH, passwordPolicyIssue } from '@/lib/password-policy';
@@ -17,6 +17,10 @@ import { safeNextPath } from '@/lib/billing';
 import { GoogleButton } from './google-button';
 import { OtpLoginForm } from './otp-login-form';
 import { FunnelTracker } from '@/features/consent/funnel-tracker';
+import { useQueryClient } from '@tanstack/react-query';
+import { DEFAULT_PROGRAM, isProgramCode } from '@allingo/schemas/program/registry';
+import { programHref } from '@/features/program/program-context';
+import type { User } from '@/lib/types';
 
 type Mode = 'login' | 'signup';
 
@@ -27,6 +31,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const locale = useLocale();
   const router = useRouter();
   const login = useLogin();
+  const qc = useQueryClient();
   const signup = useRegister();
   const pending = login.isPending || signup.isPending;
 
@@ -53,8 +58,10 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const afterSignIn = React.useCallback(() => {
     toast.success(mode === 'login' ? t('submitLogin') : t('submitSignup'));
     const next = safeNextPath(new URLSearchParams(window.location.search).get('next'));
-    router.push(next ?? '/toeic/dashboard');
-  }, [mode, router, t]);
+    // C1: không có `next` → dashboard của chương trình đang học (me.active_program; mặc định TOEIC)
+    const active = qc.getQueryData<User>(queryKeys.me)?.active_program;
+    router.push(next ?? programHref(isProgramCode(active) ? active : DEFAULT_PROGRAM, 'dashboard'));
+  }, [mode, qc, router, t]);
   // Giữ `next`/`ref`/UTM khi chuyển qua lại Đăng nhập ↔ Đăng ký
   const carriedQuery = useClientValue(() => {
     const src = new URLSearchParams(window.location.search);

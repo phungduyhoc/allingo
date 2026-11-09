@@ -13,6 +13,7 @@ import { addSrsCard, fetchTts, lookupDictionary } from '@/lib/learning-api';
 import { QuotaExceededNotice } from '@/features/quota/quota-ui';
 import { lookupKey, type LookupTarget } from './selection';
 import type { LookupSource } from './lookup-layer';
+import { useProgram } from '@/features/program/program-context';
 
 const VOICES = { us: 'en-US-neural-f', uk: 'en-GB-neural-f' } as const;
 type Accent = keyof typeof VOICES;
@@ -58,6 +59,8 @@ export function LookupCard({
   const te = useTranslations('errors');
   const locale = useLocale();
   const qc = useQueryClient();
+  // C1: thẻ SRS thuộc chương trình đang học
+  const program = useProgram();
   const [target, setTarget] = React.useState(initial);
   const [forceAi, setForceAi] = React.useState(false);
   const [playing, setPlaying] = React.useState<Accent | null>(null);
@@ -80,7 +83,7 @@ export function LookupCard({
   const add = useMutation({
     mutationFn: (entry: DictionaryEntry) =>
       addSrsCard({
-        program: 'toeic',
+        program,
         card_type: 'vocab',
         ...(entry.vocab_item_id ? { ref_id: entry.vocab_item_id } : { headword: entry.headword.slice(0, 100) }),
         source_type: source.type,

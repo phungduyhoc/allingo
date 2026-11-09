@@ -1,5 +1,6 @@
 import { ERROR_DRILL_MAX, ERROR_KINDS, type ErrorKind, type ErrorLogEntry, type ErrorPatch } from '@allingo/schemas/api/learning-s10';
 import type { ErrorDrillBody, ErrorQuery } from '@/lib/s10-api';
+import { DEFAULT_PROGRAM, PROGRAM_LIST } from '@allingo/schemas/program/registry';
 
 /**
  * Bộ lọc sổ lỗi (S10) – thuần, có test. Trạng thái lọc nằm trên URL (`?kind=&part=&status=&days=&sort=`) để chia sẻ/tải lại
@@ -11,6 +12,8 @@ export type ErrorStatus = (typeof ERROR_STATUSES)[number];
 export const ERROR_WINDOWS = [7, 30, 0] as const;
 export type ErrorWindow = (typeof ERROR_WINDOWS)[number];
 export const TOEIC_PARTS = ['part1', 'part2', 'part3', 'part4', 'part5', 'part6', 'part7'] as const;
+/** C1: thứ tự phần thi theo registry (TOEIC Part 1–7 trước, rồi IELTS/JLPT/HSK) */
+const SECTION_ORDER: readonly string[] = [...new Set(PROGRAM_LIST.flatMap((p) => p.sections.map((s) => s.code)))];
 
 export interface ErrorFilters {
   kind: ErrorKind | null;
@@ -51,7 +54,7 @@ export function errorFiltersToSearch(f: ErrorFilters, keep: Record<string, strin
   return p.toString();
 }
 
-export function errorFiltersToQuery(f: ErrorFilters, program = 'toeic'): ErrorQuery {
+export function errorFiltersToQuery(f: ErrorFilters, program: string = DEFAULT_PROGRAM): ErrorQuery {
   return { program, kind: f.kind, part: f.part, status: f.status, days: f.days, sort: f.sort, limit: 20 };
 }
 
@@ -59,7 +62,7 @@ export function errorFiltersToQuery(f: ErrorFilters, program = 'toeic'): ErrorQu
  * Thân "Làm lại câu sai": đã chọn (≤ 10, chỉ lỗi chưa hiểu) → `entry_ids`; không chọn → 10 lỗi chưa hiểu cũ nhất theo loại/Part
  * đang lọc (server chọn). Kèm `plan_task_id` khi mở từ task `review_errors`.
  */
-export function errorDrillBody(f: ErrorFilters, selected: readonly string[], planTaskId?: string | null, program = 'toeic'): ErrorDrillBody {
+export function errorDrillBody(f: ErrorFilters, selected: readonly string[], planTaskId?: string | null, program: string = DEFAULT_PROGRAM): ErrorDrillBody {
   const ids = [...new Set(selected)].slice(0, ERROR_DRILL_MAX);
   const base: ErrorDrillBody = ids.length ? { program, entry_ids: ids } : { program, limit: ERROR_DRILL_MAX, ...(f.kind ? { kind: f.kind } : {}), ...(f.part ? { part: f.part } : {}) };
   return planTaskId ? { ...base, plan_task_id: planTaskId } : base;
@@ -75,7 +78,7 @@ export function sortedCounts(dist: Record<string, number>): Array<[string, numbe
 /** Theo Part → thứ tự part1…part7 (khác → cuối) */
 export function sortedSections(bySection: Record<string, number>): Array<[string, number]> {
   const order = (k: string) => {
-    const i = (TOEIC_PARTS as readonly string[]).indexOf(k);
+    const i = SECTION_ORDER.indexOf(k);
     return i < 0 ? 99 : i;
   };
   return Object.entries(bySection)

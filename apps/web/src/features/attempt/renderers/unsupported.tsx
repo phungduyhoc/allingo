@@ -3,13 +3,14 @@
 import { Construction } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Alert, AlertDescription, AlertTitle } from '@allingo/ui';
+import { QUESTION_TYPE_CODES } from '@allingo/schemas/question/content';
 import type { QuestionTypeCode } from '@/lib/types';
 
-/** 8 dạng còn lại (matching, drag_drop, map_label, ordering, dictation, essay, speaking, handwriting) – Sprint sau */
+/** Dạng chưa có renderer (drag_drop, map_label, ordering, dictation, essay, speaking, handwriting) – đợt sau (C4–C6) */
 export function Unsupported({ type }: { type: string }) {
   const t = useTranslations('attempt');
   const tq = useTranslations('questionTypes');
-  const known = ['mcq_single', 'mcq_multi', 'fill_blank', 'matching', 'drag_drop', 'map_label', 'tfng', 'ordering', 'dictation', 'essay', 'speaking', 'handwriting'].includes(type);
+  const known = (QUESTION_TYPE_CODES as readonly string[]).includes(type);
   return (
     <Alert variant="gold">
       <Construction aria-hidden />

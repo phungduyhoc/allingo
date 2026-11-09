@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { AttemptResult } from '@/lib/types';
+import { DEFAULT_PROGRAM, programDef, skillOfSection } from '@allingo/schemas/program/registry';
 
 /**
  * Đọc an toàn `AttemptResult.diagnosis` (JSONB, kiểu `AttemptDiagnosis` của packages/scoring – chẩn đoán theo quy tắc S3)
@@ -40,8 +41,8 @@ export function knownFlags(d: Diagnosis): DiagnosisFlag[] {
 
 export const toPercent = (accuracy: number): number => Math.round(Math.max(0, Math.min(1, accuracy)) * 100);
 
-/** Link luyện tập từ gợi ý: /toeic/practice?section=part5&subskill=… (trang practice đọc query để chọn sẵn) */
-export function recommendationHref(rec: Diagnosis['recommendations'][number], program = 'toeic'): string {
+/** Link luyện tập từ gợi ý: /<program>/practice?section=part5&subskill=… (trang practice đọc query để chọn sẵn) */
+export function recommendationHref(rec: Diagnosis['recommendations'][number], program: string = DEFAULT_PROGRAM): string {
   const qs = new URLSearchParams({ section: rec.section_code });
   if (rec.subskill_code) qs.set('subskill', rec.subskill_code);
   if (rec.topic_code) qs.set('topic', rec.topic_code);
@@ -63,7 +64,8 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
  */
 export function scaleView(result: Pick<AttemptResult, 'scale' | 'by_section'>): ScaleView | null {
   const s = result.scale ?? {};
-  if (s.program !== undefined && s.program !== 'toeic') return null;
+  // C1: thang TOEIC L&R (registry scale.kind) – chương trình khác (IELTS band…) hiển thị theo `scale.unit`
+  if (s.program !== undefined && programDef(typeof s.program === 'string' ? s.program : null)?.scale.kind !== 'toeic_lr') return null;
   const skills = (typeof s.skills === 'object' && s.skills ? s.skills : s) as Record<string, unknown>;
   const listening = num(skills.listening);
   const reading = num(skills.reading);
@@ -73,8 +75,8 @@ export function scaleView(result: Pick<AttemptResult, 'scale' | 'by_section'>): 
   if (listening !== null) return { kind: 'skill', skill: 'listening', min: 5, max: 495 };
   // Không có thông tin kỹ năng → suy từ Part có trong bài
   const parts = Object.keys(result.by_section ?? {});
-  const hasL = parts.some((p) => ['part1', 'part2', 'part3', 'part4'].includes(p));
-  const hasR = parts.some((p) => ['part5', 'part6', 'part7'].includes(p));
+  const hasL = parts.some((p) => skillOfSection(DEFAULT_PROGRAM, p) === 'listening');
+  const hasR = parts.some((p) => skillOfSection(DEFAULT_PROGRAM, p) === 'reading');
   if (hasL && hasR) return { kind: 'total', min: 10, max: 990 };
   if (hasR || hasL) return { kind: 'skill', skill: hasR ? 'reading' : 'listening', min: 5, max: 495 };
   return null;

@@ -14,10 +14,12 @@ import { getErrorStatus } from '@/lib/errors';
 import { useExamLock } from '@/lib/exam-lock';
 import { ExamLockBanner } from '@/features/exam-lock/exam-lock-banner';
 import { rememberPlanLaunch } from '@/features/plan/launch-memory';
-import { PROGRAM } from '@/features/plan/queries';
+
 import { ErrorEntryCard } from './error-entry';
-import { errorDrillBody, errorFiltersToSearch, ERROR_STATUSES, ERROR_WINDOWS, parseErrorFilters, sortedCounts, sortedSections, TOEIC_PARTS, type ErrorFilters } from './filters';
+import { errorDrillBody, errorFiltersToSearch, ERROR_STATUSES, ERROR_WINDOWS, parseErrorFilters, sortedCounts, sortedSections, type ErrorFilters } from './filters';
 import { useErrorDrill, useErrorLog, usePatchError } from './queries';
+import { useProgramHref, useProgram } from '@/features/program/program-context';
+import { autoSectionCodes } from '@allingo/schemas/program/registry';
 
 /**
  * Sổ lỗi `/toeic/errors` (S10): tổng chưa hiểu/đã hiểu, phân bố theo loại lỗi và theo Part (bấm để lọc), bộ lọc trạng thái/loại/
@@ -26,6 +28,8 @@ import { useErrorDrill, useErrorLog, usePatchError } from './queries';
  * gắn `plan_task_id`. Exam Mode → 403 `exam_mode_locked` → banner.
  */
 export function ErrorsPage() {
+  const program = useProgram();
+  const href = useProgramHref();
   const t = useTranslations('errorLog');
   const ts = useTranslations('sections');
   const search = useSearchParams();
@@ -33,8 +37,8 @@ export function ErrorsPage() {
   const pathname = usePathname();
   const filters = React.useMemo(() => parseErrorFilters(search), [search]);
   const taskId = search.get('task');
-  const log = useErrorLog(filters, PROGRAM);
-  const patch = usePatchError(filters, PROGRAM);
+  const log = useErrorLog(filters, program);
+  const patch = usePatchError(filters, program);
   const drill = useErrorDrill();
   const lock = useExamLock();
   const [selected, setSelected] = React.useState<string[]>([]);
@@ -59,9 +63,9 @@ export function ErrorsPage() {
     });
 
   const startDrill = () =>
-    drill.mutate(errorDrillBody(filters, selected, taskId, PROGRAM), {
+    drill.mutate(errorDrillBody(filters, selected, taskId, program), {
       onSuccess: (attempt) => {
-        if (taskId) rememberPlanLaunch(attempt.id, { task_id: taskId, return_to: '/toeic/today' });
+        if (taskId) rememberPlanLaunch(attempt.id, { task_id: taskId, return_to: href('today') });
         router.push(`/attempts/${attempt.id}`);
       },
       onError: (e) => {
@@ -155,9 +159,9 @@ export function ErrorsPage() {
           </FilterSelect>
           <FilterSelect label={t('partLabel')} value={filters.part ?? ''} onChange={(v) => setFilters({ part: v || null })} testId="errors-filter-part">
             <option value="">{t('allParts')}</option>
-            {TOEIC_PARTS.map((p) => (
+            {autoSectionCodes(program).map((p) => (
               <option key={p} value={p}>
-                {ts(p)}
+                {ts.has(p as never) ? ts(p as never) : p}
               </option>
             ))}
           </FilterSelect>

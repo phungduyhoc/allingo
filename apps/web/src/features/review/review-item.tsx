@@ -11,7 +11,7 @@ import {
   type ReviewItem as ReviewItemT,
   type TranscriptHighlight,
 } from '@/lib/types';
-import { QuestionRenderer } from '@/features/attempt/question-renderer';
+import { QuestionRenderer, SELF_IMAGE_TYPES } from '@/features/attempt/question-renderer';
 import { QuestionStem } from '@/features/attempt/question-stem';
 import { AudioPlayer } from '@/features/attempt/audio-player';
 import { formatAnswer } from '@/lib/format-answer';
@@ -23,6 +23,7 @@ import { useFlag } from '@/features/flags/flags-provider';
 import { Transcript } from './transcript';
 import { parseTranscript } from './transcript-format';
 import { PassageTabs, partsOf } from '@/features/attempt/passage-pane';
+import { useSectionLabel } from '@/features/attempt/section-label';
 
 export interface ReviewMedia {
   resolve: (assetId: string | null | undefined, fallback: string) => string;
@@ -114,16 +115,13 @@ export function ReviewItemCard({
   const tutor = useOptionalTutor();
   // S11: kill-switch ff.ai.tutor tắt → ẩn "Hỏi gia sư"
   const tutorOn = useFlag('ff.ai.tutor');
-  const ts = useTranslations('sections');
   const ta = useTranslations('attempt');
   const content = asPublicContent(item.question.content);
   const yourAnswer = (item.your_answer ?? null) as AnswerInput | null;
   const correct = item.is_correct;
   const audio = item.question.media.find((m) => m.kind === 'audio');
-  const images = item.question.media.filter((m) => m.kind === 'image');
-  const sectionKnown = ['part1', 'part2', 'part3', 'part4', 'part5', 'part6', 'part7'].includes(
-    item.question.section_code,
-  );
+  const images = content && SELF_IMAGE_TYPES.has(content.type) ? [] : item.question.media.filter((m) => m.kind === 'image');
+  const sectionLabel = useSectionLabel();
   const cachedExplanation = item.explanation
     ? explanationSchema.safeParse({ ...item.explanation, cached: true })
     : null;
@@ -146,7 +144,7 @@ export function ReviewItemCard({
       <header className="mb-3 flex flex-wrap items-center gap-2">
         <span className="tabular text-sm font-semibold">{number}.</span>
         <Badge variant="secondary">
-          {sectionKnown ? ts(item.question.section_code as 'part1').split(' · ')[0] : item.question.section_code}
+          {sectionLabel(item.question.section_code, { short: true })}
         </Badge>
         {correct === true ? (
           <Badge variant="success">
@@ -247,6 +245,10 @@ export function ReviewItemCard({
           answer={yourAnswer}
           onChange={() => undefined}
           review={{ correctAnswer: item.correct_answer, details: item.details, isCorrect: item.is_correct }}
+          resolveImage={(assetId) => {
+            const m = item.question.media.find((x) => x.id === assetId);
+            return m ? resolve(m.id, m.url) : null;
+          }}
         />
       ) : null}
 
@@ -278,6 +280,7 @@ export function ReviewItemCard({
         <ExplainPanel
           questionVersionId={item.question.question_version_id}
           chosenOption={chosen}
+          answer={yourAnswer}
           attemptId={attemptId}
           initial={cachedExplanation?.success ? cachedExplanation.data : null}
           examLocked={examLocked}

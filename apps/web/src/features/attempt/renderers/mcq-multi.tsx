@@ -14,16 +14,22 @@ export function McqMulti({ content, answer, onChange, disabled, review, question
   const selected = new Set(answer?.selected ?? []);
   const correct = new Set(Array.isArray(review?.correctAnswer) ? (review.correctAnswer as string[]) : []);
 
+  // C2 – "Choose TWO letters": đủ số lựa chọn → khoá các lựa chọn còn lại (bỏ chọn một lựa chọn để đổi)
+  const limit = content.select_count ?? null;
+  const full = limit !== null && selected.size >= limit;
   const toggle = (key: string) => {
     const next = new Set(selected);
     if (next.has(key)) next.delete(key);
+    else if (full) return;
     else next.add(key);
     onChange({ type: 'mcq_multi', selected: content.options.filter((o) => next.has(o.key)).map((o) => o.key) });
   };
 
   return (
     <div role="group" aria-labelledby={`q-${questionId}-stem`} className="space-y-2">
-      <p className="text-xs text-muted-foreground">{t('mcqMultiHint')}</p>
+      <p className="text-xs text-muted-foreground" data-testid="mcq-multi-hint">
+        {limit !== null ? t('mcqSelectCount', { count: limit, selected: selected.size }) : t('mcqMultiHint')}
+      </p>
       {content.options.map((o) => {
         const isSelected = selected.has(o.key);
         const state = review ? (correct.has(o.key) ? 'correct' : isSelected ? 'wrong' : undefined) : undefined;
@@ -33,7 +39,7 @@ export function McqMulti({ content, answer, onChange, disabled, review, question
             type="button"
             role="checkbox"
             aria-checked={isSelected}
-            disabled={disabled || !!review}
+            disabled={disabled || !!review || (full && !isSelected)}
             data-selected={isSelected}
             data-state={state}
             data-testid={`option-${o.key}`}

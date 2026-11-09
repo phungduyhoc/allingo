@@ -15,11 +15,14 @@ import { AudioPlayer } from '@/features/attempt/audio-player';
 import { PassagePane } from '@/features/attempt/passage-pane';
 import { QuestionRenderer } from '@/features/attempt/question-renderer';
 import { QuestionStem } from '@/features/attempt/question-stem';
-import { PROGRAM, useInvalidatePlan } from '@/features/plan/queries';
+import { useInvalidatePlan } from '@/features/plan/queries';
 import { answerBody, currentQuestionId, diagnosticProgress, diagnosticReducer, initialDiagnosticState, MAX_RESYNCS } from './diagnostic-state';
 import { DiagnosticResultView } from './diagnostic-result';
+import { PROGRAM_LIST } from '@allingo/schemas/program/registry';
+import { useProgram } from '@/features/program/program-context';
 
-const DIRECTION_SECTIONS = new Set(['part1', 'part2']);
+/** Phần thi đọc đề/lựa chọn trong audio (registry `spoken_sections` – TOEIC Part 1/2) có hướng dẫn chung thay cho đề */
+const DIRECTION_SECTIONS: ReadonlySet<string> = new Set(PROGRAM_LIST.flatMap((p) => p.spoken_sections));
 
 /**
  * Bài chẩn đoán thích ứng `/toeic/diagnostic` (S9, ADR-0031): một câu mỗi màn, thanh tiến độ + mức hiện tại, không hiện đúng/sai.
@@ -27,14 +30,15 @@ const DIRECTION_SECTIONS = new Set(['part1', 'part2']);
  * URL ký 10′ lỗi → GET lại câu đang chờ để có URL mới). Tải lại trang → tiếp tục đúng câu đang chờ (GET …/next).
  */
 export function DiagnosticPage() {
+  const program = useProgram();
   const t = useTranslations('diagnostic');
   const te = useTranslations('errors');
   const search = useSearchParams();
   const fromOnboarding = search.get('from') === 'onboarding';
   const [state, dispatch] = React.useReducer(diagnosticReducer, initialDiagnosticState);
   const [attemptId, setAttemptId] = React.useState<string | null>(null);
-  const inProgress = useMyAttempts({ program: PROGRAM, mode: 'diagnostic', status: 'in_progress' });
-  const graded = useMyAttempts({ program: PROGRAM, mode: 'diagnostic', status: 'graded' });
+  const inProgress = useMyAttempts({ program: program, mode: 'diagnostic', status: 'in_progress' });
+  const graded = useMyAttempts({ program: program, mode: 'diagnostic', status: 'graded' });
   const resumeId = inProgress.data?.data[0]?.id ?? null;
   const lastGradedId = graded.data?.data[0]?.id ?? null;
   const invalidate = useInvalidatePlan();
@@ -47,13 +51,13 @@ export function DiagnosticPage() {
       const step = await fn();
       setAttemptId(step.attempt_id);
       dispatch({ type: 'loaded', step, at: Date.now() });
-      if (step.done) invalidate(PROGRAM);
+      if (step.done) invalidate(program);
     } catch (err) {
       dispatch({ type: 'failed', error: err });
     }
-  }, [invalidate]);
+  }, [invalidate, program]);
 
-  const start = React.useCallback(() => void load(() => (resumeId ? getDiagnosticStep(resumeId) : startDiagnostic(PROGRAM))), [load, resumeId]);
+  const start = React.useCallback(() => void load(() => (resumeId ? getDiagnosticStep(resumeId) : startDiagnostic(program))), [load, program, resumeId]);
 
   // Có bài dở hoặc vừa bấm "Bắt đầu" ở onboarding → vào thẳng câu đang chờ
   React.useEffect(() => {
@@ -74,7 +78,7 @@ export function DiagnosticPage() {
     try {
       const step = await answerDiagnostic(attemptId, body);
       dispatch({ type: 'loaded', step, at: Date.now() });
-      if (step.done) invalidate(PROGRAM);
+      if (step.done) invalidate(program);
     } catch (err) {
       // 409: câu đang chờ đã khác (bấm đúp / tab khác) hoặc bài đã xong → lấy lại trạng thái server
       if (conflictDetails(err) && state.resyncs < MAX_RESYNCS) {
@@ -82,7 +86,7 @@ export function DiagnosticPage() {
         try {
           const step = await getDiagnosticStep(attemptId);
           dispatch({ type: 'loaded', step, at: Date.now() });
-          if (step.done) invalidate(PROGRAM);
+          if (step.done) invalidate(program);
         } catch (e2) {
           dispatch({ type: 'failed', error: e2 });
         }
@@ -90,7 +94,7 @@ export function DiagnosticPage() {
       }
       dispatch({ type: 'failed', error: err });
     }
-  }, [attemptId, invalidate, state]);
+  }, [attemptId, invalidate, program, state]);
 
   const question = (state.step?.next_question ?? null) as QuestionPublic | null;
   const refreshMedia = React.useCallback(() => {

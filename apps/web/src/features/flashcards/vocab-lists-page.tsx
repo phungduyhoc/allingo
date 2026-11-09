@@ -11,9 +11,10 @@ import { PageHeader } from '@/components/page-header';
 import { CardSkeleton, EmptyState, ErrorState } from '@/components/states';
 import { useLocalized } from '@/lib/localized';
 import { getErrorStatus } from '@/lib/errors';
-import { PROGRAM } from '@/features/plan/queries';
+
 import { UPGRADE_HREF } from '@/features/quota/quota-ui';
 import { useEnrollList, useSrsCounts, useVocabLists } from './queries';
+import { useProgram, useProgramHref } from '@/features/program/program-context';
 
 /**
  * Từ vựng `/toeic/vocab` (S10): tổng quan hôm nay (đến hạn, thẻ mới còn trong hạn mức) + danh sách bộ từ hệ thống (TOEIC 600:
@@ -21,9 +22,11 @@ import { useEnrollList, useSrsCounts, useVocabLists } from './queries';
  * ôn / học từ mới / đã xong. Thêm cả bộ là idempotent; hạn mức thẻ mới áp khi HỌC (Free 10 / Pro 30 mỗi ngày – ADR-0033).
  */
 export function VocabListsPage() {
+  const program = useProgram();
+  const href = useProgramHref();
   const t = useTranslations('vocab');
-  const lists = useVocabLists(PROGRAM);
-  const counts = useSrsCounts(PROGRAM);
+  const lists = useVocabLists(program);
+  const counts = useSrsCounts(program);
   const c = counts.data?.counts;
   const freshToday = c ? Math.min(c.new_remaining ?? c.new_total, c.new_total) : 0;
 
@@ -33,7 +36,7 @@ export function VocabListsPage() {
         title={t('title')}
         description={t('desc')}
         actions={
-          <Link href="/toeic/vocab/review" className={buttonVariants({ variant: 'gold' })} data-testid="vocab-review-all">
+          <Link href={href('vocab/review')} className={buttonVariants({ variant: 'gold' })} data-testid="vocab-review-all">
             <Layers aria-hidden />
             {t('reviewAll')}
           </Link>
@@ -124,14 +127,16 @@ export function ListProgress({ counts, label }: { counts: VocabList['counts']; l
 }
 
 export function VocabListCard({ list, compact = false }: { list: VocabList; compact?: boolean }) {
+  const program = useProgram();
+  const href = useProgramHref();
   const t = useTranslations('vocab');
   const L = useLocalized();
   const router = useRouter();
-  const enroll = useEnrollList(PROGRAM);
+  const enroll = useEnrollList(program);
   const [locked, setLocked] = React.useState(false);
   const title = L(list.title);
   const action = list.next_action_code;
-  const reviewHref = `/toeic/vocab/review?list=${encodeURIComponent(list.id)}`;
+  const reviewHref = href('vocab/review', `?list=${encodeURIComponent(list.id)}`);
 
   const onEnroll = () =>
     enroll.mutate(list.id, {
@@ -149,7 +154,7 @@ export function VocabListCard({ list, compact = false }: { list: VocabList; comp
       <CardContent className="flex h-full flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <Link href={`/toeic/vocab/${list.id}`} className="font-semibold hover:underline" data-testid="vocab-list-title">
+            <Link href={href(`vocab/${list.id}`)} className="font-semibold hover:underline" data-testid="vocab-list-title">
               {title}
             </Link>
             <p className="mt-0.5 text-xs text-muted-foreground">
@@ -183,7 +188,7 @@ export function VocabListCard({ list, compact = false }: { list: VocabList; comp
             </Button>
           )}
           {!compact ? (
-            <Link href={`/toeic/vocab/${list.id}`} className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }))}>
+            <Link href={href(`vocab/${list.id}`)} className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }))}>
               {t('viewWords')}
             </Link>
           ) : null}

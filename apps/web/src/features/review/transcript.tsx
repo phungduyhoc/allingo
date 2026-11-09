@@ -55,7 +55,8 @@ export function Transcript({
       <h4 className="border-b border-border px-3 py-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
         {t('transcriptTitle')}
       </h4>
-      <ol className="relative max-h-72 space-y-1 overflow-y-auto p-2 text-sm leading-relaxed" data-lookup="">
+      {/* Khung cuộn riêng nhận focus bàn phím (transcript dài – IELTS Listening; axe scrollable-region-focusable) */}
+      <ol className="relative max-h-72 space-y-1 overflow-y-auto p-2 text-sm leading-relaxed outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40" data-lookup="" tabIndex={0} aria-label={t('transcriptTitle')}>
         {lines.map((l, i) => (
           <li
             key={i}

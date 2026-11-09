@@ -16,4 +16,6 @@ export interface RendererProps<C, A extends AnswerInput> {
   review?: ReviewInfo;
   /** Để tạo id a11y ổn định */
   questionId: string;
+  /** C2: URL ảnh nội dung theo asset id (sơ đồ/bản đồ) – đã gia hạn URL ký; null khi chưa có */
+  resolveImage?: (assetId: string) => string | null;
 }

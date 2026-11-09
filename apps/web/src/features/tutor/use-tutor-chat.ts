@@ -9,6 +9,7 @@ import { createThread, getThread, listOlderMessages, sendThreadMessage } from '@
 import { notifyApiError } from '@/lib/api-error-events';
 import { queryKeys } from '@/lib/queries';
 import { chatReducer, initialChat, tutorSseToAction, type Turns } from './chat-state';
+import { useProgram } from '@/features/program/program-context';
 
 export const THREADS_KEY = ['ai', 'threads'] as const;
 
@@ -39,6 +40,12 @@ function contextBody(c: TutorContext | null) {
  */
 export function useTutorChat() {
   const qc = useQueryClient();
+  // C1: luồng gia sư gắn chương trình hiện hành (ref – callback gửi không phụ thuộc render)
+  const program = useProgram();
+  const programRef = React.useRef<string>(program);
+  React.useEffect(() => {
+    programRef.current = program;
+  }, [program]);
   const [state, dispatch] = React.useReducer(chatReducer, null, () => initialChat());
   const contextRef = React.useRef<TutorContext | null>(null);
   const abortRef = React.useRef<AbortController | null>(null);
@@ -121,7 +128,7 @@ export function useTutorChat() {
       try {
         if (!threadId) {
           const thread = await createThread({
-            program: 'toeic',
+            program: programRef.current,
             context: contextBody(contextRef.current),
             title: text.slice(0, 80),
           });

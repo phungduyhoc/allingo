@@ -7,10 +7,10 @@ import { Alert, AlertDescription, AlertTitle, buttonVariants, cn, Progress } fro
 import { Link } from '@/i18n/navigation';
 import { useEntitlements } from '@/lib/queries';
 import { parseInsufficientCredits, parseQuotaExceeded, quotaOf, resetParts, type QuotaInfo } from '@/lib/quota';
+import { useProgram } from '@/features/program/program-context';
 
 /** Đường dẫn CTA nâng cấp (trang /pricing – placeholder tới khi billing S7 xong) */
 export const UPGRADE_HREF = '/pricing';
-const PROGRAM = 'toeic';
 
 const subscribeMinute = (cb: () => void) => {
   const id = window.setInterval(cb, 30_000);
@@ -45,7 +45,8 @@ export function ResetHint({ iso, className }: { iso: string | null | undefined; 
 
 /** Hạn mức của một tính năng từ GET /me/entitlements (chỉ hiển thị – server mới là nơi kiểm tra) */
 export function useQuota(feature: string): { quota: QuotaInfo | null; isPending: boolean; isPro: boolean; credits: number | null; features: readonly string[] } {
-  const ent = useEntitlements(PROGRAM);
+  const program = useProgram();
+  const ent = useEntitlements(program);
   return { quota: quotaOf(ent.data, feature), isPending: ent.isPending, isPro: !!ent.data?.is_pro, credits: ent.data?.credits ?? null, features: ent.data?.features ?? [] };
 }
 

@@ -7,18 +7,20 @@ import { cn } from '@allingo/ui';
 import { useRouter } from '@/i18n/navigation';
 import { useNowMinute } from '@/features/quota/quota-ui';
 import { notificationText, resolveNotificationHref } from './notification-text';
+import { useProgram } from '@/features/program/program-context';
 
 const ICONS = { billing: CreditCard, learning: GraduationCap, marketing: Megaphone, system: ShieldAlert } as const;
 
 /** Một dòng thông báo: chấm chưa đọc, tiêu đề/nội dung đã dịch theo template_code, thời gian tương đối; bấm → đọc + mở url */
 export function NotificationRow({ item, onRead, onNavigate, compact = false }: { item: NotificationItem; onRead: (id: string) => void; onNavigate?: () => void; compact?: boolean }) {
+  const program = useProgram();
   const t = useTranslations('notifications');
   const locale = useLocale();
   const fmt = useFormatter();
   const router = useRouter();
   const now = useNowMinute();
   const text = notificationText(item, t, locale);
-  const href = resolveNotificationHref(item.url ?? null);
+  const href = resolveNotificationHref(item.url ?? null, program);
   const unread = !item.read_at;
   const category = (item.category ?? 'system') as keyof typeof ICONS;
   const Icon = ICONS[category] ?? Bell;

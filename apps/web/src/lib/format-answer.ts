@@ -8,6 +8,9 @@ export function formatAnswer(a: unknown): string {
     if ('selected' in o) return formatAnswer(o.selected);
     if ('values' in o) return formatAnswer(o.values);
     if ('blanks' in o) return formatAnswer(o.blanks);
+    // C2: nối (pairs), điền từ / ngân hàng từ (gaps)
+    if ('pairs' in o) return formatAnswer(o.pairs);
+    if ('gaps' in o) return formatAnswer(o.gaps);
     return Object.entries(o)
       .map(([k, v]) => `${k}: ${Array.isArray(v) ? (v as unknown[]).map(String).join('/') : String(v)}`)
       .join('; ');

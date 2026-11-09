@@ -10,7 +10,8 @@ import { createErrorsDrill, createPlanAttempt } from '@/lib/plan-api';
 import type { Attempt } from '@/lib/types';
 import { launchAction, launchIdempotencyKey } from './launch';
 import { rememberPlanLaunch, type PlanLaunchRecord } from './launch-memory';
-import { PROGRAM, usePatchTask } from './queries';
+import { usePatchTask } from './queries';
+import { useProgram, useProgramHref } from '@/features/program/program-context';
 
 /**
  * Bấm task → mở đúng màn (S9): bài làm (POST /attempts kèm `plan_task_id`, Idempotency-Key theo task) / drill từ sổ lỗi (S10;
@@ -18,13 +19,15 @@ import { PROGRAM, usePatchTask } from './queries';
  * và trả về `error` để hiển thị tại chỗ.
  */
 export function useLaunchTask(opts: { returnTo: PlanLaunchRecord['return_to']; onCheckin: () => void }) {
+  const program = useProgram();
+  const href = useProgramHref();
   const router = useRouter();
   const qc = useQueryClient();
-  const patch = usePatchTask(PROGRAM);
+  const patch = usePatchTask(program);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const create = useMutation<Attempt, Error, { task: PlanTask }>({
     mutationFn: async ({ task }) => {
-      const action = launchAction(task, PROGRAM);
+      const action = launchAction(task, program);
       if (action.kind === 'errors_drill') return createErrorsDrill(action.program, action.plan_task_id);
       if (action.kind !== 'attempt') throw new Error('not an attempt task');
       return createPlanAttempt(action.body, launchIdempotencyKey(task));
@@ -38,13 +41,13 @@ export function useLaunchTask(opts: { returnTo: PlanLaunchRecord['return_to']; o
     },
     onError: (err, { task }) => {
       // S10: review_errors khi không còn lỗi chưa hiểu (404) → mở Sổ lỗi (đánh dấu xong ở đó / chọn lỗi khác)
-      if (err instanceof ApiError && err.status === 404 && launchAction(task, PROGRAM).kind === 'errors_drill') router.push(`/toeic/errors?task=${encodeURIComponent(task.id)}`);
+      if (err instanceof ApiError && err.status === 404 && launchAction(task, program).kind === 'errors_drill') router.push(href('errors', `?task=${encodeURIComponent(task.id)}`));
     },
   });
 
   const launch = React.useCallback(
     (task: PlanTask) => {
-      const action = launchAction(task, PROGRAM);
+      const action = launchAction(task, program);
       switch (action.kind) {
         case 'attempt':
         case 'errors_drill':
@@ -62,7 +65,7 @@ export function useLaunchTask(opts: { returnTo: PlanLaunchRecord['return_to']; o
           return;
       }
     },
-    [create, opts, patch, router],
+    [create, opts, patch, program, router],
   );
 
   return { launch, busyId, error: create.error, errorTaskId: create.variables?.task.id ?? null, reset: create.reset };

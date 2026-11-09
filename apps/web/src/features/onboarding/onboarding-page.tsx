@@ -8,11 +8,15 @@ import { WEEKDAY_CODES } from '@allingo/schemas/api/learning-plan';
 import { Alert, AlertDescription, Badge, Button, Card, CardContent, CardHeader, CardTitle, cn, Input, Label, NativeSelect, Spinner, Switch, ToggleChip } from '@allingo/ui';
 import { useRouter } from '@/i18n/navigation';
 import { getErrorCode } from '@/lib/errors';
-import { useEnrollments, useUpsertEnrollment } from '@/lib/queries';
-import { PROGRAM, useCreatePlan, usePlan, useToday } from '@/features/plan/queries';
+import { useEnrollments, usePrograms, useUpdateMe, useUpsertEnrollment } from '@/lib/queries';
+import { useCreatePlan, usePlan, useToday } from '@/features/plan/queries';
+import { DEFAULT_PROGRAM, isProgramCode, PROGRAM_LIST } from '@allingo/schemas/program/registry';
+import type { ProgramCode } from '@allingo/schemas/common';
+import { programHref } from '@/features/program/program-context';
 import { todayIn } from '@/features/plan/progress';
 import {
-  TARGET_PRESETS,
+  targetPresetsFor,
+  targetRangeFor,
   WEEKLY_MAX,
   WEEKLY_MIN,
   WEEKLY_PRESETS,
@@ -35,12 +39,9 @@ const STEPS: { n: OnboardingStep; key: 'program' | 'goal' | 'schedule' | 'diagno
   { n: 3, key: 'schedule', icon: Clock },
   { n: 4, key: 'diagnostic', icon: ClipboardCheck },
 ];
-const PROGRAMS = [
-  { code: 'toeic', enabled: true },
-  { code: 'ielts', enabled: false },
-  { code: 'jlpt', enabled: false },
-  { code: 'hsk', enabled: false },
-] as const;
+
+/** Chương trình của nháp (mã lạ/nháp cũ → mặc định) */
+const draftProgram = (d: { program: string } | null): ProgramCode => (d && isProgramCode(d.program) ? d.program : DEFAULT_PROGRAM);
 
 /** Onboarding 4 bước `/onboarding` (S9) – người mới sau đăng ký / khách lần đầu (dashboard mời vào khi chưa có lộ trình) */
 export function OnboardingPage() {
@@ -56,8 +57,12 @@ export function OnboardingPage() {
     const s = Number(search.get('step'));
     return s >= 1 && s <= 4 ? { ...d, step: s as OnboardingStep } : d;
   });
-  const plan = usePlan(PROGRAM);
-  const todayQ = useToday(PROGRAM);
+  // C1: chương trình theo registry; chỉ chương trình đã mở (GET /programs status = available) chọn được – còn lại "sắp có"
+  const programsQ = usePrograms();
+  const programs = PROGRAM_LIST.map((p) => ({ code: p.code, enabled: (programsQ.data?.find((x) => x.code === p.code)?.status ?? (p.launch_flag === null ? 'available' : 'coming_soon')) === 'available' }));
+  const updateMe = useUpdateMe();
+  const plan = usePlan(draftProgram(draft));
+  const todayQ = useToday(draftProgram(draft));
   const enrollments = useEnrollments();
   const upsert = useUpsertEnrollment();
   const create = useCreatePlan();
@@ -97,11 +102,14 @@ export function OnboardingPage() {
       exists,
       input: { program: draft.program as never, ...(draft.target_score !== null ? { target_score: draft.target_score } : {}), ...(draft.exam_date ? { exam_date: draft.exam_date } : {}), daily_minutes: dailyMinutes(draft) },
     });
+    // C1: chương trình chọn ở onboarding = chương trình đang học – SAU khi lưu enrollment (PATCH /me tự tạo enrollment nếu chưa có →
+    // gọi trước sẽ làm POST /me/enrollments trả 409)
+    await updateMe.mutateAsync({ active_program: draftProgram(draft) }).catch(() => undefined);
   };
   const startDiagnostic = async () => {
     try {
       await saveEnrollment();
-      router.push('/toeic/diagnostic?from=onboarding');
+      router.push(programHref(draftProgram(draft), 'diagnostic', '?from=onboarding'));
     } catch {
       /* lỗi hiện qua upsert.error */
     }
@@ -110,7 +118,8 @@ export function OnboardingPage() {
     create.mutate(toPlanInput(draft), {
       onSuccess: () => {
         clearDraft();
-        router.push('/toeic/plan?created=1');
+        updateMe.mutate({ active_program: draftProgram(draft) });
+        router.push(programHref(draftProgram(draft), 'plan', '?created=1'));
       },
     });
 
@@ -149,7 +158,7 @@ export function OnboardingPage() {
       {draft.step === 1 ? (
         <StepCard title={t('program.title')} description={t('program.desc')}>
           <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label={t('program.title')}>
-            {PROGRAMS.map((p) => {
+            {programs.map((p) => {
               const selected = draft.program === p.code;
               return (
                 <button
@@ -158,7 +167,7 @@ export function OnboardingPage() {
                   role="radio"
                   aria-checked={selected}
                   disabled={!p.enabled}
-                  onClick={() => update({ program: p.code })}
+                  onClick={() => update(p.code === draft.program ? {} : { program: p.code, target_score: targetRangeFor(p.code).default })}
                   className={cn(
                     'flex items-start gap-3 rounded-xl border p-4 text-left transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60',
                     selected ? 'border-navy bg-navy/5 ring-1 ring-navy dark:border-accent dark:ring-accent' : 'border-border bg-card hover:bg-muted',
@@ -186,7 +195,7 @@ export function OnboardingPage() {
           <fieldset className="space-y-3">
             <legend className="text-sm font-medium">{t('goal.target')}</legend>
             <div className="flex flex-wrap gap-2" role="group" aria-label={t('goal.target')}>
-              {TARGET_PRESETS.map((s) => (
+              {targetPresetsFor(draft.program).map((s) => (
                 <ToggleChip key={s} pressed={draft.target_score === s} onPressedChange={(p) => update({ target_score: p ? s : null })} data-testid={`target-${s}`}>
                   {s}
                 </ToggleChip>
@@ -199,9 +208,9 @@ export function OnboardingPage() {
               <Input
                 id="target-custom"
                 type="number"
-                min={10}
-                max={990}
-                step={5}
+                min={targetRangeFor(draft.program).min}
+                max={targetRangeFor(draft.program).max}
+                step={targetRangeFor(draft.program).step}
                 className="max-w-32"
                 value={draft.target_score ?? ''}
                 aria-invalid={!!errors.target_score}

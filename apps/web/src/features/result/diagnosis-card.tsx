@@ -6,6 +6,7 @@ import { Badge, buttonVariants, Card, CardContent, CardDescription, CardHeader, 
 import { Link } from '@/i18n/navigation';
 import { useSectionLabel } from '@/features/attempt/section-label';
 import { knownFlags, recommendationHref, toPercent, type Diagnosis, type WeakArea } from './diagnosis';
+import { useProgram } from '@/features/program/program-context';
 
 /** Mỗi nhóm điểm yếu chỉ hiện 5 mục yếu nhất (API đã sắp theo độ chính xác tăng dần) */
 const MAX_WEAK_ITEMS = 5;
@@ -26,6 +27,7 @@ function useCodeLabel(group: 'subskills' | 'topics'): (code: string) => string {
  * gợi ý luyện → /toeic/practice?section=…
  */
 export function DiagnosisCard({ diagnosis }: { diagnosis: Diagnosis }) {
+  const program = useProgram();
   const t = useTranslations('result');
   const sectionLabel = useSectionLabel();
   const subskillLabel = useCodeLabel('subskills');
@@ -113,7 +115,7 @@ export function DiagnosisCard({ diagnosis }: { diagnosis: Diagnosis }) {
                 const focus = rec.subskill_code ? subskillLabel(rec.subskill_code) : rec.topic_code ? topicLabel(rec.topic_code) : null;
                 return (
                   <li key={`${rec.section_code}-${rec.subskill_code ?? rec.topic_code ?? i}`}>
-                    <Link href={recommendationHref(rec)} className={buttonVariants({ variant: 'outline', size: 'sm' })} data-testid="diagnosis-recommendation">
+                    <Link href={recommendationHref(rec, program)} className={buttonVariants({ variant: 'outline', size: 'sm' })} data-testid="diagnosis-recommendation">
                       {focus ? t('recommendDrillFocus', { section, focus }) : t('recommendDrill', { section })}
                       <ArrowRight aria-hidden />
                     </Link>

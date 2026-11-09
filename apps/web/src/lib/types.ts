@@ -50,12 +50,8 @@ export interface Page<T> {
   next_cursor: string | null;
 }
 
-export interface Program {
-  code: string;
-  name: Record<string, string | undefined>;
-  score_scale: Record<string, unknown>;
-  languages: string[];
-}
+/** C1: thêm status/phase/skills/published_test_sets (bổ sung – có thể thiếu với API cũ) */
+export type { Program } from '@allingo/schemas/api/core';
 
 /** Ép nội dung câu hỏi (JSONB không answer_key) về union có kiểu; null nếu không nhận ra `type` */
 export function asPublicContent(content: Record<string, unknown> | null | undefined): PublicQuestionContent | null {

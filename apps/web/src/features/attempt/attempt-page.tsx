@@ -784,7 +784,8 @@ function AttemptRunner({ attempt, saver, closed }: { attempt: Attempt; saver: Dr
         endClassName="h-full overflow-y-auto pb-4 pl-2"
         start={
           // key theo nhóm: đổi nhóm → cuộn đoạn văn về đầu; cùng nhóm → giữ vị trí đang đọc
-          <div key={group?.key} className="h-full overflow-y-auto pr-2 pb-4">
+          // C2/a11y: vùng cuộn đoạn văn dài (IELTS) phải nhận focus bàn phím để cuộn được (axe scrollable-region-focusable)
+          <div key={group?.key} className="h-full overflow-y-auto pr-2 pb-4 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40" tabIndex={0} role="region" aria-label={t('passageTitle')}>
             <PassagePane
               passage={textPassage}
               zoom={zoom}

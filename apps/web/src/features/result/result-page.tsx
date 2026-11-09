@@ -16,27 +16,22 @@ import { parseScaled, ScaledScores } from './scaled-scores';
 import { recordViewed } from '@/features/offline/viewed-store';
 import { planLaunchOf } from '@/features/plan/launch-memory';
 import { useClientValue } from '@/lib/use-mounted';
+import { isProgramCode, skillOfSection } from '@allingo/schemas/program/registry';
+import { programHref, useProgram } from '@/features/program/program-context';
+import { useSectionLabel } from '@/features/attempt/section-label';
 
 const SectionChart = dynamic(() => import('./section-chart'), {
   ssr: false,
   loading: () => <Skeleton className="h-56 w-full" />,
 });
 
-const SECTION_KEYS = ['part1', 'part2', 'part3', 'part4', 'part5', 'part6', 'part7', 'listening', 'reading'] as const;
-const SKILL_OF_PART: Record<string, 'listening' | 'reading'> = {
-  part1: 'listening',
-  part2: 'listening',
-  part3: 'listening',
-  part4: 'listening',
-  part5: 'reading',
-  part6: 'reading',
-  part7: 'reading',
-};
 
 export function ResultPage({ attemptId }: { attemptId: string }) {
   const t = useTranslations('result');
   const ts = useTranslations('sections');
+  const sectionLabel = useSectionLabel();
   const tc = useTranslations('common');
+  const activeProgram = useProgram();
   const tq = useTranslations('questionTypes');
   const result = useAttemptResult(attemptId);
   // "Đề đã xem" cho trang offline (giữ tên đề đã biết từ lúc làm bài)
@@ -52,13 +47,11 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
       .sort(([a], [b]) => a.localeCompare(b, 'en', { numeric: true }))
       .map(([code, s]) => ({
         code,
-        label: (SECTION_KEYS as readonly string[]).includes(code)
-          ? ts(code as (typeof SECTION_KEYS)[number]).split(' · ')[0]!
-          : code,
+        label: sectionLabel(code, { short: true }),
         correct: s.correct,
         wrong: s.total - s.correct,
       }));
-  }, [result.data, ts]);
+  }, [result.data, sectionLabel]);
 
   if (result.isPending) {
     return (
@@ -87,15 +80,18 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
   const scale = scaleView(r);
   const delta = r.compared_to_previous?.scaled_delta ?? null;
   const scaled = parseScaled(r.scaled);
+  // C1: chương trình của bài (scale.program – @allingo/scoring) → nhóm Part theo kỹ năng của registry, liên kết về khu học đúng
+  const program = isProgramCode(r.scale?.program) ? r.scale.program : activeProgram;
+  const skillOf = (code: string) => skillOfSection(program, code);
   // Breakdown Part 1–7 nhóm theo kỹ năng (TOEIC) – kỹ năng có trong bài mới hiện tiêu đề nhóm
   const skillGroups = (['listening', 'reading'] as const)
     .map((skill) => ({
       skill,
-      parts: sectionData.filter((s) => SKILL_OF_PART[s.code] === skill),
+      parts: sectionData.filter((s) => skillOf(s.code) === skill),
       stats: r.by_skill?.[skill],
     }))
     .filter((g) => g.parts.length > 0);
-  const otherParts = sectionData.filter((s) => !SKILL_OF_PART[s.code]);
+  const otherParts = sectionData.filter((s) => skillOf(s.code) !== 'listening' && skillOf(s.code) !== 'reading');
 
   return (
     <div className="space-y-8" data-testid="result-page">
@@ -112,10 +108,10 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
             </Link>
             {returnTo ? (
               <Link href={returnTo} className={buttonVariants({ variant: 'gold' })} data-testid="result-back-to-plan">
-                {returnTo === '/toeic/today' ? t('backToToday') : t('backToPlan')}
+                {returnTo.endsWith('/today') ? t('backToToday') : t('backToPlan')}
               </Link>
             ) : (
-              <Link href="/toeic/dashboard" className={buttonVariants({ variant: 'outline' })}>
+              <Link href={programHref(program, 'dashboard')} className={buttonVariants({ variant: 'outline' })}>
                 {t('backToDashboard')}
               </Link>
             )}
@@ -245,9 +241,7 @@ export function ResultPage({ attemptId }: { attemptId: string }) {
                         data-testid={`breakdown-${s.code}`}
                       >
                         <span>
-                          {(SECTION_KEYS as readonly string[]).includes(s.code)
-                            ? ts(s.code as (typeof SECTION_KEYS)[number])
-                            : s.code}
+                          {sectionLabel(s.code)}
                         </span>
                         <span className="tabular font-semibold">
                           {t('rawOf', { correct: s.correct, total: s.correct + s.wrong })}

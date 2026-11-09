@@ -5,7 +5,7 @@ import { Lock, RotateCcw, Sparkles, TriangleAlert } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Skeleton } from '@allingo/ui';
 import { aiErrorToApiError, streamPreview } from '@/lib/ai-stream';
-import type { Explanation } from '@/lib/types';
+import type { Explanation, AnswerInput  } from '@/lib/types';
 import { CreditsNotice, QuotaExceededNotice } from '@/features/quota/quota-ui';
 import { useFlag } from '@/features/flags/flags-provider';
 import { FeatureDisabledNotice } from '@/features/flags/feature-disabled-notice';
@@ -17,6 +17,8 @@ import { EXPLAIN_PREVIEW_FIELDS, useExplain } from './use-explain';
 export interface ExplainPanelProps {
   questionVersionId: string;
   chosenOption?: string;
+  /** C2: câu trả lời dạng nhiều mục (TFNG, nối, điền từ…) – cá nhân hoá giải thích */
+  answer?: AnswerInput | null;
   attemptId: string;
   initial: Explanation | null;
   /** Đang có bài thi Exam Mode chưa nộp (biết trước qua /me/attempts hoặc sau một 403) → ẩn nút giải thích */
@@ -29,13 +31,13 @@ export interface ExplainPanelProps {
  * stream JSON), `result` thay bằng nội dung có cấu trúc; cache → nhãn "Giải thích có sẵn". Lỗi AI → thông báo + Thử lại;
  * 429/402 → số lượt còn lại, giờ reset (giờ VN) + CTA nâng cấp; 403 Exam Mode → ẩn nút. Đánh giá 👍/👎/Sai ở cuối.
  */
-export function ExplainPanel({ questionVersionId, chosenOption, attemptId, initial, examLocked = false, onExamLocked }: ExplainPanelProps) {
+export function ExplainPanel({ questionVersionId, chosenOption, answer, attemptId, initial, examLocked = false, onExamLocked }: ExplainPanelProps) {
   const t = useTranslations('review');
   const errorMessage = useErrorMessage();
   // S11: kill-switch ff.ai.explain tắt → ẩn nút (giải thích đã hiện vẫn giữ); server vẫn trả 503 nếu gọi
   const enabled = useFlag('ff.ai.explain');
   const { state, run, resolveTaskId } = useExplain(initial);
-  const input = React.useMemo(() => ({ question_version_id: questionVersionId, chosen_option: chosenOption, attempt_id: attemptId }), [attemptId, chosenOption, questionVersionId]);
+  const input = React.useMemo(() => ({ question_version_id: questionVersionId, chosen_option: chosenOption, attempt_id: attemptId, ...(answer && answer.type !== 'mcq_single' ? { answer } : {}) }), [answer, attemptId, chosenOption, questionVersionId]);
   const start = () => void run(input);
   const errorCode = state.error?.code ?? null;
 

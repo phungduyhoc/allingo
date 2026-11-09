@@ -12,6 +12,7 @@ import { useExamLock } from '@/lib/exam-lock';
 import { listNotes } from '@/lib/learning-api';
 import { ExamLockBanner } from '@/features/exam-lock/exam-lock-banner';
 import { NoteEditor, NOTES_KEY } from './note-editor';
+import { programHref, useProgram } from '@/features/program/program-context';
 
 /** Trì hoãn giá trị (tìm kiếm khi gõ) */
 function useDebounced<T>(value: T, ms: number): T {
@@ -28,6 +29,7 @@ function useDebounced<T>(value: T, ms: number): T {
  * (`/attempts/{id}/review?focus=<question_version_id>`). Exam Mode → chỉ đọc (ghi chú bị khoá ghi).
  */
 export function NotesPage() {
+  const program = useProgram();
   const t = useTranslations('notes');
   const fmt = useFormatter();
   const [q, setQ] = React.useState('');
@@ -78,7 +80,7 @@ export function NotesPage() {
           title={query ? t('emptySearch', { q: query }) : t('empty')}
           action={
             query ? null : (
-              <Link href="/toeic/dashboard" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+              <Link href={programHref(program, 'dashboard')} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
                 {t('goToReview')}
               </Link>
             )

@@ -9,7 +9,8 @@ const MAX = 20;
 
 export interface PlanLaunchRecord {
   task_id: string;
-  return_to: '/toeic/today' | '/toeic/plan';
+  /** C1: `/<program>/today` | `/<program>/plan` */
+  return_to: string;
   at: number;
 }
 

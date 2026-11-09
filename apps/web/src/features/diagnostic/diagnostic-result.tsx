@@ -11,12 +11,14 @@ import { PageHeader } from '@/components/page-header';
 import { useCreatePlan } from '@/features/plan/queries';
 import { clearDraft, loadDraft, toPlanInput, type OnboardingDraft } from '@/features/onboarding/onboarding-store';
 import { pct } from '@/features/plan/progress';
+import { useProgramHref } from '@/features/program/program-context';
 
 /**
  * Kết quả chẩn đoán (ước tính, luôn kèm khoảng): Tổng ± khoảng, Listening/Reading, mastery theo kỹ năng con, mục tiêu khả thi +
  * lý do. Có nháp onboarding → chọn mục tiêu (giữ mong muốn / dùng gợi ý khả thi) → POST /me/plan → /toeic/plan.
  */
 export function DiagnosticResultView({ result, fromOnboarding }: { result: DiagnosticResult; fromOnboarding: boolean }) {
+  const href = useProgramHref();
   const t = useTranslations('diagnostic');
   const tr = useTranslations('result');
   const te = useTranslations('errors');
@@ -41,7 +43,7 @@ export function DiagnosticResultView({ result, fromOnboarding }: { result: Diagn
     create.mutate(toPlanInput(draft, chosenScore), {
       onSuccess: () => {
         clearDraft();
-        router.push('/toeic/plan?created=1');
+        router.push(href('plan', '?created=1'));
       },
     });
   };

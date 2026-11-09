@@ -1,4 +1,5 @@
 import { WEEKDAY_CODES, type PlanCreateInput } from '@allingo/schemas/api/learning-plan';
+import { programDef } from '@allingo/schemas/program/registry';
 
 /**
  * Nháp onboarding 4 bước (S9): chương trình → mục tiêu + ngày thi → giờ học/tuần + ngày học + giờ nhắc + múi giờ → chẩn đoán →
@@ -23,6 +24,16 @@ export interface OnboardingDraft {
 
 const KEY = 'allingo.onboarding.v1';
 export const TARGET_PRESETS = [450, 550, 650, 750, 850] as const;
+/** C1: mốc mục tiêu theo thang của chương trình (TOEIC điểm 10–990, IELTS band 0–9) */
+const PRESETS_BY_PROGRAM: Readonly<Record<string, readonly number[]>> = { toeic: TARGET_PRESETS, ielts: [5.5, 6, 6.5, 7, 7.5], jlpt: [90, 100, 120, 140, 160], hsk: [180, 200, 220, 240, 260] };
+export function targetPresetsFor(program: string): readonly number[] {
+  return PRESETS_BY_PROGRAM[program] ?? TARGET_PRESETS;
+}
+/** Biên + bước mục tiêu (registry `target`) */
+export function targetRangeFor(program: string): { min: number; max: number; step: number; default: number } {
+  const t = programDef(program)?.target;
+  return t ? { min: t.min, max: t.max, step: t.step, default: t.default } : { min: 10, max: 990, step: 5, default: 650 };
+}
 export const WEEKLY_PRESETS = [120, 180, 300, 420, 600] as const;
 export const WEEKLY_MIN = 60;
 export const WEEKLY_MAX = 2100;
@@ -96,7 +107,8 @@ export type StepErrors = Partial<Record<'target_score' | 'exam_date' | 'weekly_m
 export function validateStep(d: OnboardingDraft, step: OnboardingStep, today: string): StepErrors {
   const e: StepErrors = {};
   if (step === 2) {
-    if (d.target_score !== null && (!Number.isFinite(d.target_score) || d.target_score < 10 || d.target_score > 990)) e.target_score = 'range';
+    const range = targetRangeFor(d.program);
+    if (d.target_score !== null && (!Number.isFinite(d.target_score) || d.target_score < range.min || d.target_score > range.max)) e.target_score = 'range';
     if (d.exam_date) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d.exam_date) || Number.isNaN(Date.parse(d.exam_date))) e.exam_date = 'invalid';
       else if (d.exam_date <= today) e.exam_date = 'past';

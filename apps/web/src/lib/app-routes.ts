@@ -1,3 +1,4 @@
+import { isProgramCode } from '@allingo/schemas/program/registry';
 import { ADMIN_TABS } from '@/features/admin/admin-tabs';
 import { ADMIN_SECTIONS } from '@/features/admin-ops/sections';
 
@@ -10,10 +11,16 @@ import { ADMIN_SECTIONS } from '@/features/admin-ops/sections';
  * tham số sai dạng (mục admin không có, tab billing không có, id không phải UUID) → rewrite sang trang not-found → 404.
  * Tài nguyên hợp lệ về dạng nhưng không tồn tại/không thuộc người dùng (UUID đúng dạng) chỉ biết được sau khi gọi API bằng phiên
  * của người dùng → vẫn là trạng thái "không tìm thấy" ở client (A224).
+ * C1: `/<mã lạ>/dashboard|practice|…` → 404 (chương trình hợp lệ nhưng chưa có nội dung → trang "sắp ra mắt", HTTP 200).
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SECTIONS: readonly string[] = ['billing', ...ADMIN_SECTIONS];
 const BILLING_TABS: readonly string[] = ADMIN_TABS;
+
+/** Trang dưới `/[program]` (app/[locale]/(app)/(shell)/[program]) */
+const PROGRAM_AREA_PAGES = ['dashboard', 'diagnostic', 'errors', 'plan', 'practice', 'stats', 'test-sets', 'today', 'vocab'];
+/** Đoạn đầu là route tĩnh của [locale] (không phải mã chương trình) – không áp quy tắc chương trình */
+const STATIC_TOP_SEGMENTS: ReadonlySet<string> = new Set(['account', 'admin', 'attempts', 'badges', 'checkout', 'lessons', 'notes', 'notifications', 'onboarding', 'referral', 'settings', 'support', 'vocab', 'about', 'beta', 'blog', 'contact', 'legal', 'login', 'pricing', 'privacy', 'register', 'signup', 'terms', 'r', 'mock-gateway', 'offline']);
 
 const RULES: ReadonlyArray<{ re: RegExp; ok: (m: RegExpExecArray) => boolean }> = [
   // /admin/<mục> – S12 (8 mục) + billing (S8)
@@ -24,6 +31,9 @@ const RULES: ReadonlyArray<{ re: RegExp; ok: (m: RegExpExecArray) => boolean }> 
   { re: /^\/attempts\/([^/]+)(?:\/(?:result|review))?$/, ok: (m) => UUID.test(m[1]!) },
   { re: /^\/support\/tickets\/([^/]+)$/, ok: (m) => UUID.test(m[1]!) },
   { re: /^\/account\/orders\/([^/]+)$/, ok: (m) => UUID.test(m[1]!) },
+  // C1: khu học theo chương trình `/[program]/<trang>` – mã chương trình phải thuộc catalog.programs (registry); đoạn đầu là route
+  // tĩnh khác (blog, legal…) thì để Next tự khớp route của nó
+  { re: new RegExp(`^/([^/]+)/(?:${PROGRAM_AREA_PAGES.join('|')})(?:/.*)?$`), ok: (m) => isProgramCode(m[1]) || STATIC_TOP_SEGMENTS.has(m[1]!) },
 ];
 
 /** Đường dẫn (đã bỏ tiền tố locale) thuộc route động của nhóm (app) nhưng tham số sai dạng → trang không tồn tại */

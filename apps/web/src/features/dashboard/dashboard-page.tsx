@@ -18,8 +18,8 @@ import { DashboardTutorCard } from '@/features/tutor/tutor-entry';
 import { TodayCard } from '@/features/plan/today-card';
 import { SurveyPrompts } from '@/features/surveys/survey-prompts';
 import { AccuracyCard, CommunityCard, ErrorsToReviewCard, ForecastCard, KpiGrid, ScoreCard, VocabDueCard, WeekSummaryCard } from '@/features/stats/stats-cards';
+import { useProgram, useProgramHref } from '@/features/program/program-context';
 
-const PROGRAM = 'toeic';
 const SHOWN_QUOTAS = ['mini_test', 'part_drill', 'ai_explain', 'full_test'] as const;
 
 /**
@@ -27,6 +27,7 @@ const SHOWN_QUOTAS = ['mini_test', 'part_drill', 'ai_explain', 'full_test'] as c
  * trang), phần dưới màn hình đầu dựng khi trình duyệt rảnh (`Deferred` – transition, có khung chờ cùng kích thước).
  */
 export function DashboardPage() {
+  const href = useProgramHref();
   const t = useTranslations('dashboard');
   return (
     <div className="space-y-8">
@@ -35,11 +36,11 @@ export function DashboardPage() {
         description={<Greeting />}
         actions={
           <>
-            <Link href="/toeic/stats" className={buttonVariants({ variant: 'ghost' })} data-testid="dashboard-stats-link">
+            <Link href={href('stats')} className={buttonVariants({ variant: 'ghost' })} data-testid="dashboard-stats-link">
               <BarChart3 aria-hidden />
               {t('statsLink')}
             </Link>
-            <Link href="/toeic/test-sets" className={buttonVariants({ variant: 'outline' })}>
+            <Link href={href('test-sets')} className={buttonVariants({ variant: 'outline' })}>
               {t('allTestSets')}
               <ArrowRight aria-hidden />
             </Link>
@@ -96,7 +97,8 @@ function Greeting() {
 }
 
 function KpiSection() {
-  const stats = useStats(PROGRAM);
+  const program = useProgram();
+  const stats = useStats(program);
   if (stats.isPending) {
     return (
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6">
@@ -112,8 +114,10 @@ function KpiSection() {
 
 /** Làm đề mini (2 đề đầu) + hộp thoại bắt đầu */
 function MiniTestsSection() {
+  const program = useProgram();
+  const href = useProgramHref();
   const t = useTranslations('dashboard');
-  const miniSets = useTestSets(PROGRAM, 'mini');
+  const miniSets = useTestSets(program, 'mini');
   const ctl = useStartTestSet();
   return (
     <section aria-labelledby="mini-title" className="space-y-3">
@@ -124,7 +128,7 @@ function MiniTestsSection() {
           </h2>
           <p className="text-sm text-muted-foreground">{t('miniTestDesc')}</p>
         </div>
-        <Link href="/toeic/test-sets?kind=mini" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+        <Link href={href('test-sets', '?kind=mini')} className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
           {t('miniTestCta')}
         </Link>
       </div>
@@ -151,7 +155,8 @@ function MiniTestsSection() {
 }
 
 function ChartsSection() {
-  const stats = useStats(PROGRAM);
+  const program = useProgram();
+  const stats = useStats(program);
   if (!stats.data) return null;
   return (
     <>
@@ -162,7 +167,8 @@ function ChartsSection() {
 }
 
 function InsightsSection() {
-  const stats = useStats(PROGRAM);
+  const program = useProgram();
+  const stats = useStats(program);
   if (!stats.data) return null;
   return (
     <>
@@ -173,9 +179,10 @@ function InsightsSection() {
 }
 
 function QuotaSection() {
+  const program = useProgram();
   const t = useTranslations('dashboard');
   const tc = useTranslations('common');
-  const ent = useEntitlements(PROGRAM);
+  const ent = useEntitlements(program);
   return (
     <section aria-labelledby="quota-title" className="space-y-3">
       <h2 id="quota-title" className="text-lg font-semibold">
@@ -220,8 +227,9 @@ function QuotaSection() {
 }
 
 function HistorySection() {
+  const program = useProgram();
   const t = useTranslations('dashboard');
-  const attempts = useMyAttempts(PROGRAM);
+  const attempts = useMyAttempts(program);
   const L = useLocalized();
   const fmt = useFormatter();
   return (

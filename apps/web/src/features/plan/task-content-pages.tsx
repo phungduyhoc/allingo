@@ -13,7 +13,8 @@ import { PageHeader } from '@/components/page-header';
 import { CardSkeleton, ErrorState } from '@/components/states';
 import { useLocalized } from '@/lib/localized';
 import { getLesson } from '@/lib/plan-api';
-import { PROGRAM, usePatchTask } from './queries';
+import { usePatchTask } from './queries';
+import { useProgram, useProgramHref } from '@/features/program/program-context';
 
 /**
  * Màn nội dung của task tự báo (S9): bài học `/lessons/{id}?task=`. Học xong → "Đánh dấu xong" (PATCH /plan-tasks/{id} done +
@@ -22,11 +23,13 @@ import { PROGRAM, usePatchTask } from './queries';
  */
 
 function useCompleteTask(resultRef: { lesson_id?: string }) {
+  const program = useProgram();
+  const href = useProgramHref();
   const t = useTranslations('taskContent');
   const search = useSearchParams();
   const taskId = search.get('task');
   const router = useRouter();
-  const patch = usePatchTask(PROGRAM);
+  const patch = usePatchTask(program);
   const complete = () => {
     if (!taskId) return;
     patch.mutate(
@@ -34,7 +37,7 @@ function useCompleteTask(resultRef: { lesson_id?: string }) {
       {
         onSuccess: () => {
           toast.success(t('completed'));
-          router.push('/toeic/today');
+          router.push(href('today'));
         },
       },
     );
@@ -43,10 +46,11 @@ function useCompleteTask(resultRef: { lesson_id?: string }) {
 }
 
 function CompleteBar({ taskId, onComplete, pending, label }: { taskId: string | null; onComplete: () => void; pending: boolean; label: string }) {
+  const href = useProgramHref();
   const t = useTranslations('taskContent');
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
-      <Link href="/toeic/today" className={buttonVariants({ variant: 'ghost' })}>
+      <Link href={href('today')} className={buttonVariants({ variant: 'ghost' })}>
         <ArrowLeft aria-hidden />
         {t('backToday')}
       </Link>

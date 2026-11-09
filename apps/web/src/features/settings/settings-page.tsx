@@ -30,13 +30,17 @@ import type { Enrollment, Locale, User } from '@/lib/types';
 import { CardSkeleton, ErrorState } from '@/components/states';
 import { PageHeader } from '@/components/page-header';
 import { FeatureGate } from '@/features/flags/flags-provider';
+import { useProgram } from '@/features/program/program-context';
+import { programDef } from '@allingo/schemas/program/registry';
+import { ProgramSwitcher } from '@/features/program/program-switcher';
 
 const LOCALES: Locale[] = ['vi', 'en', 'ja', 'ko', 'th'];
-const PROGRAM = 'toeic';
 const WEB_LOCALES = routing.locales as readonly string[];
 
 export function SettingsPage() {
+  const program = useProgram();
   const t = useTranslations('settings');
+  const tp = useTranslations('programArea');
   const tnf = useTranslations('notifications');
   const tb = useTranslations('account');
   const tc = useTranslations('common');
@@ -44,7 +48,7 @@ export function SettingsPage() {
   const me = useMe();
   const enrollments = useEnrollments();
   const logout = useLogout();
-  const enrollment = enrollments.data?.find((e) => e.program === PROGRAM) ?? null;
+  const enrollment = enrollments.data?.find((e) => e.program === program) ?? null;
 
   return (
     <div className="space-y-6">
@@ -70,7 +74,12 @@ export function SettingsPage() {
             <CardTitle>{t('goalTitle')}</CardTitle>
             <CardDescription>{t('goalDesc')}</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {/* C1: mục tiêu/ngày thi tính riêng cho từng chương trình – chọn chương trình để xem/sửa mục tiêu của nó */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Label htmlFor="settings-program">{tp('switcherLabel')}</Label>
+              <ProgramSwitcher id="settings-program" navigate={false} />
+            </div>
             {enrollments.isPending ? (
               <CardSkeleton lines={4} className="border-0 p-0" />
             ) : enrollments.isError ? (
@@ -262,6 +271,9 @@ function ProfileForm({ user }: { user: User }) {
 }
 
 function GoalForm({ enrollment }: { enrollment: Enrollment | null }) {
+  const program = useProgram();
+  // C1: mục tiêu theo thang của chương trình (TOEIC 10–990 bước 5, IELTS band 0–9 bước 0,5)
+  const range = programDef(program)?.target ?? { min: 10, max: 990, step: 5 };
   const t = useTranslations('settings');
   const te = useTranslations('errors');
   const upsert = useUpsertEnrollment();
@@ -277,8 +289,8 @@ function GoalForm({ enrollment }: { enrollment: Enrollment | null }) {
     const schema = z.object({
       target_score: z.coerce
         .number()
-        .min(10, { message: t('validation.targetScore') })
-        .max(990, { message: t('validation.targetScore') })
+        .min(range.min, { message: t('validation.targetScore') })
+        .max(range.max, { message: t('validation.targetScore') })
         .optional(),
       exam_date: z.iso.date().optional(),
       daily_minutes: z.coerce
@@ -300,7 +312,7 @@ function GoalForm({ enrollment }: { enrollment: Enrollment | null }) {
     }
     setErrors({});
     upsert.mutate(
-      { input: { program: PROGRAM, ...parsed.data }, exists: !!enrollment },
+      { input: { program, ...parsed.data }, exists: !!enrollment },
       { onSuccess: () => toast.success(t('saved')), onError: (err) => toast.error(te(`codes.${getErrorCode(err)}`)) },
     );
   };
@@ -320,10 +332,10 @@ function GoalForm({ enrollment }: { enrollment: Enrollment | null }) {
           <Input
             id="target_score"
             type="number"
-            inputMode="numeric"
-            min={10}
-            max={990}
-            step={5}
+            inputMode="decimal"
+            min={range.min}
+            max={range.max}
+            step={range.step}
             value={goal.target_score}
             aria-invalid={errors.target_score ? true : undefined}
             onChange={(e) => setGoal({ ...goal, target_score: e.target.value })}

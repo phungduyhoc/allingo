@@ -7,10 +7,11 @@ import { Badge, Button, cn } from '@allingo/ui';
 import { asPublicContent, type AnswerInput, type QuestionPublic } from '@/lib/types';
 import { AudioPlayer } from './audio-player';
 import { PracticeFeedback, type FeedbackEntry } from './practice-feedback';
-import { QuestionRenderer } from './question-renderer';
+import { QuestionRenderer, SELF_IMAGE_TYPES } from './question-renderer';
 import { QuestionStem } from './question-stem';
 import { isAnswered } from './attempt-state';
 import { ReportQuestionButton } from '@/features/content-report/report-question-button';
+import { PROGRAM_LIST } from '@allingo/schemas/program/registry';
 
 /** Trạng thái nghe của câu trong Exam Mode (chuỗi phát một lần) */
 export type ListenStatus = 'upcoming' | 'playing' | 'played';
@@ -44,17 +45,23 @@ export interface QuestionBlockProps {
   children?: React.ReactNode;
 }
 
-const DIRECTION_SECTIONS = new Set(['part1', 'part2']);
+/** Phần thi đọc đề/lựa chọn trong audio (registry `spoken_sections` – TOEIC Part 1/2) có hướng dẫn chung thay cho đề */
+const DIRECTION_SECTIONS: ReadonlySet<string> = new Set(PROGRAM_LIST.flatMap((p) => p.spoken_sections));
 
 /** Một câu hỏi trong màn làm bài (đề bài, audio/ảnh, lựa chọn, đánh dấu, phản hồi Practice) */
 export function QuestionBlock({ question, number, total, answer, flagged, current, inGroup = false, onActivate, onAnswer, onToggleFlag, disabled, zoom, audio, imageUrl, listen, practice, badge, children }: QuestionBlockProps) {
   const t = useTranslations('attempt');
   const content = asPublicContent(question.content);
   const stemId = `q-${question.question_id}-stem`;
-  const images = question.media.filter((m) => m.kind === 'image');
+  // C2: sơ đồ/bản đồ tự vẽ ảnh kèm ghim → không lặp ảnh ở khung câu
+  const images = content && SELF_IMAGE_TYPES.has(content.type) ? [] : question.media.filter((m) => m.kind === 'image');
+  const resolveImage = (assetId: string): string | null => {
+    const m = question.media.find((x) => x.id === assetId);
+    return m ? (imageUrl ? imageUrl(m.id, m.url) : m.url) : null;
+  };
   const feedback = practice?.feedback;
   // Có phản hồi → hiển thị như Review (tô đúng/sai, không cho sửa)
-  const review = feedback ? { correctAnswer: feedback.correct_answer, details: null, isCorrect: feedback.is_correct } : undefined;
+  const review = feedback ? { correctAnswer: feedback.correct_answer, details: feedback.details ?? null, isCorrect: feedback.is_correct } : undefined;
   const needsCheckButton = !!practice && !practice.locked && content?.type !== 'mcq_single';
   const listenLocked = listen === 'upcoming';
   // Part 1/2: đề và lựa chọn được ĐỌC trong audio (API xoá chữ khi đang làm bài) → hướng dẫn chung thay cho đề
@@ -126,7 +133,7 @@ export function QuestionBlock({ question, number, total, answer, flagged, curren
           </span>
         )}
 
-        {content ? <QuestionRenderer questionId={question.question_id} content={content} answer={answer} onChange={onAnswer} disabled={disabled || practice?.locked || listenLocked} review={review} /> : null}
+        {content ? <QuestionRenderer questionId={question.question_id} content={content} answer={answer} onChange={onAnswer} disabled={disabled || practice?.locked || listenLocked} review={review} resolveImage={resolveImage} /> : null}
       </div>
 
       {practice ? (

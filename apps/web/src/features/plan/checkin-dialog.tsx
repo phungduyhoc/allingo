@@ -9,8 +9,9 @@ import { Alert, AlertDescription, Button, Dialog, DialogClose, DialogContent, Di
 import { getErrorCode } from '@/lib/errors';
 import { useRealtimeEvent } from '@/features/realtime/realtime-provider';
 import type { PlanCheckinResult } from '@/lib/plan-api';
-import { PROGRAM, useApplyProposal, useCheckin, useProposals } from './queries';
+import { useApplyProposal, useCheckin, useProposals } from './queries';
 import { ProposalCard } from './proposal-card';
+import { useProgram } from '@/features/program/program-context';
 
 const HOUR_PRESETS = [1, 2, 3, 5, 7] as const;
 type Weekday = (typeof WEEKDAY_CODES)[number];
@@ -21,11 +22,12 @@ type Weekday = (typeof WEEKDAY_CODES)[number];
  * rejected/needs_clarification → lý do/câu hỏi).
  */
 export function CheckinDialog({ open, onOpenChange, defaultMinutes }: { open: boolean; onOpenChange: (open: boolean) => void; defaultMinutes?: number | null }) {
+  const program = useProgram();
   const t = useTranslations('checkin');
   const te = useTranslations('errors');
   const tw = useTranslations('onboarding.weekdays');
-  const checkin = useCheckin(PROGRAM);
-  const apply = useApplyProposal(PROGRAM);
+  const checkin = useCheckin(program);
+  const apply = useApplyProposal(program);
   const [feeling, setFeeling] = React.useState<(typeof CHECKIN_FEELINGS)[number] | null>(null);
   const [actualHours, setActualHours] = React.useState<string>(defaultMinutes ? String(Math.round((defaultMinutes / 60) * 10) / 10) : '');
   const [difficulties, setDifficulties] = React.useState('');
@@ -34,7 +36,7 @@ export function CheckinDialog({ open, onOpenChange, defaultMinutes }: { open: bo
   const [note, setNote] = React.useState('');
   const [result, setResult] = React.useState<PlanCheckinResult | null>(null);
   const proposalId = result?.adjust?.proposal_id ?? null;
-  const proposals = useProposals(PROGRAM, { enabled: open && !!proposalId });
+  const proposals = useProposals(program, { enabled: open && !!proposalId });
   const proposal: PlanAdjustProposal | null = proposals.data?.find((p) => p.proposal_id === proposalId) ?? null;
   const status = proposal?.status ?? result?.adjust?.status ?? null;
 

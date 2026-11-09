@@ -39,7 +39,7 @@ export function PartBar({ items, activeIndex, onSelect, className }: { items: Pa
                 )}
               >
                 {label(it.code, { short: true })}{' '}
-                <span className={cn('tabular rounded px-1.5 text-xs font-medium', active ? 'bg-white/15' : done ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground')}>
+                <span className={cn('tabular rounded px-1.5 text-xs font-medium', active ? 'bg-white/15' : done ? 'bg-success text-success-foreground' : 'bg-muted text-muted-foreground')}>
                   {it.answered}/{it.total}
                 </span>
               </button>

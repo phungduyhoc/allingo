@@ -6,6 +6,7 @@ import { getApi } from '@/lib/api';
 import { useCreateAttempt } from '@/lib/queries';
 import { useRouter } from '@/i18n/navigation';
 import type { AttemptMode, TestSet, TestSetSummary } from '@/lib/types';
+import { useProgram } from '@/features/program/program-context';
 
 export interface StartTarget {
   summary: TestSetSummary;
@@ -16,6 +17,8 @@ export interface StartTarget {
  * không → mở hộp thoại chọn Thi/Luyện → POST /attempts (Idempotency-Key) → /attempts/[id].
  */
 export function useStartTestSet() {
+  // C1: lượt làm thuộc chương trình của khu học hiện hành
+  const program = useProgram();
   const router = useRouter();
   const create = useCreateAttempt();
   const [target, setTarget] = React.useState<StartTarget | null>(null);
@@ -47,7 +50,7 @@ export function useStartTestSet() {
     (mode: AttemptMode) => {
       if (!target) return;
       create.mutate(
-        { program: 'toeic', mode, test_set_id: target.summary.id },
+        { program, mode, test_set_id: target.summary.id },
         {
           onSuccess: (attempt) => {
             setTarget(null);
@@ -56,7 +59,7 @@ export function useStartTestSet() {
         },
       );
     },
-    [create, router, target],
+    [create, program, router, target],
   );
 
   return { target, setTarget, open, start, checking, checkError, create };

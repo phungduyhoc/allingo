@@ -18,6 +18,8 @@ import { useFlag } from '@/features/flags/flags-provider';
 import type { FlagKey } from '@/lib/flags';
 import { FeedbackButton } from '@/features/feedback/feedback-button';
 import { AppFooter } from './app-footer';
+import { programHref, useProgram, type ProgramPage } from '@/features/program/program-context';
+import { ProgramSwitcher } from '@/features/program/program-switcher';
 
 /**
  * S9: "Hôm nay" + "Lộ trình" lên đầu; Cài đặt chuyển thành nút biểu tượng trên header. S10: thêm "Từ vựng" + "Sổ lỗi" (8 mục):
@@ -28,20 +30,22 @@ const NotificationBell = dynamic(() => import('@/features/notifications/notifica
   loading: () => <span className="inline-block size-10" aria-hidden />,
 });
 
-const NAV: ReadonlyArray<{ href: string; key: string; icon: typeof CalendarCheck; flag?: FlagKey }> = [
+/** C1: mục trong khu học của chương trình (`/[program]/<page>`) hoặc trang chung (`href`) */
+const NAV: ReadonlyArray<{ page?: ProgramPage; href?: string; key: string; icon: typeof CalendarCheck; flag?: FlagKey }> = [
   // S11: kill-switch ff.learning.study_plan tắt → ẩn "Hôm nay" + "Lộ trình"
-  { href: '/toeic/today', key: 'today', icon: CalendarCheck, flag: 'ff.learning.study_plan' },
-  { href: '/toeic/plan', key: 'plan', icon: Route, flag: 'ff.learning.study_plan' },
-  { href: '/toeic/dashboard', key: 'dashboard', icon: LayoutDashboard },
-  { href: '/toeic/test-sets', key: 'testSets', icon: ListChecks },
-  { href: '/toeic/practice', key: 'practice', icon: Dumbbell },
-  { href: '/toeic/vocab', key: 'vocab', icon: BookA },
-  { href: '/toeic/errors', key: 'errors', icon: FileWarning },
+  { page: 'today', key: 'today', icon: CalendarCheck, flag: 'ff.learning.study_plan' },
+  { page: 'plan', key: 'plan', icon: Route, flag: 'ff.learning.study_plan' },
+  { page: 'dashboard', key: 'dashboard', icon: LayoutDashboard },
+  { page: 'test-sets', key: 'testSets', icon: ListChecks },
+  { page: 'practice', key: 'practice', icon: Dumbbell },
+  { page: 'vocab', key: 'vocab', icon: BookA },
+  { page: 'errors', key: 'errors', icon: FileWarning },
   { href: '/notes', key: 'notes', icon: NotebookPen },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const t = useTranslations('nav');
+  const tp = useTranslations('programArea');
   const ta = useTranslations('auth');
   const tc = useTranslations('common');
   const pathname = usePathname();
@@ -50,7 +54,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const logout = useLogout();
   const user = me.data;
   const planOn = useFlag('ff.learning.study_plan');
-  const nav = NAV.filter((n) => !n.flag || (n.flag === 'ff.learning.study_plan' && planOn));
+  // C1: liên kết theo chương trình hiện hành (route `/[program]` → active_program → TOEIC)
+  const program = useProgram();
+  const nav = NAV.filter((n) => !n.flag || (n.flag === 'ff.learning.study_plan' && planOn)).map((n) => ({ ...n, href: n.page ? programHref(program, n.page) : n.href! }));
 
   return (
     <TutorProvider>
@@ -64,7 +70,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur">
           <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
             <div className="flex items-center gap-6">
-              <Logo href="/toeic/dashboard" />
+              <Logo href={programHref(program, 'dashboard')} />
               <nav aria-label={t('aria.app')} className="hidden items-center gap-1 md:flex">
                 {nav.map(({ href, key, icon: Icon }) => {
                   const active = pathname.startsWith(href);
@@ -185,6 +191,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <SubscriptionBanner />
 
         <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 md:pb-10">
+          {user ? (
+            // C1: bộ chọn chương trình ở dải đầu nội dung (mọi kích thước) – header md–xl đã kín chỗ (nav chỉ biểu tượng; tài khoản
+            // admin + font CI tràn ngang 10 px khi đặt bộ chọn trong header)
+            <div className="-mt-4 mb-4 flex items-center gap-2" data-testid="program-bar">
+              <label htmlFor="program-switcher-main" className="text-xs font-medium text-muted-foreground">
+                {tp('switcherLabel')}
+              </label>
+              <ProgramSwitcher id="program-switcher-main" />
+            </div>
+          ) : null}
           {children}
         </main>
         {/* S12: liên kết pháp lý + hỗ trợ + tuyên bố không liên kết ETS (đệm dưới cho thanh điều hướng mobile) */}

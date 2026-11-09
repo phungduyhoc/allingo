@@ -14,7 +14,7 @@ import { CardSkeleton, ErrorState } from '@/components/states';
 import { getSrsDue, postSrsReview } from '@/lib/s10-api';
 import { parseQuotaExceeded, resetParts } from '@/lib/quota';
 import { useExamLock } from '@/lib/exam-lock';
-import { PROGRAM, usePatchTask } from '@/features/plan/queries';
+import { usePatchTask } from '@/features/plan/queries';
 import { UPGRADE_HREF } from '@/features/quota/quota-ui';
 import { cardView } from './card-view';
 import { FlashcardFace } from './flashcard-face';
@@ -36,6 +36,7 @@ import {
   type Rating,
   type ReviewMode,
 } from './session';
+import { useProgram, useProgramHref } from '@/features/program/program-context';
 
 const RATINGS: Rating[] = [1, 2, 3, 4];
 const RATING_KEY = { 1: 'again', 2: 'hard', 3: 'good', 4: 'easy' } as const;
@@ -49,6 +50,8 @@ const isTyping = (el: EventTarget | null) => el instanceof HTMLElement && (el.ta
  * Mở từ task `vocab_review` (`?task=`): bắt đầu ngay, xong phiên → PATCH task done (server cũng tự xong khi hết thẻ đến hạn).
  */
 export function ReviewSessionPage() {
+  const program = useProgram();
+  const href = useProgramHref();
   const t = useTranslations('flashcards');
   const locale = useLocale();
   const search = useSearchParams();
@@ -57,7 +60,7 @@ export function ReviewSessionPage() {
   const initialSize = Number(search.get('size')) || 20;
   const [size, setSize] = React.useState<number>(SESSION_SIZES.includes(initialSize as never) ? initialSize : 20);
   const [mode, setMode] = React.useState<ReviewMode>(search.get('mode') === 'dictation' ? 'dictation' : 'flashcard');
-  const counts = useSrsCounts(PROGRAM, listId);
+  const counts = useSrsCounts(program, listId);
   const [state, dispatch] = React.useReducer(sessionReducer, undefined, initialSession);
   const [loading, setLoading] = React.useState(false);
   const [loadError, setLoadError] = React.useState<unknown>(null);
@@ -65,7 +68,7 @@ export function ReviewSessionPage() {
   const [speaking, setSpeaking] = React.useState(false);
   const [dict, setDict] = React.useState<{ key: string; typed: string; result: DictationResult | null }>({ key: '', typed: '', result: null });
   const invalidate = useInvalidateVocab();
-  const patchTask = usePatchTask(PROGRAM);
+  const patchTask = usePatchTask(program);
   const qc = useQueryClient();
   const examLock = useExamLock();
   const status = sessionStatus(state);
@@ -76,7 +79,7 @@ export function ReviewSessionPage() {
     setLoadError(null);
     setEmptyInfo(null);
     try {
-      const due = await getSrsDue({ program: PROGRAM, list_id: listId, limit: size });
+      const due = await getSrsDue({ program, list_id: listId, limit: size });
       if (!due.data.length) setEmptyInfo({ next: due.next_due_at, resets: due.new_resets_at, limitHit: due.counts.new_remaining === 0 && due.counts.new_total > 0 });
       else dispatch({ type: 'start', cards: due.data });
     } catch (e) {
@@ -84,7 +87,7 @@ export function ReviewSessionPage() {
     } finally {
       setLoading(false);
     }
-  }, [listId, size]);
+  }, [listId, program, size]);
 
   // Mở từ task lộ trình → bắt đầu ngay (một lần)
   const autostarted = React.useRef(false);
@@ -129,10 +132,10 @@ export function ReviewSessionPage() {
   React.useEffect(() => {
     if (!card || card.preview || card.state === 'new' || previewAsked.current.has(`${card.id}|${card.due_at}`)) return;
     previewAsked.current.add(`${card.id}|${card.due_at}`);
-    void getSrsDue({ program: PROGRAM, list_id: listId, limit: 100 })
+    void getSrsDue({ program, list_id: listId, limit: 100 })
       .then((due) => dispatch({ type: 'previews', previews: Object.fromEntries(due.data.filter((c) => c.preview && state.cards[c.id]).map((c) => [c.id, c.preview!])) }))
       .catch(() => undefined);
-  }, [card, listId, state.cards]);
+  }, [card, listId, program, state.cards]);
 
   // Ô gõ (dictation) gắn với lượt hiển thị thẻ: thẻ mới / thẻ Again quay lại → ô trống
   const dictKey = `${card?.id ?? ''}|${state.reviewed}`;
@@ -180,10 +183,10 @@ export function ReviewSessionPage() {
   React.useEffect(() => {
     if (status !== 'done' || finished.current) return;
     finished.current = true;
-    invalidate(PROGRAM);
+    invalidate(program);
     void qc.invalidateQueries({ queryKey: ['me', 'srs'] });
     if (taskId && state.reviewed > 0) patchTask.mutate({ taskId, patch: { status: 'done' } });
-  }, [invalidate, patchTask, qc, state.reviewed, status, taskId]);
+  }, [invalidate, patchTask, program, qc, state.reviewed, status, taskId]);
 
   const restart = () => {
     finished.current = false;
@@ -192,7 +195,7 @@ export function ReviewSessionPage() {
     void start();
   };
 
-  const backHref = listId ? `/toeic/vocab/${listId}` : '/toeic/vocab';
+  const backHref = listId ? href(`vocab/${listId}`) : href('vocab');
 
   if (examLock.locked) {
     return (
@@ -314,7 +317,7 @@ export function ReviewSessionPage() {
             {t('backToLists')}
           </Link>
           {taskId ? (
-            <Link href="/toeic/today" className={buttonVariants({ variant: 'navy' })} data-testid="review-back-today">
+            <Link href={href('today')} className={buttonVariants({ variant: 'navy' })} data-testid="review-back-today">
               {t('backToday')}
             </Link>
           ) : null}
@@ -453,7 +456,7 @@ function EmptyNotice({ info, backHref }: { info: { next: string | null; resets: 
 
 function NextDue({ listId }: { listId: string | null }) {
   const t = useTranslations('flashcards');
-  const counts = useSrsCounts(PROGRAM, listId, { staleTime: 0 });
+  const counts = useSrsCounts(useProgram(), listId, { staleTime: 0 });
   const c = counts.data;
   if (!c) return null;
   const fresh = Math.min(c.counts.new_remaining ?? c.counts.new_total, c.counts.new_total);

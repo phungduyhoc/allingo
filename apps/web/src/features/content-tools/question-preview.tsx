@@ -7,6 +7,11 @@ import { Badge, Button, cn } from '@allingo/ui';
 import { PassageTabs, partsOf } from '@/features/attempt/passage-pane';
 import { ShortId, When } from '@/features/admin/ui';
 import type { AutoCheck, DuplicateInfo, ReviewQueueItem } from '@/lib/content-tools-api';
+import { questionContentSchema } from '@allingo/schemas/question/content';
+import { correctAnswerOf, grade } from '@allingo/schemas/question/grade';
+import { keyAnswerOf } from '@allingo/schemas/question/describe';
+import { toPublicContent } from '@allingo/schemas/question/public';
+import { QuestionRenderer } from '@/features/attempt/question-renderer';
 
 /** Nội dung câu (bản đang soạn – nhân sự nội dung xem cả answer_key/giải thích) */
 interface McqContent {
@@ -77,6 +82,12 @@ export function QuestionPreview({ item, actions, onRecheck, rechecking }: { item
   const c = (item.content ?? {}) as McqContent;
   const correct = Array.isArray(c.answer_key?.correct) ? c.answer_key.correct : c.answer_key?.correct ? [c.answer_key.correct] : [];
   const parts = partsOf(item.passage);
+  // Nội dung hợp lệ và không phải trắc nghiệm → dựng câu bằng renderer (null khi nội dung lỗi – kiểm tra tự động đã báo content_invalid)
+  const rich = React.useMemo(() => {
+    if (!c.type || c.type === 'mcq_single' || c.type === 'mcq_multi') return null;
+    const parsed = questionContentSchema.safeParse(item.content);
+    return parsed.success ? { content: parsed.data } : null;
+  }, [c.type, item.content]);
   const issues = (item.ai_check?.issues ?? []) as Array<{ message?: string; detail?: string; severity?: string }>;
   return (
     <article className="space-y-4 rounded-xl border border-border bg-card p-4 sm:p-5" data-testid="queue-preview" data-question-id={item.id} aria-label={tp('title')}>
@@ -126,6 +137,15 @@ export function QuestionPreview({ item, actions, onRecheck, rechecking }: { item
               );
             })}
           </ul>
+        </section>
+      ) : null}
+      {/* C2: dạng khác trắc nghiệm (IELTS TFNG/nối/điền từ/gán nhãn…) → xem trước bằng chính renderer của người học, điền sẵn đáp án */}
+      {rich ? (
+        <section data-testid="preview-rendered" data-type={rich.content.type}>
+          <h4 className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{tp('rendered')}</h4>
+          <div className="rounded-lg border border-border bg-background p-3">
+            <QuestionRenderer questionId={`preview-${item.id}`} content={toPublicContent(rich.content)} answer={keyAnswerOf(rich.content)} onChange={() => undefined} review={{ correctAnswer: correctAnswerOf(rich.content), details: grade(rich.content, keyAnswerOf(rich.content)).details ?? null, isCorrect: true }} />
+          </div>
         </section>
       ) : null}
       {c.explanation && (c.explanation.vi || c.explanation.en) ? (
