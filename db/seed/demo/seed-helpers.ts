@@ -22,8 +22,9 @@ export interface SeedContext {
   topicId: Map<string, string>;
 }
 
-export type Difficulty = 'A2' | 'B1' | 'B2';
-export const DIFFICULTY_RANK: Record<Difficulty, number> = { A2: 1, B1: 2, B2: 3 };
+/** C3: thêm C1 cho nội dung IELTS (đề TOEIC GĐ1 dùng A2–B2) */
+export type Difficulty = 'A2' | 'B1' | 'B2' | 'C1';
+export const DIFFICULTY_RANK: Record<Difficulty, number> = { A2: 1, B1: 2, B2: 3, C1: 4 };
 
 export const hardestOf = (list: readonly { difficulty: Difficulty }[]): Difficulty =>
   list.reduce<Difficulty>(
@@ -65,14 +66,17 @@ export interface SeedItem {
   key: string;
   section: string;
   group_key?: string | null;
+  /** C3 – số mục đánh số (markCount) – chỉ dùng khi kiểm cấu trúc với `marking = per_item` (IELTS) */
+  marks?: number;
 }
 
-/** Kiểm tra cấu trúc bộ đề bằng cùng hàm API dùng khi phát hành; sai → dừng seed */
+/** Kiểm tra cấu trúc bộ đề bằng cùng hàm API dùng khi phát hành; sai → dừng seed. C3: IELTS đếm theo mục (`marking = per_item`) */
 export function assertStructure(
   specs: readonly SectionSpecRow[],
   kind: 'full' | 'part_drill' | 'mini' | 'diagnostic',
   code: string,
   items: readonly SeedItem[],
+  marking: 'per_question' | 'per_item' = 'per_question',
 ): void {
   const report = validateTestSetStructure(
     kind,
@@ -82,7 +86,9 @@ export function assertStructure(
       section_code: q.section,
       sort_order: i + 1,
       group_key: q.group_key ?? null,
+      marks: q.marks,
     })),
+    { marking },
   );
   if (!report.ok) throw new Error(`[seed:demo] ${code} cấu trúc không hợp lệ: ${JSON.stringify(report.issues)}`);
 }
@@ -195,6 +201,8 @@ export interface SeedTestSetInput {
   sectionDurationSec?: (sectionCode: string) => number | null;
   /** C1: chương trình (mặc định toeic) */
   program?: string;
+  /** C3: catalog.test_sets.level – IELTS hình thức Reading (academic | general_training) */
+  level?: string | null;
 }
 
 /** Tạo/cập nhật bộ đề đã phát hành: section theo thứ tự xuất hiện, item giữ group_key */
@@ -208,6 +216,7 @@ export async function upsertSeedTestSet(db: Db, ctx: SeedContext, input: SeedTes
       kind: input.kind,
       isFree: true,
       durationSec: input.durationSec,
+      level: input.level ?? null,
       status: 'published',
       publishedAt: new Date(),
     })
@@ -217,6 +226,7 @@ export async function upsertSeedTestSet(db: Db, ctx: SeedContext, input: SeedTes
         title: sql`excluded.title`,
         kind: sql`excluded.kind`,
         durationSec: sql`excluded.duration_sec`,
+        level: sql`excluded.level`,
         status: sql`excluded.status`,
       },
     })
