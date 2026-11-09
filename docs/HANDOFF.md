@@ -1,12 +1,14 @@
-# HANDOFF — Sprint 1 → 12 và backlog tính năng B6 · B7 · B5 · B2 · C1 · C2 (09/11/2026)
+# HANDOFF — Sprint 1 → 12 và backlog tính năng B6 · B7 · B5 · B2 · C1 · C2 · C3 (09/11/2026)
 
-Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1–12 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`, rồi backlog tính năng (chủ dự án: **xây đủ tính năng trước, thu phí/thương mại hoá làm sau cùng**). Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A257), `docs/SPEC-ISSUES.md` (S1–S170), ADR 0001–0038, `docs/gates/GATE-2-report.md`. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
+Bàn giao sau phiên Claude Code chạy lần lượt Sprint 1–12 theo `docs/prompts/ALLINGO-SPRINT-PROMPTS.md`, rồi backlog tính năng (chủ dự án: **xây đủ tính năng trước, thu phí/thương mại hoá làm sau cùng**). Đọc cùng `README.md`, `CLAUDE.md`, `docs/ASSUMPTIONS.md` (A1–A267), `docs/SPEC-ISSUES.md` (S1–S173), ADR 0001–0039, `docs/gates/GATE-2-report.md`. Bàn giao Sprint 0 xem lịch sử git của tệp này (`git log -p docs/HANDOFF.md`).
 
 Mọi kiểm tra dưới đây chạy trong phiên cloud: Postgres 16 + pgvector, Valkey/Redis cục bộ, không Docker, không Meilisearch/MinIO/Azure/khoá AI/cổng thanh toán thật (A1, A25). Quy trình cài trên máy mới đã chạy thử trên bản clone sạch (A214).
 
 ## 0. Chuyển máy – đọc trước khi mở phiên mới (09/11/2026)
 
-**Trạng thái.** Nhánh `main` trên GitHub `phungduyhoc/allingo` chứa toàn bộ việc đã làm; phiên cloud cũ không còn thay đổi chưa commit. Backlog đã xong: B6, B7, B5, B2, C1, C2 (bảng "Backlog tính năng" ở mục 1). Đợt C3 được giao rồi dừng ngay khi chuyển máy, **chưa sửa tệp nào** → bắt đầu C3 từ đầu theo phạm vi ở mục 5.
+**Trạng thái.** Nhánh `main` trên GitHub `phungduyhoc/allingo` chứa toàn bộ việc đến C2. Backlog đã xong: B6, B7, B5, B2, C1, C2 (bảng "Backlog tính năng" ở mục 1). **C3 (IELTS Reading & Listening) làm trên máy mới (WSL2 Ubuntu) ở nhánh `feat/test-engine-ielts-rl`** – ADR-0039, A258–A267, S171–S173; chưa push → push + mở PR, xem CI rồi merge. Tiếp theo: C4.
+
+**Máy dev Windows (09/11/2026).** Mã nguồn ở `~/allingo` trong Ubuntu (đĩa WSL đã chuyển sang `E:\WSL\Ubuntu`). Docker Desktop không cài được (component store Windows hỏng, lỗi 14098) → dùng **Docker Engine + compose plugin cài trong Ubuntu** (`pnpm docker:up` như cũ; container không tự khởi động lại khi WSL khởi động lại → chạy lại `pnpm docker:up`). Ổ C: gần đầy: chạy nhiều build/test/E2E song song làm `C:\pagefile.sys` phình ~7 GB → C: hết chỗ → WSL sập; chạy kiểm thử tuần tự (`--concurrency=1`) và chuyển pagefile sang ổ khác.
 
 **CI GitHub.** Commit `6739e72` và `f0debf8` xanh đủ 5 job (E2E lần đầu đạt hết: 148 pass, 22 skip, 0 fail). Commit C1 + C2 (`6ad840e..7869d7a`): Lint · Typecheck · Unit và Observability đã xanh trên `7869d7a`; lượt chạy đó bị huỷ giữa chừng khi push commit bàn giao này (CI `cancel-in-progress`), nên lượt CI của commit bàn giao kiểm lại toàn bộ C1 + C2 → mở tab Actions kiểm tra trước khi làm tiếp; nếu đỏ thì sửa trước khi bắt đầu C3.
 
@@ -200,6 +202,7 @@ Bổ sung bảo mật: MFA TOTP step-up cho admin (RFC 6238), mật khẩu ≥ 1
 | B5 – Part 7 đa đoạn, CMS | `catalog.passage_parts` (S24), tab văn bản Part 7 (tablist WAI-ARIA), trình dựng bộ đề kéo thả theo blueprint trong CMS (A26, `test_sets.metadata` – S30), passage nhiều văn bản đồng bộ catalog (migration 0011, Payload `b5_passage_parts_blueprint`) | ADR-0037 |
 | B2 – công cụ sản xuất nội dung | Kiểm tra tự động câu hỏi; lọc trùng pg_trgm + embedding; nhập Excel (dry-run → xác nhận, bộ đọc xlsx tự viết bằng `node:zlib`); AI soạn nháp cả đề theo blueprint (prompt `generate_item_set`, job `content.draft_test`); hàng chờ duyệt (lọc, duyệt hàng loạt, phân công, phím tắt) | ADR-0037, A234–A241, S158–S162 |
 | C1 – khu học đa chương trình | Registry chương trình `@allingo/schemas/program`; `scoreByProgram()` (TOEIC giữ nguyên, IELTS band); `iam.users.active_program` (migration 0012); `GET /programs` có `status` (`available` khi cờ ra mắt bật và có đề phát hành); route `/[program]/…` giữ URL `/toeic/…`; trang "sắp ra mắt" + danh sách chờ; mã chương trình sai → 404 thật; bộ chọn chương trình ở khu học, Cài đặt, onboarding | ADR-0038, A242–A257 |
+| C3 – IELTS Reading & Listening hoàn chỉnh | Band Listening / Reading Academic / Reading GT tách bảng (unit test mốc biên), overall chỉ khi đủ 4 kỹ năng; đánh số "Questions 1–40" theo mục (`numberMarks`, S167) + điều hướng theo số, tổng quan theo mục; đồng hồ theo kỹ năng + khoá section (409 `section_locked`), tự nộp; `exam_format ielts_cbt`: Listening liên tục theo part, đọc trước 30 s, xem lại 2 phút, nghe một lần ràng buộc cả ở server (S170); kết quả: thẻ band, đúng /40, theo dạng câu và passage/part; xem lại: transcript có mốc + `evidence_segments`; sổ lỗi/thống kê/chẩn đoán/lộ trình theo band; kiểm tra đề IELTS (`runTestSetChecks`) ở API + CMS (khung đề, Academic/GT, migration `c3_ielts_module`); S168 làm mới `/programs`; S169 eval 157 dòng IELTS; đề tự biên soạn `ielts-reading-academic-01`, `ielts-listening-01` (seed demo bật cờ IELTS, mock web cùng nội dung) | ADR-0039, A258–A267, S171–S173 |
 | C2 – 14 dạng câu IELTS R/L | Matching headings/information/features/sentence endings; completion sentence/summary/note/table/flow-chart/form; short answer; diagram/plan/map labelling; summary word bank; TFNG/YNNG; MCQ chọn hai. Chuẩn hoá đáp án gõ + giới hạn số từ + chính tả Anh/Mỹ, chấm theo mục; renderer a11y; xem trước CMS (migration enum Payload `c2_ielts_question_types`); đề mẫu `ielts-question-types-demo` 18 câu; explain/tutor/check_question nhiều mục; sửa lộ đáp án `fill_blank` khi làm bài (S163) | ADR-0038, S163–S170 |
 
 ## 2. Đã làm
@@ -228,18 +231,20 @@ Bổ sung bảo mật: MFA TOTP step-up cho admin (RFC 6238), mật khẩu ≥ 1
 
 **Sửa lỗi quan trọng phát hiện trong phiên.** `QueueService.enqueue` luôn thất bại âm thầm vì jobId chứa `:` (BullMQ ≥ 5) → `jobIdFor()`; Postgres jsonb đổi thứ tự khoá làm so sánh nội dung sai → so sánh chuẩn hoá; `@allingo/db` dist nhúng kiểu cũ → luôn build lại sau khi sửa schema; SSE thiếu header CORS làm trình duyệt chặn explain/gia sư (S6); CMS production thiếu migration Payload (S6); deadlock pool kết nối dưới tải (S11); `POST /submit` 500 khi truyền Date vào SQL thô (S11); `seed:media` không dựng được context và thoát im lặng, `db:migrate` không đọc `.env`, compose dev thiếu bucket hoá đơn (phát hiện khi chạy thử cài máy mới). Sau Sprint 12: cài sạch (CI, Docker) không có `node_modules/.bin/esbuild` nên bản build thiếu service worker (PWA offline/push hỏng) → esbuild thành devDependency trực tiếp của web, `build-sw` dừng hẳn khi thiếu; E2E Web Push đỏ vì chromium headless shell luôn từ chối quyền thông báo → CI chạy Chromium đầy đủ; quét axe khi hộp thoại đang fade báo tương phản giả → chờ animation xong.
 
-## 3. Số liệu kiểm thử (lần chạy cuối, 09/11/2026 – sau C1 + C2)
+## 3. Số liệu kiểm thử (lần chạy cuối, 09/11/2026 – sau C3, máy Windows WSL2 + Docker Engine)
 
 | Bộ | Kết quả |
 | --- | --- |
 | `pnpm turbo run lint typecheck` | 29/29 task xanh (concurrency 1) |
-| api (unit + integration Postgres/Redis thật) | 514 (lần đầu 2 đỏ: test C1/C2 giả định cache explain trống – đã sửa; `billing-s7` thỉnh thoảng đỏ do thứ tự thông báo – mục 5) |
-| web unit | 382 |
-| schemas | 657 |
+| api (unit + integration Postgres/Redis thật) | 533: 532 pass, 1 đỏ cục bộ – referral do `.env` đặt `REFERRAL_SHARE_BASE_URL=` rỗng (S173); chạy không có `.env` như CI: tệp `s8-billing-growth` 17/17 xanh |
+| web unit | 405 |
+| schemas | 687 |
 | db | 101 |
-| cms | 74 |
-| scoring / planner / fsrs / api-client | 42 / 28 / 10 / 8 (planner, fsrs: số lần chạy Sprint 12) |
-| **Tổng unit + integration** | **1.816** |
+| cms | 85 |
+| scoring / planner / fsrs / api-client | 140 / 28 / 10 / 8 |
+| **Tổng unit + integration** | **1.997** |
+| Sau C1 + C2 (lần chạy trước) | api 514, web 382, schemas 657, cms 74, scoring 42 – tổng 1.816 |
+| E2E mock cục bộ sau C3 (chromium: ielts-full, ielts-question-types, programs, listening, exam-layout) | 15/15 pass; luồng Web của C3 chạy thêm chromium + mobile các spec liên quan 18/18. Chưa chạy: E2E toàn bộ, E2E API thật cho `ielts-full.spec.ts` |
 | E2E mock trên CI GitHub (commit `6739e72`, trước C1/C2) | 148 pass, 22 skip, 0 fail |
 | E2E mock cục bộ mô phỏng CI sau C1/C2 | lượt toàn bộ 166 pass, 24 skip, 2 fail (onboarding, a11y admin – lỗi do C1, đã sửa); chạy lại chromium 91 pass / 5 skip, mobile các spec liên quan 14 pass / 3 skip |
 | E2E API thật sau C1/C2 (programs, ielts-question-types, onboarding, content-tools, cms-builder) | chromium 16/16 pass; mobile 2 pass, 3 skip (test đổi cờ toàn cục chỉ chạy desktop) |
@@ -275,13 +280,12 @@ Windows: chạy trong WSL2 (Ubuntu), mã nguồn đặt trong thư mục nhà c�
 
 | # | Đầu mục | Phạm vi |
 | --- | --- | --- |
-| C3 | IELTS Reading & Listening hoàn chỉnh (khu `/ielts`) | **Định dạng thi trên máy tính:** Reading 3 passage / 40 câu / 60 phút, hỗ trợ Academic và General Training (bảng quy đổi band Reading tách riêng trong `@allingo/scoring`, unit test các mốc biên); Listening 4 part / 40 câu / ~30 phút + 2 phút xem lại, thời gian đọc trước mỗi part, Exam Mode phát audio một lần không tua/dừng (ràng buộc cả phía server), Practice được nghe lại và xem transcript sau khi nộp. Đánh số 1–40 xuyên suốt (S167), điều hướng theo số, bảng tổng quan câu đã làm/đánh dấu, đồng hồ theo section, tự nộp khi hết giờ. **Kết quả & xem lại:** band 0–9 bước 0.5, số câu đúng /40, phân tích theo dạng câu và theo passage/part, giải thích AI nhiều mục, transcript có mốc thời gian và tô đoạn chứa đáp án, câu sai vào sổ lỗi/FSRS. **Học theo chương trình:** thống kê, chẩn đoán IELTS ngắn, lộ trình theo band mục tiêu và ngày thi, tóm tắt tuần chạy qua registry; overall band chỉ tính khi đủ 4 kỹ năng. **Nội dung tự biên soạn:** 1 đề Reading Academic đủ 40 câu phủ nhiều dạng C2, 1 đề Listening 4 part nhiều giọng, audio sinh bằng `SpeechProvider` qua `seed:media` (mock sinh audio thay thế); seed demo bật cờ IELTS (core vẫn tắt); mock web dùng cùng nội dung. **Tồn đọng:** S168 (làm mới cache `/programs` khi đổi cờ/phát hành đề), S169 (thêm ca IELTS vào eval `explain_mcq_v1`), S170 (luồng nghe theo phần). **CMS:** soạn đề IELTS theo section/part, kiểm tra tự động (đủ 40 câu, đánh số liên tục, part có audio). **Kiểm thử:** unit (band, đánh số, audio một lần), integration làm trọn đề R/L → band đúng + Exam Mode khoá giải thích, E2E mock + API thật |
 | C4 | Writing: IELTS Task 1 (Academic biểu đồ/sơ đồ, GT thư) + Task 2; TOEIC Writing | Trình soạn có đếm từ và đồng hồ; nộp → job BullMQ chấm qua `AiGateway` (`grade_writing_ielts`/`grade_writing_toeic`, provider mock) → Socket.IO; band từng tiêu chí (TR/TA, CC, LR, GRA), nhận xét song ngữ, gợi ý viết lại (`upgrade_phrasing`); credit/quota kiểm ở server, trừ trong cùng transaction; Exam Mode khoá trợ giúp; bài viết lưu theo quy định dữ liệu cá nhân (CLAUDE.md §9) |
 | C5 + C6 | Speaking + phát âm; shadowing + chép chính tả | Speaking IELTS Part 1–3 (cue card, 1 phút chuẩn bị) và TOEIC Speaking: ghi âm trên web, tải lên bucket riêng (URL ký 10 phút, vòng đời 90/365 ngày), ASR + đánh giá phát âm qua `SpeechProvider` (Azure; mock), chấm `grade_speaking_*`. Shadowing: nghe câu → ghi âm lặp → chấm phát âm theo từ/âm vị. Chép chính tả từ audio Listening sẵn có, so khớp từng từ |
 | C7 | Đề TOEIC Speaking & Writing đầy đủ | Speaking 11 câu (~20 phút), Writing 8 câu (~60 phút), quy đổi 0–200 (`toeic_speaking_scaled`/`toeic_writing_scaled` – ghi "ước tính"), đề mẫu tự biên soạn |
 | #25 | Chốt backlog | Kiểm thử tổng; cập nhật `docs/HANDOFF.md` và danh mục tính năng Excel; sửa số liệu `CLAUDE.md` (sau khi duyệt); bộ cài Windows cập nhật; chuyển job E2E thành bắt buộc sau vài lượt xanh liên tiếp; branch protection; tag `v0.9.0-beta` |
 
-**Dọn nhỏ đã biết.** (1) Turbo race `@allingo/api-client` (`gen` chạy ở cả `typecheck` và `build`) → bỏ `gen` khỏi `typecheck` hoặc cho `typecheck` phụ thuộc `build` trong `turbo.json`. (2) `billing-s7` thỉnh thoảng đỏ vì sắp thông báo chỉ theo `created_at` → thêm khoá phụ `id` trong truy vấn. (3) Nhập Excel mới hỗ trợ `mcq_single`; đề Listening do AI soạn chưa có audio; ngưỡng lọc trùng embedding đang đặt theo mock; chưa đồng bộ ngược catalog → CMS (B2). (4) Trước khi bật model thật cho IELTS: bổ sung eval `explain_mcq_v1` (S169).
+**Dọn nhỏ đã biết.** (1) Turbo race `@allingo/api-client` (`gen` chạy ở cả `typecheck` và `build`) → bỏ `gen` khỏi `typecheck` hoặc cho `typecheck` phụ thuộc `build` trong `turbo.json`. (2) `billing-s7` thỉnh thoảng đỏ vì sắp thông báo chỉ theo `created_at` → thêm khoá phụ `id` trong truy vấn. (3) Nhập Excel mới hỗ trợ `mcq_single`; đề Listening do AI soạn chưa có audio; ngưỡng lọc trùng embedding đang đặt theo mock; chưa đồng bộ ngược catalog → CMS (B2). (4) Trước khi bật model thật cho IELTS: chạy eval `explain_mcq_ielts_v1` (157 dòng, S169) với model thật. (5) C3: đề mini IELTS tự sinh còn đếm câu catalog (S171); kịch bản `ielts-listening-01` ngắn hơn đề thật (S172); `.env.example` `REFERRAL_SHARE_BASE_URL=` rỗng làm test referral đỏ cục bộ (S173); E2E API thật cho `ielts-full.spec.ts` chưa chạy (Listening exam bỏ qua khi API thật vì audio seed dài).
 
 ### 5b. Hạ tầng, credential, vận hành
 
