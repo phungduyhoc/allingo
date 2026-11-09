@@ -11,7 +11,7 @@
 # và đặt env APP_ENTRY=dist/worker.js, giữ ENTRYPOINT tini (xem infra/terraform/modules/compute).
 # Job migrate dùng cùng image với `args` = `node migrate.mjs`. ARG APP_ENTRY chỉ để chạy local/compose.
 #
-# Giai đoạn: base → deps (pnpm fetch + install --offline, cache store) → build (tsc, pnpm deploy --prod)
+# Giai đoạn: base → deps (pnpm fetch + install --prefer-offline, cache store) → build (tsc, pnpm deploy --prod)
 #            → runtime (node:22-alpine, non-root, chỉ node_modules prod + dist + migrations)
 # =============================================================================
 ARG NODE_VERSION=22.23.4
@@ -38,7 +38,7 @@ RUN apk add --no-cache python3 make g++ libc6-compat
 COPY pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 RUN --mount=type=cache,id=allingo-pnpm-store,target=/pnpm/store \
     pnpm fetch
-# 2) manifest của mọi workspace package (để lockfile khớp importers) rồi install offline, chỉ nhánh api
+# 2) manifest của mọi workspace package (để lockfile khớp importers) rồi install (ưu tiên store, thiếu mới tải), chỉ nhánh api
 COPY package.json tsconfig.base.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
@@ -52,8 +52,10 @@ COPY packages/i18n/package.json packages/i18n/
 COPY packages/schemas/package.json packages/schemas/
 COPY packages/scoring/package.json packages/scoring/
 COPY packages/ui/package.json packages/ui/
+# --prefer-offline (không --offline): cache mount không nằm trong cache layer GHA – layer `pnpm fetch` lấy từ cache nhưng store
+# trên runner mới trống → --offline báo ERR_PNPM_NO_OFFLINE_TARBALL; --prefer-offline dùng store khi có, thiếu thì tải.
 RUN --mount=type=cache,id=allingo-pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile --offline --filter "@allingo/api..."
+    pnpm install --frozen-lockfile --prefer-offline --filter "@allingo/api..."
 
 # ---------- build ------------------------------------------------------------
 FROM deps AS build

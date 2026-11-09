@@ -47,8 +47,10 @@ COPY packages/i18n/package.json packages/i18n/
 COPY packages/schemas/package.json packages/schemas/
 COPY packages/scoring/package.json packages/scoring/
 COPY packages/ui/package.json packages/ui/
+# --prefer-offline (không --offline): cache mount không nằm trong cache layer GHA – layer `pnpm fetch` lấy từ cache nhưng store
+# trên runner mới trống → --offline báo ERR_PNPM_NO_OFFLINE_TARBALL; --prefer-offline dùng store khi có, thiếu thì tải.
 RUN --mount=type=cache,id=allingo-pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile --offline --filter "@allingo/web..."
+    pnpm install --frozen-lockfile --prefer-offline --filter "@allingo/web..."
 
 # ---------- build ------------------------------------------------------------
 FROM deps AS build
